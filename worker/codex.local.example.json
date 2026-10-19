@@ -1,0 +1,12 @@
+{
+  "provider": "codex",
+  "label": "My project",
+  "worker": {
+    "transport": "local",
+    "workspaceRoot": "/absolute/path/to/agent-workbench/.workbench/local-runs"
+  },
+  "source": {
+    "kind": "directory",
+    "path": "/absolute/path/to/project"
+  }
+}

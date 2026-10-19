@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.workbench/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.playwright-mcp/
+.impeccable/hook.cache.json
+.impeccable/review/
+output/agent-workbench-preview-standalone.html
+output/pr-change-preview.html

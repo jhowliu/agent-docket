@@ -1,0 +1,11 @@
+{
+  "provider": "claude",
+  "label": "Claude isolated M0",
+  "worker": {
+    "transport": "ssh",
+    "host": "workbench-worker",
+    "image": "agent-workbench-m0:0.1",
+    "envFile": "/opt/workbench-secrets/claude.env"
+  },
+  "source": {"kind": "fixture"}
+}

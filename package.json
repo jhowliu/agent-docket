@@ -1,0 +1,39 @@
+{
+  "name": "agent-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test test/*.test.ts test/*.test.tsx",
+    "dev": "tsx src/app/cli.ts",
+    "ui": "tsx src/app/web.ts",
+    "tui": "tsx src/app/tui.tsx",
+    "daemon": "tsx src/app/web.ts",
+    "daemon:stop": "tsx src/app/tui.tsx --stop",
+    "qa:tui": "FORCE_COLOR=1 tsx scripts/capture-tui.tsx",
+    "demo": "tsx src/app/cli.ts demo",
+    "doctor": "tsx src/app/cli.ts doctor"
+  },
+  "dependencies": {
+    "@agentclientprotocol/codex-acp": "2.2.2",
+    "@agentclientprotocol/sdk": "1.9.0",
+    "ink": "8.0.0",
+    "react": "19.3.1",
+    "string-width": "8.3.0",
+    "wrap-ansi": "10.0.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "ink-testing-library": "4.0.0",
+    "prettier": "3.6.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
+}

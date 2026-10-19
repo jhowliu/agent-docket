@@ -1,0 +1,289 @@
+/* Compact demo: inherit the workbench's palette and controls. */
+#agent-workbench-preview.aw-runtime a {
+  color: var(--aw-cyan);
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+#agent-workbench-preview.aw-runtime a:focus-visible {
+  outline: 2px solid var(--aw-cyan);
+  outline-offset: 3px;
+}
+#agent-workbench-preview.aw-runtime kbd {
+  color: var(--aw-cyan);
+  font: inherit;
+}
+#agent-workbench-preview.aw-runtime .aw-chrome {
+  gap: 8px 12px;
+  padding: 10px 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-demo {
+  margin-left: auto;
+}
+#agent-workbench-preview.aw-runtime .aw-project-nav {
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-project-nav > summary {
+  padding: 5px 0;
+}
+#agent-workbench-preview.aw-runtime .aw-project-nav[open] {
+  order: 10;
+  flex-basis: 100%;
+}
+#agent-workbench-preview.aw-runtime .aw-project-info {
+  padding: 8px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-project-info code {
+  flex-basis: 100%;
+}
+#agent-workbench-preview.aw-runtime .aw-project-info p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--aw-muted);
+}
+#agent-workbench-preview.aw-runtime .aw-toolbar {
+  justify-content: space-between;
+  padding: 10px 12px 6px;
+  gap: 8px;
+}
+#agent-workbench-preview.aw-runtime .aw-toolbar > strong {
+  color: var(--aw-cyan);
+  font-weight: 400;
+}
+#agent-workbench-preview.aw-runtime .aw-switcher {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+#agent-workbench-preview.aw-runtime .aw-switcher .aw-button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-table-head,
+#agent-workbench-preview.aw-runtime .aw-run {
+  grid-template-columns: minmax(0, 1fr) 160px;
+  gap: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-run {
+  padding: 7px 10px;
+}
+#agent-workbench-preview.aw-runtime .aw-run-title {
+  min-width: 0;
+}
+#agent-workbench-preview.aw-runtime .aw-state {
+  justify-self: start;
+}
+#agent-workbench-preview.aw-runtime .aw-detail-title {
+  justify-content: flex-start;
+  gap: 6px 10px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--aw-line);
+}
+#agent-workbench-preview.aw-runtime .aw-detail-title > strong {
+  color: var(--aw-cyan);
+  font-size: 13px;
+  font-weight: 400;
+}
+#agent-workbench-preview.aw-runtime [data-title] {
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime [data-state] {
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-tabs {
+  padding: 0;
+  border: 0;
+  margin-left: auto;
+  gap: 2px;
+}
+#agent-workbench-preview.aw-runtime .aw-tab {
+  padding: 5px 7px;
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-detail-title > .aw-button {
+  padding: 3px 7px;
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-run-options {
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-run-options > summary {
+  cursor: pointer;
+  padding: 5px 0;
+}
+#agent-workbench-preview.aw-runtime .aw-run-options[open] {
+  order: 10;
+  flex-basis: 100%;
+  border-top: 1px solid var(--aw-line);
+}
+#agent-workbench-preview.aw-runtime .aw-detail-meta {
+  padding: 6px 0;
+}
+#agent-workbench-preview.aw-runtime .aw-environment {
+  padding: 0 0 8px;
+  overflow-wrap: anywhere;
+}
+#agent-workbench-preview.aw-runtime .aw-environment code {
+  min-width: 0;
+}
+#agent-workbench-preview.aw-runtime .aw-scenarios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+#agent-workbench-preview.aw-runtime .aw-scenarios .aw-button {
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-panel {
+  min-height: 180px;
+  max-height: 340px;
+  padding: 8px 10px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--aw-line) var(--aw-panel);
+}
+#agent-workbench-preview.aw-runtime .aw-event {
+  grid-template-columns: 62px 110px minmax(0, 1fr);
+  gap: 8px;
+  padding: 2px 0;
+}
+#agent-workbench-preview.aw-runtime .aw-event-kind {
+  overflow-wrap: anywhere;
+}
+#agent-workbench-preview.aw-runtime .aw-event-text {
+  white-space: pre-wrap;
+}
+#agent-workbench-preview.aw-runtime .aw-prompt {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px 16px;
+  flex-wrap: wrap;
+}
+#agent-workbench-preview.aw-runtime .aw-prompt-title {
+  font-weight: 400;
+}
+#agent-workbench-preview.aw-runtime .aw-actions {
+  margin-left: auto;
+}
+#agent-workbench-preview.aw-runtime .aw-prompt .aw-button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-decision-detail {
+  color: var(--aw-muted);
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-decision-detail > summary {
+  cursor: pointer;
+}
+#agent-workbench-preview.aw-runtime .aw-decision-detail[open] {
+  order: 10;
+  flex-basis: 100%;
+}
+#agent-workbench-preview.aw-runtime .aw-compose-note {
+  width: 100%;
+  padding: 0;
+  margin: 0;
+}
+#agent-workbench-preview.aw-runtime .aw-composer {
+  flex-wrap: wrap;
+}
+#agent-workbench-preview.aw-runtime .aw-offline {
+  margin: 8px 12px;
+  padding: 10px;
+  background: var(--aw-amber-wash);
+  color: var(--aw-amber);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+#agent-workbench-preview.aw-runtime .aw-footer {
+  padding: 7px 12px;
+  gap: 6px 16px;
+  align-items: start;
+}
+#agent-workbench-preview.aw-runtime .aw-footer-state {
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-key-help {
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-key-help summary,
+#agent-workbench-preview.aw-runtime .aw-diagnostics summary {
+  cursor: pointer;
+  color: var(--aw-text);
+}
+#agent-workbench-preview.aw-runtime .aw-key-help[open] {
+  order: 10;
+  flex-basis: 100%;
+}
+#agent-workbench-preview.aw-runtime .aw-key-help dl,
+#agent-workbench-preview.aw-runtime .aw-diagnostics dl {
+  display: grid;
+  grid-template-columns: minmax(80px, auto) minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: 10px 0;
+}
+#agent-workbench-preview.aw-runtime .aw-key-help dt {
+  color: var(--aw-cyan);
+}
+#agent-workbench-preview.aw-runtime dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+#agent-workbench-preview.aw-runtime .aw-key-help p {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+#agent-workbench-preview.aw-runtime .aw-diagnostics {
+  border-top: 1px solid var(--aw-line);
+  margin-top: 10px;
+  padding-top: 8px;
+  color: var(--aw-muted);
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-diff-label {
+  display: block;
+  color: var(--aw-muted);
+  font-size: 12px;
+  margin: 8px 0 3px;
+}
+@media (max-width: 600px) {
+  #agent-workbench-preview.aw-runtime .aw-chrome {
+    padding: 8px 10px;
+  }
+  #agent-workbench-preview.aw-runtime .aw-demo {
+    margin-left: 0;
+  }
+  #agent-workbench-preview.aw-runtime .aw-table-head {
+    display: none;
+  }
+  #agent-workbench-preview.aw-runtime .aw-run {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+  #agent-workbench-preview.aw-runtime .aw-run-title {
+    grid-column: 1;
+    grid-row: auto;
+  }
+  #agent-workbench-preview.aw-runtime .aw-run > .aw-state {
+    grid-column: 2;
+    grid-row: auto;
+  }
+  #agent-workbench-preview.aw-runtime .aw-tabs {
+    margin-left: 0;
+  }
+  #agent-workbench-preview.aw-runtime .aw-event {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+  #agent-workbench-preview.aw-runtime .aw-panel {
+    max-height: 300px;
+  }
+  #agent-workbench-preview.aw-runtime .aw-actions {
+    margin-left: 0;
+  }
+}

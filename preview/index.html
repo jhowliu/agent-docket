@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Multi-project agent workbench prototype using sample data.">
+  <title>Agent Workbench · Prototype</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./services.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <main class="workbench-page">
+<div id="agent-workbench-preview" aria-label="Multi-project agent workbench preview">
+  <div class="aw-window">
+    <header class="aw-chrome">
+      <span class="aw-brand">agent / workbench</span>
+      <span class="aw-path">~/projects · All projects</span>
+      <span class="aw-demo">DEMO · offline</span>
+      <div class="aw-page-actions"><a class="aw-button aw-runtime-link" href="./runtime.html">Fixture workbench</a><button type="button" class="aw-button" data-theme-toggle>Light</button><button type="button" class="aw-button" data-reset>Reset samples</button></div>
+    </header>
+    <div class="aw-layout">
+      <aside class="aw-sidebar" aria-label="Project and agent navigation">
+        <details class="aw-project-nav" open>
+          <summary>Projects <span data-project-summary>3 projects</span></summary>
+          <nav data-projects aria-label="Project locations and agents"></nav>
+        </details>
+        <p class="aw-sidebar-note">Sample source paths. Agents and services have separate remote environments.</p>
+      </aside>
+      <div class="aw-main">
+    <div class="aw-toolbar">
+      <div class="aw-switcher" aria-label="Visible Runs">
+        <button type="button" class="aw-button cursor-interaction" data-filter="all" aria-pressed="true">All <span data-total>6</span></button>
+        <button type="button" class="aw-button cursor-interaction" data-filter="attention" aria-pressed="false">Needs attention <span data-pending>2</span></button>
+      </div>
+      <span class="aw-summary" data-scope-summary>All projects · separate environments (sample)</span>
+    </div>
+    <section class="aw-roster" aria-label="Agent Runs">
+      <div class="aw-table-head" aria-hidden="true"><span>AGENT / TASK</span><span>PROJECT</span><span>STATE</span><span>ENGINE</span><span class="aw-change">DIFF</span></div>
+      <div data-roster></div>
+    </section>
+    <section class="aw-detail" aria-label="Selected Run details">
+      <div class="aw-detail-title"><strong data-detail-title>verify / token-expiry</strong><span class="aw-state aw-wait" data-detail-state>Awaiting approval · 2m</span></div>
+      <div class="aw-detail-meta" data-detail-meta></div>
+      <div class="aw-environment" data-environment></div>
+      <div class="aw-tabs" role="tablist" aria-label="Agent detail views">
+        <button id="aw-tab-live" class="aw-tab cursor-interaction" type="button" role="tab" aria-controls="aw-detail-panel" aria-selected="true" data-tab="live">Live</button>
+        <button id="aw-tab-diff" class="aw-tab cursor-interaction" type="button" role="tab" aria-controls="aw-detail-panel" aria-selected="false" data-tab="diff">Diff</button>
+        <button id="aw-tab-timeline" class="aw-tab cursor-interaction" type="button" role="tab" aria-controls="aw-detail-panel" aria-selected="false" data-tab="timeline">Timeline</button>
+        <button id="aw-tab-evidence" class="aw-tab cursor-interaction" type="button" role="tab" aria-controls="aw-detail-panel" aria-selected="false" data-tab="evidence">Results</button>
+        <button id="aw-tab-services" class="aw-tab cursor-interaction" type="button" role="tab" aria-controls="aw-detail-panel" aria-selected="false" data-tab="services">Services <span data-service-count>0/3</span></button>
+      </div>
+      <div id="aw-detail-panel" class="aw-panel" role="tabpanel" aria-labelledby="aw-tab-live" data-panel></div>
+      <div data-action></div>
+      <div class="aw-composer" data-composer role="group" aria-label="Reply to selected agent">
+        <div class="aw-input-wrap"><label class="aw-input-label" for="aw-message" data-input-label>Reply to selected agent</label><input id="aw-message" class="aw-input" name="message" type="text" autocomplete="off" placeholder="Type an instruction or question…" maxlength="500"></div>
+        <button type="button" class="aw-button aw-send cursor-interaction" data-send>Send (sample)</button>
+      </div>
+    </section>
+      </div>
+    </div>
+    <footer class="aw-footer"><span><kbd>↑↓</kbd> switch agent</span><span><kbd>1–5</kbd> views</span><span><kbd>a</kbd> allow · <kbd>r</kbd> reject</span><span class="aw-footer-state" data-feedback role="status" aria-live="polite">Sample data · all actions are previews</span></footer>
+  </div>
+</div>
+  </main>
+</body>
+</html>

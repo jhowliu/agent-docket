@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-color",
+        "value": "#10151c",
+        "files": [
+          "preview/styles.css"
+        ],
+        "createdAt": "2026-10-18T09:37:18.675Z",
+        "reason": "Existing DESIGN.md colors.aw-bg explicitly includes light-dark(#f6f8fa, #10151c); paired-token detector false positive."
+      }
+    ]
+  }
+}

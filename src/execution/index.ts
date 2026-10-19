@@ -1,0 +1,103 @@
+import type { Attention } from '../attention/index.js';
+export type RunId = `run-${string}`;
+export type Provider = 'fixture' | 'codex' | 'claude';
+export type LocalWorker = Readonly<{
+  transport: 'local';
+  /** Local mode is explicitly unsandboxed. Workspaces survive Run cancellation. */
+  workspaceRoot: string;
+  /** Optional auth.json to copy into a private Codex home; never shared writable. */
+  authFile?: string;
+  /** Trusted operator configuration, never accepted from workbench commands. */
+  adapter?: Readonly<{ file: string; args: readonly string[] }>;
+}>;
+export type Worker =
+  | LocalWorker
+  | Readonly<
+      {
+        image: string;
+        /** Worker-side env file. Contents are never read by this client. */
+        envFile?: string;
+      } & ({ transport: 'docker' } | { transport: 'ssh'; host: string })
+    >;
+export type Source =
+  | Readonly<{ kind: 'fixture' }>
+  | Readonly<{ kind: 'directory'; path: string }>
+  | Readonly<{ kind: 'git'; url: string; revision: string }>;
+export type Launch =
+  | Readonly<{ provider: 'fixture'; label?: string }>
+  | Readonly<{
+      provider: 'codex' | 'claude';
+      worker: Worker;
+      source: Source;
+      label?: string;
+    }>;
+export type RunState =
+  | Readonly<{
+      kind:
+        | 'starting'
+        | 'idle'
+        | 'running'
+        | 'cancelling'
+        | 'cancelled'
+        | 'closed';
+    }>
+  | Readonly<{
+      kind: 'authentication-required';
+      methods: readonly { id: string; label: string }[];
+    }>
+  | Readonly<{ kind: 'failed' | 'interrupted'; reason: string }>;
+export type Capabilities = Readonly<{
+  protocolVersion: number;
+  agent: string;
+  version: string;
+  loadSessionAdvertised: boolean;
+  clientFilesystem: false;
+  clientTerminal: false;
+  structuredQuestions: false;
+  resumeImplemented: false;
+}>;
+export type RunSnapshot = Readonly<{
+  id: RunId;
+  provider: Provider;
+  label: string;
+  state: RunState;
+  environment: {
+    kind: 'trusted-fixture-directory' | 'local' | 'docker' | 'ssh';
+    location: string;
+  };
+  capabilities: Capabilities | null;
+}>;
+export type RunEventPayload =
+  | { type: 'run.state'; state: RunState }
+  | { type: 'capabilities'; capabilities: Capabilities }
+  | { type: 'agent.message'; text: string }
+  | { type: 'tool'; id: string; title: string; status: string }
+  | { type: 'diff'; path: string; oldText: string; newText: string }
+  | { type: 'attention'; id: string; status: string }
+  | { type: 'turn.end'; reason: string }
+  | { type: 'diagnostic'; message: string };
+export type RunEvent = Readonly<
+  { sequence: number; runId: RunId; at: string } & RunEventPayload
+>;
+export interface Execution {
+  /** Local execution requires explicit transport: 'local'; never a container fallback. */
+  start(input: Launch): Promise<RunSnapshot>;
+  /** Accepts startup immediately; events/snapshot report readiness or failure. */
+  launch(input: Launch): RunSnapshot;
+  authenticate(id: RunId, methodId: string): Promise<RunSnapshot>;
+  /** One prompt per Run at a time. Busy prompts are rejected, not represented as steering. */
+  prompt(id: RunId, text: string): Promise<{ stopReason: string }>;
+  /** Invalidates decisions and stops managed work. Local code copies are retained. */
+  cancel(id: RunId): Promise<void>;
+  snapshot(id: RunId): RunSnapshot;
+  list(): readonly RunSnapshot[];
+  /** Bounded cursor page. Throws when a cursor predates retained events. */
+  events(after?: number): readonly RunEvent[];
+  subscribe(listener: (event: RunEvent) => void): () => void;
+  close(): Promise<void>;
+}
+export type ExecutionOptions = Readonly<{
+  attention: Attention;
+  maxEvents?: number;
+}>;
+export { createExecution, parseLaunch } from './internal/runtime.js';

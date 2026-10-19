@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="workbench-token" content="WORKBENCH_TOKEN" />
+    <meta
+      name="description"
+      content="Agent Workbench fixture demo. Use npm run tui for the terminal interface."
+    />
+    <title>Agent Workbench · Fixture Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./runtime.css" />
+    <script src="./runtime.js" defer></script>
+  </head>
+  <body>
+    <main class="workbench-page">
+      <div
+        id="agent-workbench-preview"
+        class="aw-runtime"
+        aria-label="Agent Workbench fixture demo"
+      >
+        <div class="aw-window">
+          <header class="aw-chrome">
+            <span class="aw-brand">agent / workbench</span>
+            <span
+              class="aw-demo"
+              data-connection
+              role="status"
+              aria-live="polite"
+              >DEMO · connecting</span
+            >
+            <details class="aw-project-nav">
+              <summary>Project <kbd>p</kbd></summary>
+              <div class="aw-project-info">
+                <strong data-project-name>Built-in fixture project</strong
+                ><span class="aw-muted" data-run-count>1 sample project</span>
+                <code class="aw-repo-path" data-source>fixtures/project</code>
+                <p>
+                  <span data-project-description
+                    >Deterministic fixture; no model connection.</span
+                  ><a href="./index.html">Multi-project / Services prototype</a>
+                </p>
+              </div>
+            </details>
+            <button type="button" class="aw-button" data-start disabled>
+              New <kbd>n</kbd>
+            </button>
+            <button type="button" class="aw-button" data-theme>Light</button>
+          </header>
+          <div class="aw-toolbar">
+            <strong>agents</strong>
+            <div class="aw-switcher" aria-label="Run filters">
+              <button
+                type="button"
+                class="aw-button"
+                data-filter="active"
+                aria-pressed="true"
+              >
+                Active <span data-total>0</span>
+              </button>
+              <button
+                type="button"
+                class="aw-button"
+                data-filter="attention"
+                aria-pressed="false"
+              >
+                Needs attention <span data-pending>0</span>
+              </button>
+              <button
+                type="button"
+                class="aw-button"
+                data-filter="history"
+                aria-pressed="false"
+              >
+                History <span data-history-count>0</span>
+              </button>
+            </div>
+          </div>
+          <div class="aw-offline" data-offline hidden>
+            <span
+              >Not connected. In the project directory, run
+              <code>npm run ui</code>, then open
+              <a href="http://127.0.0.1:4177">workbench</a>.</span
+            >
+            <button type="button" class="aw-button" data-reconnect>
+              Reconnect
+            </button>
+          </div>
+          <section class="aw-roster" aria-label="Agent Runs">
+            <div class="aw-table-head" aria-hidden="true">
+              <span>AGENT</span><span>STATE</span>
+            </div>
+            <div data-roster>
+              <p class="aw-empty">Press n to start a Run.</p>
+            </div>
+          </section>
+          <section class="aw-detail" data-detail aria-label="Agent activity">
+            <div class="aw-detail-title">
+              <strong data-view-name>timeline</strong
+              ><span data-title class="aw-muted"></span
+              ><span class="aw-state" data-state></span>
+              <div class="aw-tabs" role="tablist" aria-label="Activity views">
+                <button
+                  id="rt-tab-live"
+                  class="aw-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="rt-panel"
+                  aria-selected="false"
+                  data-tab="live"
+                  tabindex="-1"
+                >
+                  Live
+                </button>
+                <button
+                  id="rt-tab-diff"
+                  class="aw-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="rt-panel"
+                  aria-selected="false"
+                  data-tab="diff"
+                  tabindex="-1"
+                >
+                  Diff
+                </button>
+                <button
+                  id="rt-tab-timeline"
+                  class="aw-tab"
+                  type="button"
+                  role="tab"
+                  aria-controls="rt-panel"
+                  aria-selected="true"
+                  data-tab="timeline"
+                >
+                  Timeline
+                </button>
+              </div>
+              <button
+                type="button"
+                class="aw-button"
+                data-compose-toggle
+                aria-controls="rt-composer"
+                aria-expanded="false"
+              >
+                Reply <kbd>i</kbd>
+              </button>
+              <details class="aw-run-options" data-run-options>
+                <summary>Actions <kbd>s</kbd></summary>
+                <div class="aw-detail-meta" data-meta></div>
+                <div class="aw-environment">
+                  <span>Run copy</span><code data-environment></code>
+                </div>
+                <div
+                  class="aw-scenarios"
+                  role="group"
+                  aria-label="Fixture scenarios"
+                >
+                  <button type="button" class="aw-button" data-scenario="fix">
+                    Request edit approval
+                  </button>
+                  <button
+                    type="button"
+                    class="aw-button"
+                    data-scenario="question"
+                  >
+                    Text question
+                  </button>
+                  <button type="button" class="aw-button" data-scenario="wait">
+                    Wait for cancel
+                  </button>
+                  <button type="button" class="aw-button" data-cancel>
+                    Cancel Run
+                  </button>
+                </div>
+              </details>
+            </div>
+            <div
+              id="rt-panel"
+              class="aw-panel"
+              role="tabpanel"
+              aria-labelledby="rt-tab-timeline"
+              tabindex="0"
+              data-panel
+            >
+              <p class="aw-note">Select an agent to view its activity.</p>
+            </div>
+            <div data-decisions></div>
+            <form id="rt-composer" class="aw-composer" data-composer hidden>
+              <div class="aw-input-wrap">
+                <label class="aw-input-label" for="rt-message"
+                  >Reply to selected agent · Esc closes</label
+                ><input
+                  id="rt-message"
+                  class="aw-input"
+                  type="text"
+                  name="message"
+                  autocomplete="off"
+                  maxlength="900"
+                  placeholder="Type a reply…"
+                  required
+                />
+              </div>
+              <button type="submit" class="aw-button aw-send" data-send>
+                Send
+              </button>
+              <p class="aw-compose-note aw-note" data-compose-note></p>
+            </form>
+          </section>
+          <form class="aw-composer aw-command-mode" data-command-form hidden>
+            <div class="aw-input-wrap">
+              <label for="rt-command" class="aw-input-label"
+                >Command · Esc returns</label
+              ><input
+                id="rt-command"
+                class="aw-input"
+                autocomplete="off"
+                placeholder="new · use 2 · fix · inbox · history · cancel · help"
+                maxlength="100"
+              />
+            </div>
+            <button type="submit" class="aw-button">Run</button>
+          </form>
+          <footer class="aw-footer">
+            <span
+              ><kbd>j/k</kbd> agent · <kbd>h/l</kbd> views ·
+              <kbd>a/r</kbd> approvals · <kbd>i</kbd> reply ·
+              <kbd>:</kbd> commands</span
+            >
+            <span
+              class="aw-footer-state"
+              data-feedback
+              role="status"
+              aria-live="polite"
+              >Fixture demo · no model</span
+            >
+            <details class="aw-key-help" data-shortcuts>
+              <summary>Help <kbd>?</kbd></summary>
+              <dl>
+                <dt>j / k</dt>
+                <dd>Select agent</dd>
+                <dt>h / l, 1–3</dt>
+                <dd>Switch Live / Diff / Timeline</dd>
+                <dt>n / w</dt>
+                <dd>New Run / next agent awaiting approval</dd>
+                <dt>i / Esc</dt>
+                <dd>Open reply / close input</dd>
+                <dt>a / r</dt>
+                <dd>Allow once / reject; Tab selects a request</dd>
+                <dt>p / s</dt>
+                <dd>Project / Run actions</dd>
+                <dt>:</dt>
+                <dd>Command mode</dd>
+              </dl>
+              <p>
+                Commands: new, use 2, active, inbox, history, live, diff,
+                timeline, cancel, help. Scenarios: fix, question, wait,
+                permissions, crash. These are workbench actions, not shell
+                commands.
+              </p>
+              <p>
+                This page shares the server with npm run tui. Closing a tab
+                keeps Runs alive. Stopping the server stops its managed Runs;
+                local code copies stay on disk.
+              </p>
+            </details>
+          </footer>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,303 @@
+<style>
+#agent-workbench-preview {
+  --aw-bg: light-dark(#f6f8fa, #10151c);
+  --aw-panel: light-dark(#ffffff, #131a23);
+  --aw-raised: light-dark(#edf2f6, #1a2431);
+  --aw-text: light-dark(#1b2a38, #d9e2ed);
+  --aw-muted: light-dark(#526477, #9aaabd);
+  --aw-line: light-dark(#c4d0da, #334458);
+  --aw-cyan: light-dark(#006d78, #78d4df);
+  --aw-cyan-wash: light-dark(#e0f0f3, #17313b);
+  --aw-amber: light-dark(#87500a, #efbd72);
+  --aw-amber-wash: light-dark(#fff4dc, #30291e);
+  --aw-green: light-dark(#277242, #93c7a3);
+  --aw-red: light-dark(#ac343f, #f09aa3);
+  --aw-row-pad: 9px;
+  color-scheme: light dark;
+  color: var(--aw-text);
+  font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;
+  width: 100%;
+  min-width: 0;
+}
+#agent-workbench-preview * { box-sizing: border-box; }
+#agent-workbench-preview button, #agent-workbench-preview input { font: inherit; }
+#agent-workbench-preview button { color: inherit; }
+#agent-workbench-preview button:disabled { opacity: .55; }
+#agent-workbench-preview ::selection { background: var(--aw-cyan); color: var(--aw-bg); }
+#agent-workbench-preview .aw-window { background: var(--aw-bg); border: 1px solid var(--aw-line); border-radius: 8px; }
+#agent-workbench-preview .aw-chrome { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--aw-line); flex-wrap: wrap; padding-right: 96px; }
+#agent-workbench-preview .aw-brand { font-weight: 700; color: var(--aw-cyan); letter-spacing: -.02em; }
+#agent-workbench-preview .aw-path { color: var(--aw-muted); }
+#agent-workbench-preview .aw-demo { color: var(--aw-amber); margin-left: auto; font-size: 11px; white-space: nowrap; }
+#agent-workbench-preview .aw-toolbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 11px 16px; }
+#agent-workbench-preview .aw-switcher { display: flex; gap: 6px; }
+#agent-workbench-preview .aw-button { background: transparent; border: 1px solid var(--aw-line); padding: 5px 10px; border-radius: 3px; text-align: center; }
+#agent-workbench-preview .aw-button:hover:not(:disabled) { background: var(--aw-raised); }
+#agent-workbench-preview .aw-button[aria-pressed="true"] { color: var(--aw-cyan); border-color: var(--aw-cyan); background: var(--aw-cyan-wash); }
+#agent-workbench-preview .aw-button.aw-primary { color: var(--aw-bg); background: var(--aw-cyan); border-color: var(--aw-cyan); }
+#agent-workbench-preview .aw-button.aw-primary:hover:not(:disabled) { filter: brightness(.93); }
+#agent-workbench-preview .aw-summary { color: var(--aw-muted); font-size: 12px; margin-left: auto; }
+#agent-workbench-preview .aw-roster { margin: 0 12px; border: 1px solid var(--aw-line); }
+#agent-workbench-preview .aw-table-head, #agent-workbench-preview .aw-run { display: grid; grid-template-columns: minmax(220px, 2.3fr) minmax(105px, 1fr) minmax(112px, 1.1fr) 100px 70px; align-items: center; gap: 10px; }
+#agent-workbench-preview .aw-table-head { padding: 5px 12px; background: var(--aw-panel); color: var(--aw-muted); font-size: 11px; border-bottom: 1px solid var(--aw-line); }
+#agent-workbench-preview .aw-run { border: 0; border-top: 1px solid transparent; border-bottom: 1px solid transparent; width: 100%; text-align: left; padding: var(--aw-row-pad) 12px; background: transparent; }
+#agent-workbench-preview .aw-run:hover { background: var(--aw-raised); }
+#agent-workbench-preview .aw-run[aria-pressed="true"] { background: var(--aw-cyan-wash); border-color: var(--aw-cyan); }
+#agent-workbench-preview .aw-run-title { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+#agent-workbench-preview .aw-index { color: var(--aw-muted); min-width: 1ch; }
+#agent-workbench-preview .aw-role { font-weight: 700; min-width: 6ch; }
+#agent-workbench-preview .aw-task { color: var(--aw-muted); overflow-wrap: anywhere; }
+#agent-workbench-preview .aw-project { color: var(--aw-muted); }
+#agent-workbench-preview .aw-state { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+#agent-workbench-preview .aw-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; background: currentColor; }
+#agent-workbench-preview .aw-wait { color: var(--aw-amber); }
+#agent-workbench-preview .aw-running { color: var(--aw-cyan); }
+#agent-workbench-preview .aw-complete { color: var(--aw-green); }
+#agent-workbench-preview .aw-blocked { color: var(--aw-red); }
+#agent-workbench-preview .aw-change { text-align: right; color: var(--aw-muted); font-variant-numeric: tabular-nums; }
+#agent-workbench-preview .aw-empty { padding: 22px 12px; color: var(--aw-muted); }
+#agent-workbench-preview .aw-detail { margin: 12px; border: 1px solid var(--aw-line); min-width: 0; }
+#agent-workbench-preview .aw-detail-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px 7px; }
+#agent-workbench-preview .aw-detail-title strong { font-size: 14px; font-weight: 600; }
+#agent-workbench-preview .aw-detail-meta { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--aw-muted); padding: 0 12px 10px; }
+#agent-workbench-preview .aw-tabs { display: flex; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--aw-line); }
+#agent-workbench-preview .aw-tab { flex: 0 1 auto; padding: 8px 10px; background: transparent; color: var(--aw-muted); border: 0; border-bottom: 2px solid transparent; }
+#agent-workbench-preview .aw-tab[aria-selected="true"] { color: var(--aw-cyan); border-bottom-color: var(--aw-cyan); }
+#agent-workbench-preview .aw-tab:hover { background: var(--aw-raised); }
+#agent-workbench-preview .aw-panel { padding: 12px; min-height: 130px; overflow-wrap: anywhere; }
+#agent-workbench-preview .aw-event { display: grid; grid-template-columns: 68px 62px minmax(0, 1fr); gap: 10px; padding: 3px 0; }
+#agent-workbench-preview .aw-time { color: var(--aw-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+#agent-workbench-preview .aw-event-kind { color: var(--aw-cyan); font-size: 11px; }
+#agent-workbench-preview .aw-note { color: var(--aw-muted); margin: 0 0 8px; font-size: 12px; }
+#agent-workbench-preview .aw-prompt { background: var(--aw-amber-wash); padding: 12px; border-top: 1px solid var(--aw-line); }
+#agent-workbench-preview .aw-prompt-title { color: var(--aw-amber); font-weight: 600; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+#agent-workbench-preview .aw-command { color: var(--aw-text); padding: 7px 0; margin: 0; white-space: pre-wrap; word-break: break-word; }
+#agent-workbench-preview .aw-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#agent-workbench-preview .aw-action-note { color: var(--aw-muted); font-size: 11px; }
+#agent-workbench-preview .aw-receipt { padding: 11px 12px; background: var(--aw-cyan-wash); border-top: 1px solid var(--aw-line); color: var(--aw-cyan); }
+#agent-workbench-preview .aw-receipt.aw-rejected { color: var(--aw-amber); background: var(--aw-amber-wash); }
+#agent-workbench-preview .aw-question-options { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 8px; }
+#agent-workbench-preview .aw-question-options .aw-button { text-align: left; }
+#agent-workbench-preview .aw-composer { border-top: 1px solid var(--aw-line); padding: 10px 12px; display: flex; gap: 10px; align-items: center; }
+#agent-workbench-preview .aw-input-wrap { flex: 1; min-width: 0; }
+#agent-workbench-preview .aw-input-label { display: block; color: var(--aw-muted); font-size: 11px; margin-bottom: 4px; }
+#agent-workbench-preview .aw-input { width: 100%; min-width: 0; background: var(--aw-bg); border: 1px solid var(--aw-line); color: var(--aw-text); caret-color: var(--aw-cyan); padding: 8px 10px; border-radius: 3px; }
+#agent-workbench-preview .aw-input::placeholder { color: var(--aw-muted); opacity: 1; }
+#agent-workbench-preview .aw-send { align-self: end; padding: 8px 10px; }
+#agent-workbench-preview .aw-footer { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding: 0 13px 12px; color: var(--aw-muted); font-size: 11px; }
+#agent-workbench-preview .aw-footer kbd { color: var(--aw-text); font: inherit; }
+#agent-workbench-preview .aw-footer-state { margin-left: auto; color: var(--aw-cyan); }
+#agent-workbench-preview .aw-diff { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--aw-text); font: inherit; }
+#agent-workbench-preview .aw-diff .aw-add { color: var(--aw-green); }
+#agent-workbench-preview .aw-diff .aw-remove { color: var(--aw-red); }
+#agent-workbench-preview .aw-evidence { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; }
+#agent-workbench-preview .aw-evidence-status { color: var(--aw-amber); }
+#agent-workbench-preview .aw-flow { color: var(--aw-cyan); padding-bottom: 12px; overflow-wrap: anywhere; }
+#agent-workbench-preview .aw-delivery { display: none; }
+#agent-workbench-preview .aw-delivery.is-visible { display: block; margin-top: 12px; border-top: 1px solid var(--aw-line); padding-top: 12px; }
+@media (max-width: 800px) {
+  #agent-workbench-preview .aw-table-head, #agent-workbench-preview .aw-run { grid-template-columns: minmax(190px, 2fr) 115px 110px 84px; }
+  #agent-workbench-preview .aw-change { display: none; }
+  #agent-workbench-preview .aw-summary { display: none; }
+}
+@media (max-width: 600px) {
+  #agent-workbench-preview { font-size: 12px; }
+  #agent-workbench-preview .aw-chrome { padding: 10px 12px 8px; padding-right: 96px; gap: 5px 10px; }
+  #agent-workbench-preview .aw-path { flex-basis: 100%; }
+  #agent-workbench-preview .aw-demo { margin-left: 0; }
+  #agent-workbench-preview .aw-toolbar { padding: 10px 8px; }
+  #agent-workbench-preview .aw-roster, #agent-workbench-preview .aw-detail { margin-left: 7px; margin-right: 7px; }
+  #agent-workbench-preview .aw-table-head { display: none; }
+  #agent-workbench-preview .aw-run { grid-template-columns: minmax(0, 1fr) auto; gap: 4px 9px; padding: 10px; }
+  #agent-workbench-preview .aw-run-title { grid-column: 1 / -1; gap: 8px; flex-wrap: wrap; }
+  #agent-workbench-preview .aw-role { min-width: 6ch; }
+  #agent-workbench-preview .aw-state { grid-column: 2; grid-row: 2; }
+  #agent-workbench-preview .aw-project { grid-column: 1; grid-row: 2; }
+  #agent-workbench-preview .aw-provider { display: none; }
+  #agent-workbench-preview .aw-detail-title { padding: 10px; }
+  #agent-workbench-preview .aw-detail-title strong { font-size: 13px; }
+  #agent-workbench-preview .aw-detail-meta { padding-left: 10px; gap: 4px 12px; }
+  #agent-workbench-preview .aw-tabs { padding: 0 3px; }
+  #agent-workbench-preview .aw-tab { padding: 9px 8px; }
+  #agent-workbench-preview .aw-event { grid-template-columns: 58px minmax(0, 1fr); gap: 4px 7px; padding: 6px 0; }
+  #agent-workbench-preview .aw-event-kind { display: none; }
+  #agent-workbench-preview .aw-prompt { padding: 10px; }
+  #agent-workbench-preview .aw-action-note { width: 100%; }
+  #agent-workbench-preview .aw-composer { flex-wrap: wrap; padding: 10px; }
+  #agent-workbench-preview .aw-input-wrap { flex-basis: 100%; }
+  #agent-workbench-preview .aw-send { margin-left: auto; }
+  #agent-workbench-preview .aw-input { font-size: 16px; }
+  #agent-workbench-preview .aw-footer-state { margin-left: 0; width: 100%; }
+  #agent-workbench-preview .aw-evidence { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
+@media (pointer: coarse) {
+  #agent-workbench-preview .aw-button, #agent-workbench-preview .aw-tab { min-height: 44px; }
+}
+</style>
+<div id="agent-workbench-preview" aria-label="多專案 agent 工作台預覽">
+  <div class="aw-window">
+    <header class="aw-chrome">
+      <span class="aw-brand">agent / workbench</span>
+      <span class="aw-path">~/projects · 全部專案</span>
+      <span class="aw-demo">DEMO · 未連線</span>
+    </header>
+    <div class="aw-toolbar">
+      <div class="aw-switcher" aria-label="顯示的執行">
+        <button type="button" class="aw-button cursor-interaction" data-filter="all" aria-pressed="true">全部 <span data-total>6</span></button>
+        <button type="button" class="aw-button cursor-interaction" data-filter="attention" aria-pressed="false">待你處理 <span data-pending>2</span></button>
+      </div>
+      <span class="aw-summary">3 projects · Codex + Claude · 獨立執行環境（示意）</span>
+    </div>
+    <section class="aw-roster" aria-label="Agent 執行清單">
+      <div class="aw-table-head" aria-hidden="true"><span>AGENT / TASK</span><span>PROJECT</span><span>STATE</span><span>ENGINE</span><span class="aw-change">DIFF</span></div>
+      <div data-roster></div>
+    </section>
+    <section class="aw-detail" aria-label="目前執行詳情">
+      <div class="aw-detail-title"><strong data-detail-title>verify / token-expiry</strong><span class="aw-state aw-wait" data-detail-state>等待核准 · 2m</span></div>
+      <div class="aw-detail-meta" data-detail-meta></div>
+      <div class="aw-tabs" role="tablist" aria-label="Agent 詳情檢視">
+        <button id="aw-tab-live" class="aw-tab cursor-interaction" type="button" role="tab" aria-controls="aw-detail-panel" aria-selected="true" data-tab="live">Live</button>
+        <button id="aw-tab-diff" class="aw-tab cursor-interaction" type="button" role="tab" aria-controls="aw-detail-panel" aria-selected="false" data-tab="diff">Diff</button>
+        <button id="aw-tab-timeline" class="aw-tab cursor-interaction" type="button" role="tab" aria-controls="aw-detail-panel" aria-selected="false" data-tab="timeline">Timeline</button>
+        <button id="aw-tab-evidence" class="aw-tab cursor-interaction" type="button" role="tab" aria-controls="aw-detail-panel" aria-selected="false" data-tab="evidence">Evidence</button>
+      </div>
+      <div id="aw-detail-panel" class="aw-panel" role="tabpanel" aria-labelledby="aw-tab-live" data-panel></div>
+      <div data-action></div>
+      <div class="aw-composer" data-composer role="group" aria-label="回覆目前 agent">
+        <div class="aw-input-wrap"><label class="aw-input-label" for="aw-message" data-input-label>回覆目前的 agent</label><input id="aw-message" class="aw-input" name="message" type="text" autocomplete="off" placeholder="輸入指令或問題…" maxlength="500"></div>
+        <button type="button" class="aw-button aw-send cursor-interaction" data-send>送出（示意）</button>
+      </div>
+    </section>
+    <footer class="aw-footer"><span><kbd>↑↓</kbd> 切換 agent</span><span><kbd>1–4</kbd> 檢視</span><span><kbd>a</kbd> 允許 · <kbd>r</kbd> 拒絕</span><span class="aw-footer-state" data-feedback role="status" aria-live="polite">示例資料 · 所有操作僅供預覽</span></footer>
+  </div>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('agent-workbench-preview');
+  const runs = [
+    {id:'verify',role:'verify',task:'token-expiry',project:'atlas-api',provider:'Claude',sha:'a9e41c2',profile:'Python',change:'+84 −12',initial:'permission',wait:'2m',command:'python -m pytest tests/auth/test_token_expiry.py -q',question:'執行 token 到期邊界的測試',events:[['14:08:21','start','取得 candidate a9e41c2 與 Task spec v2'],['14:09:03','read','已讀取 tests/auth/test_token_expiry.py（示例）'],['14:10:21','tool','準備執行測試，尚未開始'],['14:10:21','waiting','需要你允許本次命令']]},
+    {id:'pm',role:'pm',task:'login-scope',project:'atlas-api',provider:'Claude',sha:'—',profile:'PM',change:'—',initial:'question',wait:'5m',question:'這次登入流程要包含「登出所有裝置」嗎？',choices:['這次先做登入與 token 更新','一起包含登出所有裝置'],events:[['14:03:10','start','整理登入需求與驗收條件（示例）'],['14:04:15','plan','拆分 session 更新、token 到期與登入 UI'],['14:07:10','question','範圍需要你的決定，尚未交給 Dev']]},
+    {id:'dev-api',role:'dev',task:'session-refresh',project:'atlas-api',provider:'Codex',sha:'c284fd1',profile:'Python',change:'+126 −28',initial:'running',events:[['14:06:02','start','在獨立環境開始實作（示例）'],['14:07:24','edit','調整 src/auth/session.py 的 token 更新流程'],['14:10:18','edit','補上重複更新的處理分支'],['14:11:04','working','正在補充相關測試（模擬）']]},
+    {id:'review',role:'review',task:'retry-backoff',project:'task-queue',provider:'Codex',sha:'e62f8b0',profile:'TypeScript',change:'+62 −18',initial:'complete',events:[['14:01:12','start','以新 context 審查 candidate e62f8b0（示例）'],['14:03:40','read','追蹤重試上限與取消路徑'],['14:06:21','finding','已產生 review 摘要（示例）'],['14:07:32','done','示例審查結束；真實驗證尚未執行']]},
+    {id:'pr',role:'pr',task:'retry-backoff',project:'task-queue',provider:'Claude',sha:'e62f8b0',profile:'TypeScript',change:'+62 −18',initial:'delivery',events:[['14:08:02','start','整理 candidate e62f8b0 的交付資料（示例）'],['14:09:14','report','準備重試流程 before / after 說明'],['14:10:05','draft','PR 草稿已準備（示例，未發佈）']]},
+    {id:'dev-ui',role:'dev',task:'timezone-input',project:'habit-log',provider:'Claude',sha:'b17ac93',profile:'TypeScript',change:'+39 −9',initial:'running',events:[['14:05:40','start','處理時區輸入與日期邊界（示例）'],['14:09:10','edit','調整 DateInput 與日期轉換'],['14:11:02','working','正在整理空值與跨日案例（模擬）']]}
+  ];
+  const tabs = ['live','diff','timeline','evidence'];
+  let state = {selected:'verify',tab:'live',filter:'all',decisions:{},extra:{},drafts:{},deliveryOpen:false};
+  const saved = window.openai?.widgetState?.privateContent;
+  if (saved && saved.version === 1) restore(saved);
+  function restore(value) {
+    state.decisions = {};
+    state.extra = {};
+    if (runs.some(r => r.id === value.selected)) state.selected = value.selected;
+    if (tabs.includes(value.tab)) state.tab = value.tab;
+    if (['all','attention'].includes(value.filter)) state.filter = value.filter;
+    if (value.decisions && typeof value.decisions === 'object') {
+      for (const r of runs) if (['allowed','rejected','answered'].includes(value.decisions[r.id])) state.decisions[r.id] = value.decisions[r.id];
+    }
+    if (value.extra && typeof value.extra === 'object') {
+      for (const r of runs) if (Array.isArray(value.extra[r.id])) state.extra[r.id] = value.extra[r.id].slice(-6).filter(e => Array.isArray(e) && e.length === 3 && e.every(s => typeof s === 'string')).map(e => e.map(s => s.slice(0,500)));
+    }
+    state.deliveryOpen = value.deliveryOpen === true;
+  }
+  function persist() {
+    if (typeof window.openai?.setWidgetState !== 'function') return;
+    const snapshot = {version:1,selected:state.selected,tab:state.tab,filter:state.filter,decisions:state.decisions,extra:state.extra,deliveryOpen:state.deliveryOpen};
+    Promise.resolve(window.openai.setWidgetState({modelContent:{selectedRun:state.selected,view:state.tab,previewDecisions:state.decisions},privateContent:snapshot})).catch(() => {});
+  }
+  const $ = s => root.querySelector(s);
+  const escape = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const pending = r => ['permission','question'].includes(r.initial) && !state.decisions[r.id];
+  const visible = () => runs.filter(r => state.filter === 'all' || pending(r));
+  const selected = () => runs.find(r => r.id === state.selected);
+  function runStatus(r) {
+    const d = state.decisions[r.id];
+    if (d === 'sending') return ['回覆送出中','aw-wait'];
+    if (d === 'allowed') return ['執行中 · 模擬','aw-running'];
+    if (d === 'rejected') return ['等待替代指令','aw-wait'];
+    if (d === 'answered') return ['已收到回答','aw-running'];
+    return ({permission:['等待核准 · '+r.wait,'aw-wait'],question:['等待回答 · '+r.wait,'aw-wait'],running:['執行中','aw-running'],complete:['審查完成 · 示例','aw-complete'],delivery:['交付草稿','aw-complete']})[r.initial];
+  }
+  function statusMarkup(r) { const [text,cls]=runStatus(r); return '<span class="aw-state '+cls+'"><span class="aw-dot" aria-hidden="true"></span>'+escape(text)+'</span>'; }
+  function append(r,kind,text) { const list=state.extra[r.id] ||= []; list.push(['14:12:'+String(8+list.length).padStart(2,'0'),kind,text]); if(list.length>6) list.shift(); }
+  function feedback(text) { $('[data-feedback]').textContent=text; }
+  function render() {
+    const rows=visible();
+    $('[data-pending]').textContent=runs.filter(pending).length;
+    $('[data-total]').textContent=runs.length;
+    root.querySelectorAll('[data-filter]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.filter===state.filter)));
+    $('[data-roster]').innerHTML = rows.length ? rows.map(r => '<button type="button" class="aw-run cursor-interaction" data-run="'+r.id+'" aria-pressed="'+(r.id===state.selected)+'" aria-label="'+escape(r.role+' '+r.task+'，'+r.project+'，'+runStatus(r)[0])+'"><span class="aw-run-title"><span class="aw-index">'+(runs.indexOf(r)+1)+'</span><span class="aw-role">'+r.role+'</span><span class="aw-task">'+r.task+'</span></span><span class="aw-project">'+r.project+'</span>'+statusMarkup(r)+'<span class="aw-provider">'+r.provider+'</span><span class="aw-change">'+r.change+'</span></button>').join('') : '<div class="aw-empty">目前沒有待你處理的事項。切回「全部」查看執行進度。</div>';
+    const r=selected();
+    $('[data-detail-title]').textContent=r.role+' / '+r.task;
+    $('[data-detail-state]').outerHTML=statusMarkup(r).replace('class="aw-state','data-detail-state class="aw-state');
+    $('[data-detail-meta]').innerHTML='<span>'+escape(r.project)+'</span><span>'+escape(r.provider+' · '+r.profile)+'</span><span>candidate '+escape(r.sha)+' · 示例</span><span>獨立環境 · 示意</span>';
+    root.querySelectorAll('[data-tab]').forEach(b => b.setAttribute('aria-selected',String(b.dataset.tab===state.tab)));
+    $('[data-panel]').setAttribute('aria-labelledby','aw-tab-'+state.tab);
+    renderPanel(r);
+    renderAction(r);
+    $('[data-input-label]').textContent='回覆 '+r.role+' / '+r.task+' · 僅模擬，不會送到 agent';
+    $('#aw-message').value=state.drafts[r.id]||'';
+  }
+  function eventHTML(events) { return events.map(e => '<div class="aw-event"><time class="aw-time">'+escape(e[0])+'</time><span class="aw-event-kind">'+escape(e[1])+'</span><span>'+escape(e[2])+'</span></div>').join(''); }
+  function renderPanel(r) {
+    const events=r.events.concat(state.extra[r.id]||[]);
+    if(state.tab==='live') $('[data-panel]').innerHTML=eventHTML(events.slice(-4));
+    if(state.tab==='timeline') $('[data-panel]').innerHTML='<p class="aw-note">此次 Run 的完整事件 · 示例</p>'+eventHTML(events);
+    if(state.tab==='diff') {
+      const code=r.profile==='Python' ? '<span>src/auth/session.py · 節錄，示例程式碼</span>\n\n<span class="aw-remove">− if token.expires_at &lt; now:</span>\n<span class="aw-add">+ if token.expires_at &lt;= now:</span>\n<span>      raise TokenExpiredError()</span>\n<span class="aw-add">+ # 到期時間點本身也必須失效</span>' : '<span>src/retry/backoff.ts · 節錄，示例程式碼</span>\n\n<span class="aw-remove">− return delay * attempt;</span>\n<span class="aw-add">+ return Math.min(maxDelay, delay * 2 ** attempt);</span>\n<span class="aw-add">+ // 重試上限與取消路徑另行驗證</span>';
+      $('[data-panel]').innerHTML=r.role==='pm'?'<p class="aw-note">PM 正在釐清範圍，尚無程式碼 diff。</p>':'<pre class="aw-diff">'+code+'</pre>';
+    }
+    if(state.tab==='evidence') {
+      $('[data-panel]').innerHTML='<p class="aw-note">此畫面為設計預覽，尚未連線或執行真實檢查。</p><div class="aw-evidence"><span>驗證命令與輸出</span><span class="aw-evidence-status">未執行</span><span>Review 結果與程式碼定位</span><span class="aw-evidence-status">僅示例</span><span>候選版本 '+escape(r.sha)+'</span><span class="aw-evidence-status">示例 SHA</span></div>'+(r.role==='pr'?'<div style="margin-top:12px"><button type="button" class="aw-button cursor-interaction" data-preview-report>查看交付說明</button><div class="aw-delivery '+(state.deliveryOpen?'is-visible':'')+'"><div class="aw-flow">Before：固定延遲 → After：指數退避 → 上限截斷</div><div>改了什麼：讓重試間隔逐次增加，並受最大延遲限制。</div><p class="aw-note">示例說明；實際流程圖、原始碼連結與 PR comments 尚未串接。</p></div></div>':'');
+    }
+  }
+  function renderAction(r) {
+    const d=state.decisions[r.id];
+    if(d) {
+      const messages={sending:'已接受回覆 → 模擬送達中…',allowed:'已送達 agent（模擬）· 命令尚未真實執行',rejected:'已拒絕本次命令（模擬）· 可在下方提供替代指令',answered:'回答已送達 PM（模擬）· 可在下方繼續討論'};
+      $('[data-action]').innerHTML='<div class="aw-receipt '+(d==='rejected'?'aw-rejected':'')+'" role="status" aria-live="polite">'+messages[d]+'</div>'; return;
+    }
+    if(r.initial==='permission') {
+      $('[data-action]').innerHTML='<div class="aw-prompt"><div class="aw-prompt-title"><span>等待你的核准</span><span>Verify · 已等待 2m</span></div><pre class="aw-command">$ '+escape(r.command)+'</pre><div class="aw-actions"><button type="button" class="aw-button aw-primary cursor-interaction" data-decision="allow">允許一次</button><button type="button" class="aw-button cursor-interaction" data-decision="reject">拒絕</button><span class="aw-action-note">此操作僅模擬回覆，不會執行命令。</span></div></div>';
+    } else if(r.initial==='question') {
+      $('[data-action]').innerHTML='<div class="aw-prompt"><div class="aw-prompt-title"><span>PM 需要你的決定</span><span>已等待 5m</span></div><div style="padding-top:7px">'+escape(r.question)+'</div><div class="aw-question-options">'+r.choices.map((c,i)=>'<button type="button" class="aw-button cursor-interaction" data-answer="'+i+'">'+escape(c)+'</button>').join('')+'</div></div>';
+    } else $('[data-action]').innerHTML='';
+  }
+  function selectRun(id) { state.drafts[state.selected]=$('#aw-message').value; state.selected=id; state.deliveryOpen=false; render(); persist(); }
+  function decide(decision) {
+    const r=selected(); if(r.initial!=='permission'||state.decisions[r.id]) return;
+    state.decisions[r.id]=decision==='allow'?'sending':'rejected';
+    append(r,'you',decision==='allow'?'你選擇允許一次（示例）':'你拒絕本次命令（示例）');
+    render(); feedback(decision==='allow'?'已接受回覆，正在模擬送達':'已拒絕 · 可提供替代指令');
+    if(decision==='allow') setTimeout(()=>{state.decisions[r.id]='allowed';append(r,'agent','已收到允許，進入模擬執行；未真正執行命令');render();feedback('回覆已模擬送達 · 沒有執行真實命令');persist();},650);
+    else persist();
+  }
+  function answer(text) {
+    const r=selected(); if(r.initial==='question'&&!state.decisions[r.id]) state.decisions[r.id]='answered';
+    append(r,'you',text);append(r,'received','訊息已模擬送達，沒有真實 agent 連線');state.drafts[r.id]='';render();feedback('訊息已模擬送達 '+r.role);persist();
+  }
+  function sendMessage() { const text=$('#aw-message').value.trim();if(!text){feedback('先輸入要給 agent 的訊息');$('#aw-message').focus();return;}answer(text);$('#aw-message').focus(); }
+  root.addEventListener('click',e=>{
+    if(e.target.closest('[data-send]')){sendMessage();return;}
+    const run=e.target.closest('[data-run]'); if(run){selectRun(run.dataset.run);return;}
+    const tab=e.target.closest('[data-tab]');if(tab){state.tab=tab.dataset.tab;renderPanel(selected());root.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-selected',String(b===tab)));$('[data-panel]').setAttribute('aria-labelledby',tab.id);persist();return;}
+    const filter=e.target.closest('[data-filter]');if(filter){state.filter=filter.dataset.filter;const rows=visible();if(rows.length&&!rows.some(r=>r.id===state.selected))state.selected=rows[0].id;render();persist();return;}
+    const decision=e.target.closest('[data-decision]');if(decision){decide(decision.dataset.decision);return;}
+    const choice=e.target.closest('[data-answer]');if(choice){answer(selected().choices[Number(choice.dataset.answer)]);return;}
+    if(e.target.closest('[data-preview-report]')){state.deliveryOpen=!state.deliveryOpen;renderPanel(selected());persist();}
+  });
+  $('#aw-message').addEventListener('input',()=>{state.drafts[state.selected]=$('#aw-message').value;});
+  $('#aw-message').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.isComposing){e.preventDefault();sendMessage();}});
+  root.addEventListener('keydown',e=>{
+    if(e.target instanceof HTMLInputElement||e.target instanceof HTMLTextAreaElement||e.metaKey||e.ctrlKey||e.altKey)return;
+    if(e.key==='a'){e.preventDefault();decide('allow');}
+    if(e.key==='r'){e.preventDefault();decide('reject');}
+    if(['1','2','3','4'].includes(e.key)){e.preventDefault();state.tab=tabs[Number(e.key)-1];render();$('[data-tab="'+state.tab+'"]').focus();persist();}
+    if(['ArrowUp','ArrowDown'].includes(e.key)&&e.target.closest('[data-run]')){e.preventDefault();const rows=visible();const i=rows.findIndex(r=>r.id===state.selected);const next=rows[(i+(e.key==='ArrowDown'?1:-1)+rows.length)%rows.length];if(next){selectRun(next.id);$('[data-run="'+next.id+'"]').focus();}}
+    if(['ArrowLeft','ArrowRight'].includes(e.key)&&e.target.closest('[data-tab]')){e.preventDefault();const next=(tabs.indexOf(state.tab)+(e.key==='ArrowRight'?1:3))%4;state.tab=tabs[next];render();$('[data-tab="'+state.tab+'"]').focus();persist();}
+  });
+  window.addEventListener('openai:set_globals',e=>{const value=e.detail?.globals?.widgetState?.privateContent;if(value?.version===1){restore(value);render();}});
+  render();
+  if(globalThis.Tweak){const display={compact:false};const tweak=new Tweak({container:root,onChange:()=>root.style.setProperty('--aw-row-pad',display.compact?'5px':'9px')});tweak.addToggle(display,'compact',{label:'緊湊列距'});}
+})();
+</script>

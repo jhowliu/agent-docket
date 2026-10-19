@@ -1,0 +1,63 @@
+# Ink TUI：M1 第一個切片
+
+2026-10-19。這是可執行的 React + Ink 終端介面，連接現有 M0 fixture runtime。它完成集中操作的第一個切片；完整 M1 的兩家 provider、多專案、持久化、遠端 worker 與 Services 尚未完成。
+
+Update: [Local Codex mode](local-execution.md) adds trusted server-side launch configuration through `WORKBENCH_LAUNCH`, a `LOCAL / no OS isolation` status and `:auth <method-id>` for advertised authentication methods. Default startup remains the fixture. Local code copies survive cancellation/shutdown; local home/tmp are cleaned after confirmed stop. Actual provider account/inference acceptance remains outstanding.
+
+## 啟動與離開
+
+```sh
+npm ci
+npm run tui
+```
+
+需要 Node.js ≥22.16、互動式 stdin/stdout，建議 80×24 以上；最低可用 60×20。低於最低尺寸顯示放大提示，仍可 q／Ctrl+C 離開。一般模式使用 alternate screen，離開後還原 terminal；`INK_SCREEN_READER=true` 時不啟用 alternate screen，尚未做真實輔助科技驗收。
+
+TUI 先連接 `http://127.0.0.1:4177`。只有服務無法連線時才嘗試啟動獨立的本機背景程序；不相容的 listener 不會被替換。啟動 log 為 `.workbench/daemon-<port>.log`，不含控制 token。兩次 TUI 連線及瀏覽器頁面共用同一個 runtime，沒有各自啟動一份 agent。
+
+`q`／Ctrl+C 僅離開 TUI，不取消 Run。重開 TUI 取得目前快照與有界 timeline；仍在等待的核准沿用同一筆 ID。這是重新附著到存活的程序，不是崩潰恢復。服務重啟後 Run／紀錄消失；畫面會丟棄舊事件視窗與核准焦點。草稿與選取狀態只留在當次 TUI，不跨退出保存。
+
+```sh
+npm run tui -- --connect
+npm run daemon
+npm run daemon:stop
+```
+
+`--connect` 禁止自動啟動；`daemon` 是前景服務，與 `ui` 同一入口；`daemon:stop` 明確停止該 port 的背景服務，取消／清理它管理的所有 Run。`WORKBENCH_PORT=4180` 可套用到上述任一命令。若連接先前啟動的舊 M0 server，shutdown 可能未提供；使用原服務的 Ctrl+C，不能以 TUI 相容性推定其支援新生命週期命令。
+
+編譯後可用 `node dist/src/app/tui.js`、`node dist/src/app/tui.js --stop`；需保留 checkout 的 `preview/` 與 `fixtures/`。非互動式環境使用 `npm run dev -- fixture` 或 `--help`。
+
+## 最小操作
+
+1. `n` 建立 Run，`i` 輸入 `fix`，Enter 送出。這會啟動真實的 deterministic ACP fixture 程序。
+2. 收到核准時，顯示聚焦請求的標題與實際一次性選項。`a` 允許一次，`r` 拒絕；`Tab` 換另一筆，`w` 換另一個等待的 Run。一次回答後，須明確選定下一筆，避免長按誤答。
+3. `2` 看實際 before／after 文字，`3` 回 timeline。`PgUp/PgDn` 捲動；`g/G` 頂端／末端。Timeline 是單行摘要，Live 與 Diff 可讀取換行內容。
+4. `p` 看來源 repo 與 Run 副本的不同路徑。`x` 或 `:cancel` 取消整個 Run，舊核准失效；`:history` 可看結束的 Run。
+5. `q` 離開後重開 `npm run tui`，等待中的請求仍在。
+
+`:prompt question` 觸發文字提問，閒置後用 i 回覆 `reply:名稱`。`:prompt two-permissions` 同時提出兩筆核准；`:prompt wait` 等取消；`:prompt crash` 測異常退出。一般文字指令只在 idle 接受，尚無執行中 steering。
+
+詳細按鍵、草稿與貼上行為見 [tui-keyboard.md](tui-keyboard.md)。所有 `:` 命令都是工作台白名單，沒有 shell 執行。`a` 不會自動選永久允許；d 顯示實際選項與細節，可用 `:answer N` 明確指定。
+
+## Module 與傳輸
+
+```text
+Ink TUI ─┐
+         ├─ loopback Request/Response ─ app composition ─ execution / attention
+Browser ─┘
+```
+
+- `execution/index.ts` 與 `attention/index.ts` 的公開 Interface 不變；來源請求／選項映射、去重、失效、取消及清理仍由 domain 擁有。
+- `app/workbench-protocol.ts` 保存傳輸 schema，執行期驗證快照、事件、回覆與命令；不公開 ACP 的來源 request ID 或程序 handle。
+- `app/workbench-client.ts` 封裝同源 token bootstrap、游標增量、事件視窗、斷線與 server instance 切換。重連不自動重送 mutation，避免回覆遺失時執行第二次操作。
+- `app/workbench-daemon.ts` 只負責連線與背景 server 啟動；不持有 Run 規則。`app/tui-app.tsx` 負責本機輸入／選取／草稿，`tui-view.tsx` 只投影資料，`tui-input.tsx` 做 terminal 編輯與貼上。
+
+仍有 4 個活躍／20 個保留 Run、2000 事件的測試限制。TUI 每 400ms 取游標增量，單一 client 的 poll 合併進行，畫面最多 20fps。這些設定不是延遲／CPU benchmark。
+
+## 已驗證與缺口
+
+`npm test` 包含原有 domain／CLI／browser 測試，以及 Ink 輸入、並行核准、一次性回覆、貼上隔離、獨立草稿、中文／emoji 編輯、斷線、遺失回覆不重送、server instance 切換與真實背景程序啟停。`npm run build` 編譯全部入口。
+
+`npm run qa:tui` 用自有暫存 fixture 產出 `.impeccable/review/tui/` 的 120×36、80×24、60×20 Ink frame。PNG 是保留 cell 位置的 review wrapper 截圖，**不是 OS terminal 截圖**。輸入測試使用 Ink 模擬串流；真實 terminal 的 IME、kitty 協定、色盤與 screen reader 仍需人工試用。
+
+沒有真實模型、登入、worker image／container 驗收、SQLite／崩潰對帳、Services 或 Dev→Review→Verify→PR 的獨立階段。可信 fixture 的暫存副本不是 OS sandbox，不可據此承諾真實 agent 隔離。

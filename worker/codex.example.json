@@ -1,0 +1,11 @@
+{
+  "provider": "codex",
+  "label": "Codex isolated M0",
+  "worker": {
+    "transport": "ssh",
+    "host": "workbench-worker",
+    "image": "agent-workbench-m0:0.1",
+    "envFile": "/opt/workbench-secrets/codex.env"
+  },
+  "source": {"kind": "fixture"}
+}

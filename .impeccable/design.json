@@ -1,0 +1,346 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-18T06:33:30.001905Z",
+  "title": "Design System: Agent Workbench Preview",
+  "extensions": {
+    "colorMeta": {
+      "aw-bg": {
+        "role": "neutral",
+        "displayName": "Workbench ground",
+        "canonical": "light-dark(#f6f8fa, #10151c)",
+        "tonalRamp": [
+          "oklch(15% 0.0162 256.83)",
+          "oklch(26% 0.0162 256.83)",
+          "oklch(38% 0.0162 256.83)",
+          "oklch(49% 0.0162 256.83)",
+          "oklch(61% 0.0162 256.83)",
+          "oklch(72% 0.0162 256.83)",
+          "oklch(84% 0.0162 256.83)",
+          "oklch(95% 0.0162 256.83)"
+        ]
+      },
+      "aw-panel": {
+        "role": "neutral",
+        "displayName": "Panel blue-gray",
+        "canonical": "light-dark(#ffffff, #131a23)",
+        "tonalRamp": [
+          "oklch(15% 0.0207 254.91)",
+          "oklch(26% 0.0207 254.91)",
+          "oklch(38% 0.0207 254.91)",
+          "oklch(49% 0.0207 254.91)",
+          "oklch(61% 0.0207 254.91)",
+          "oklch(72% 0.0207 254.91)",
+          "oklch(84% 0.0207 254.91)",
+          "oklch(95% 0.0207 254.91)"
+        ]
+      },
+      "aw-raised": {
+        "role": "neutral",
+        "displayName": "Raised blue-gray",
+        "canonical": "light-dark(#edf2f6, #1a2431)",
+        "tonalRamp": [
+          "oklch(15% 0.0285 255.21)",
+          "oklch(26% 0.0285 255.21)",
+          "oklch(38% 0.0285 255.21)",
+          "oklch(49% 0.0285 255.21)",
+          "oklch(61% 0.0285 255.21)",
+          "oklch(72% 0.0285 255.21)",
+          "oklch(84% 0.0285 255.21)",
+          "oklch(95% 0.0285 255.21)"
+        ]
+      },
+      "aw-text": {
+        "role": "neutral",
+        "displayName": "Reading text",
+        "canonical": "light-dark(#1b2a38, #d9e2ed)",
+        "tonalRamp": [
+          "oklch(15% 0.0179 253.35)",
+          "oklch(26% 0.0179 253.35)",
+          "oklch(38% 0.0179 253.35)",
+          "oklch(49% 0.0179 253.35)",
+          "oklch(61% 0.0179 253.35)",
+          "oklch(72% 0.0179 253.35)",
+          "oklch(84% 0.0179 253.35)",
+          "oklch(95% 0.0179 253.35)"
+        ]
+      },
+      "aw-muted": {
+        "role": "neutral",
+        "displayName": "Secondary text",
+        "canonical": "light-dark(#526477, #9aaabd)",
+        "tonalRamp": [
+          "oklch(15% 0.0329 252.76)",
+          "oklch(26% 0.0329 252.76)",
+          "oklch(38% 0.0329 252.76)",
+          "oklch(49% 0.0329 252.76)",
+          "oklch(61% 0.0329 252.76)",
+          "oklch(72% 0.0329 252.76)",
+          "oklch(84% 0.0329 252.76)",
+          "oklch(95% 0.0329 252.76)"
+        ]
+      },
+      "aw-line": {
+        "role": "neutral",
+        "displayName": "Fine rule",
+        "canonical": "light-dark(#c4d0da, #334458)",
+        "tonalRamp": [
+          "oklch(15% 0.0407 252.89)",
+          "oklch(26% 0.0407 252.89)",
+          "oklch(38% 0.0407 252.89)",
+          "oklch(49% 0.0407 252.89)",
+          "oklch(61% 0.0407 252.89)",
+          "oklch(72% 0.0407 252.89)",
+          "oklch(84% 0.0407 252.89)",
+          "oklch(95% 0.0407 252.89)"
+        ]
+      },
+      "aw-cyan": {
+        "role": "primary",
+        "displayName": "Signal cyan",
+        "canonical": "light-dark(#006d78, #78d4df)",
+        "tonalRamp": [
+          "oklch(15% 0.0891 205.56)",
+          "oklch(26% 0.0891 205.56)",
+          "oklch(38% 0.0891 205.56)",
+          "oklch(49% 0.0891 205.56)",
+          "oklch(61% 0.0891 205.56)",
+          "oklch(72% 0.0891 205.56)",
+          "oklch(84% 0.0891 205.56)",
+          "oklch(95% 0.0891 205.56)"
+        ]
+      },
+      "aw-cyan-wash": {
+        "role": "primary",
+        "displayName": "Cyan wash",
+        "canonical": "light-dark(#e0f0f3, #17313b)",
+        "tonalRamp": [
+          "oklch(15% 0.0367 225.21)",
+          "oklch(26% 0.0367 225.21)",
+          "oklch(38% 0.0367 225.21)",
+          "oklch(49% 0.0367 225.21)",
+          "oklch(61% 0.0367 225.21)",
+          "oklch(72% 0.0367 225.21)",
+          "oklch(84% 0.0367 225.21)",
+          "oklch(95% 0.0367 225.21)"
+        ]
+      },
+      "aw-amber": {
+        "role": "secondary",
+        "displayName": "Decision amber",
+        "canonical": "light-dark(#87500a, #efbd72)",
+        "tonalRamp": [
+          "oklch(15% 0.1093 76.44)",
+          "oklch(26% 0.1093 76.44)",
+          "oklch(38% 0.1093 76.44)",
+          "oklch(49% 0.1093 76.44)",
+          "oklch(61% 0.1093 76.44)",
+          "oklch(72% 0.1093 76.44)",
+          "oklch(84% 0.1093 76.44)",
+          "oklch(95% 0.1093 76.44)"
+        ]
+      },
+      "aw-amber-wash": {
+        "role": "secondary",
+        "displayName": "Amber wash",
+        "canonical": "light-dark(#fff4dc, #30291e)",
+        "tonalRamp": [
+          "oklch(15% 0.0217 78.90)",
+          "oklch(26% 0.0217 78.90)",
+          "oklch(38% 0.0217 78.90)",
+          "oklch(49% 0.0217 78.90)",
+          "oklch(61% 0.0217 78.90)",
+          "oklch(72% 0.0217 78.90)",
+          "oklch(84% 0.0217 78.90)",
+          "oklch(95% 0.0217 78.90)"
+        ]
+      },
+      "aw-green": {
+        "role": "tertiary",
+        "displayName": "Outcome green",
+        "canonical": "light-dark(#277242, #93c7a3)",
+        "tonalRamp": [
+          "oklch(15% 0.0746 154.17)",
+          "oklch(26% 0.0746 154.17)",
+          "oklch(38% 0.0746 154.17)",
+          "oklch(49% 0.0746 154.17)",
+          "oklch(61% 0.0746 154.17)",
+          "oklch(72% 0.0746 154.17)",
+          "oklch(84% 0.0746 154.17)",
+          "oklch(95% 0.0746 154.17)"
+        ]
+      },
+      "aw-red": {
+        "role": "tertiary",
+        "displayName": "Change red",
+        "canonical": "light-dark(#ac343f, #f09aa3)",
+        "tonalRamp": [
+          "oklch(15% 0.1035 12.94)",
+          "oklch(26% 0.1035 12.94)",
+          "oklch(38% 0.1035 12.94)",
+          "oklch(49% 0.1035 12.94)",
+          "oklch(61% 0.1035 12.94)",
+          "oklch(72% 0.1035 12.94)",
+          "oklch(84% 0.1035 12.94)",
+          "oklch(95% 0.1035 12.94)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Body",
+        "purpose": "Roster, live events, commands and diff content."
+      },
+      "title": {
+        "displayName": "Selected Run title",
+        "purpose": "Selected Run heading; body size at narrow width."
+      },
+      "note": {
+        "displayName": "Note",
+        "purpose": "Supporting notes and narrow-width body."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Metadata, timestamps and keyboard hints."
+      },
+      "brand": {
+        "displayName": "Brand",
+        "purpose": "Compact workbench name."
+      },
+      "input-mobile": {
+        "displayName": "Narrow input",
+        "purpose": "Reply field below 600px."
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "compact-desktop",
+        "value": "1180px"
+      },
+      {
+        "name": "project-disclosure",
+        "value": "1000px"
+      },
+      {
+        "name": "intermediate",
+        "value": "800px"
+      },
+      {
+        "name": "narrow",
+        "value": "600px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Neutral button",
+      "kind": "button",
+      "refersTo": "button-neutral",
+      "description": "Outlined secondary action with the standalone cyan focus outline.",
+      "html": "<button type=\"button\" class=\"ds-button-neutral\">拒絕</button>",
+      "css": ".ds-button-neutral{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);background:transparent;border:1px solid light-dark(#c4d0da, #334458);border-radius:3px;padding:5px 10px;text-align:center;}.ds-button-neutral:hover:not(:disabled){background:light-dark(#edf2f6, #1a2431);}.ds-button-neutral:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:3px;}.ds-button-neutral:disabled{opacity:.55;}"
+    },
+    {
+      "name": "Selected filter",
+      "kind": "button",
+      "refersTo": "button-selected",
+      "description": "Pressed roster filter uses cyan border and wash.",
+      "html": "<button type=\"button\" class=\"ds-button-selected\" aria-pressed=\"true\">全部 6</button>",
+      "css": ".ds-button-selected{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);background:transparent;border:1px solid light-dark(#c4d0da, #334458);border-radius:3px;padding:5px 10px;text-align:center;color:light-dark(#006d78, #78d4df);border-color:light-dark(#006d78, #78d4df);background:light-dark(#e0f0f3, #17313b);}.ds-button-selected:hover:not(:disabled){background:light-dark(#edf2f6, #1a2431);}.ds-button-selected[aria-pressed=\"true\"]{background:light-dark(#e0f0f3, #17313b);}.ds-button-selected:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:3px;}"
+    },
+    {
+      "name": "Primary approval",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "One-time approval action; all actions remain simulated.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\">允許一次</button>",
+      "css": ".ds-button-primary{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);background:transparent;border:1px solid light-dark(#c4d0da, #334458);border-radius:3px;padding:5px 10px;text-align:center;background:light-dark(#006d78, #78d4df);border-color:light-dark(#006d78, #78d4df);color:light-dark(#f6f8fa, #10151c);}.ds-button-primary:hover:not(:disabled){filter:brightness(.93);}.ds-button-primary:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:3px;}.ds-button-primary:disabled{opacity:.55;}"
+    },
+    {
+      "name": "Reply field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labeled composer field; 16px input below the narrow breakpoint.",
+      "html": "<label class=\"ds-field\">回覆目前 agent · 僅模擬<input class=\"ds-input\" type=\"text\" placeholder=\"輸入指令或問題…\"></label>",
+      "css": ".ds-field{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);display:block;font-size:11px;color:light-dark(#526477, #9aaabd);}.ds-input{display:block;margin-top:4px;width:100%;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;background:light-dark(#f6f8fa, #10151c);color:light-dark(#1b2a38, #d9e2ed);caret-color:light-dark(#006d78, #78d4df);border:1px solid light-dark(#c4d0da, #334458);border-radius:3px;padding:8px 10px;}.ds-input::placeholder{color:light-dark(#526477, #9aaabd);opacity:1;}.ds-input:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:3px;}@media(max-width:600px){.ds-input{font-size:16px;}}"
+    },
+    {
+      "name": "Detail tabs",
+      "kind": "nav",
+      "refersTo": "tab-active",
+      "description": "Five standalone views; Services shows the ready/total count. The earlier inline mock retains four views.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\" aria-label=\"Agent 詳情檢視\"><button type=\"button\" class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">Live</button><button type=\"button\" class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">Diff</button><button type=\"button\" class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">Timeline</button><button type=\"button\" class=\"ds-tab\" role=\"tab\" aria-selected=\"false\">Results</button><button type=\"button\" class=\"ds-tab\" role=\"tab\" aria-selected=\"true\">Services <span class=\"ds-service-count\">3/3</span></button></div>",
+      "css": ".ds-tabs{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);display:flex;gap:2px;padding:0 8px;border-bottom:1px solid light-dark(#c4d0da, #334458);}.ds-tab{font:inherit;padding:8px 10px;background:transparent;color:light-dark(#526477, #9aaabd);border:0;border-bottom:2px solid transparent;}.ds-tab:hover{background:light-dark(#edf2f6, #1a2431);}.ds-tab[aria-selected=\"true\"]{color:light-dark(#006d78, #78d4df);border-bottom-color:light-dark(#006d78, #78d4df);}.ds-tab:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:3px;}@media(pointer:coarse){.ds-tab{min-height:44px;}} .ds-tabs{flex-wrap:wrap;}.ds-service-count{font-size:11px;}@media(max-width:600px){.ds-tab{font-size:11px;padding:9px 6px;}}"
+    },
+    {
+      "name": "Selected Run",
+      "kind": "custom",
+      "refersTo": "roster-row-selected",
+      "description": "Selected roster row shown in the source’s narrow two-line form.",
+      "html": "<button type=\"button\" class=\"ds-run\" aria-pressed=\"true\"><span class=\"ds-task\"><strong>verify</strong> token-expiry</span><span class=\"ds-project\">atlas-api</span><span class=\"ds-wait\">● 等待核准 · 2m</span></button>",
+      "css": ".ds-run{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 9px;text-align:left;width:100%;padding:10px;background:transparent;border:0;border-top:1px solid transparent;border-bottom:1px solid transparent;}.ds-run:hover{background:light-dark(#edf2f6, #1a2431);}.ds-run[aria-pressed=\"true\"]{background:light-dark(#e0f0f3, #17313b);border-color:light-dark(#006d78, #78d4df);}.ds-task{grid-column:1/-1;}.ds-project{color:light-dark(#526477, #9aaabd);}.ds-wait{color:light-dark(#87500a, #efbd72);}.ds-run:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:3px;}"
+    },
+    {
+      "name": "Decision panel",
+      "kind": "custom",
+      "refersTo": "decision-panel",
+      "description": "Inline amber command approval region; example content only.",
+      "html": "<section class=\"ds-decision\" aria-label=\"等待核准\"><strong class=\"ds-decision-title\">等待你的核准</strong><pre class=\"ds-command\">$ python -m pytest -q</pre><button type=\"button\" class=\"ds-decision-allow\">允許一次</button><div class=\"ds-decision-note\">此操作僅模擬回覆，不會執行命令。</div></section>",
+      "css": ".ds-decision{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);background:light-dark(#fff4dc, #30291e);padding:12px;border-top:1px solid light-dark(#c4d0da, #334458);}.ds-decision-title{color:light-dark(#87500a, #efbd72);font-weight:600;}.ds-command{font:inherit;margin:0;padding:7px 0;white-space:pre-wrap;word-break:break-word;}.ds-decision-allow{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);background:transparent;border:1px solid light-dark(#c4d0da, #334458);border-radius:3px;padding:5px 10px;text-align:center;background:light-dark(#006d78, #78d4df);color:light-dark(#f6f8fa, #10151c);border-color:light-dark(#006d78, #78d4df);}.ds-decision-allow:hover:not(:disabled){filter:brightness(.93);}.ds-decision-allow:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:3px;}.ds-decision-note{font-size:11px;color:light-dark(#526477, #9aaabd);margin-top:8px;}"
+    },
+    {
+      "name": "Detail frame",
+      "kind": "card",
+      "refersTo": "detail-frame",
+      "description": "Square bordered selected-Run region with truthful example evidence.",
+      "html": "<section class=\"ds-detail\"><div class=\"ds-detail-title\"><strong>verify / token-expiry</strong></div><div class=\"ds-detail-meta\">candidate a9e41c2 · 示例</div><div class=\"ds-detail-content\">尚未連線或執行真實檢查。</div></section>",
+      "css": ".ds-detail{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);background:light-dark(#f6f8fa, #10151c);border:1px solid light-dark(#c4d0da, #334458);min-width:0;}.ds-detail-title{padding:10px 12px 7px;}.ds-detail-title strong{font-size:14px;font-weight:600;}.ds-detail-meta{font-size:11px;color:light-dark(#526477, #9aaabd);padding:0 12px 10px;}.ds-detail-content{padding:12px;border-top:1px solid light-dark(#c4d0da, #334458);overflow-wrap:anywhere;}"
+    },
+    {
+      "name": "Project navigation",
+      "kind": "nav",
+      "refersTo": "project-navigation",
+      "description": "Project selection, repo path, scoped attention and nested Run buttons in the wide-layout navigation.",
+      "html": "<details class=\"ds-project-nav\" open><summary>Projects <span>atlas-api · 2 待處理</span></summary><nav aria-label=\"專案位置與所屬 agents\"><div class=\"ds-project-shortcuts\"><button type=\"button\" class=\"ds-project-button\"><span>全部專案</span><span>6 agents</span></button><button type=\"button\" class=\"ds-project-button\"><span>待你處理</span><span class=\"ds-wait\">3</span></button></div><div class=\"ds-project-group\"><button type=\"button\" class=\"ds-project-button\" aria-pressed=\"true\"><strong>atlas-api</strong><span class=\"ds-wait\">2 待處理</span><code class=\"ds-repo-path\">~/projects/atlas-api</code></button><div class=\"ds-project-agents\"><button type=\"button\" class=\"ds-nav-agent\" aria-pressed=\"true\"><span class=\"ds-wait\">verify</span><span>token-expiry</span></button><button type=\"button\" class=\"ds-nav-agent\"><span class=\"ds-wait\">pm</span><span>login-scope</span></button><button type=\"button\" class=\"ds-nav-agent\"><span class=\"ds-running\">dev</span><span>session-refresh</span></button></div></div></nav></details>",
+      "css": ".ds-project-nav{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);background:light-dark(#ffffff, #131a23);max-width:100%;}.ds-project-nav>summary{padding:12px;font-weight:600;cursor:pointer;}.ds-project-nav>summary span{display:block;color:light-dark(#526477, #9aaabd);font-size:11px;font-weight:400;margin-top:3px;}.ds-project-shortcuts{padding-bottom:8px;}.ds-project-button{font:inherit;color:inherit;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;width:100%;padding:9px 12px;background:transparent;border:0;text-align:left;cursor:pointer;}.ds-project-button>span:last-child{font-size:11px;}.ds-project-button:hover,.ds-nav-agent:hover{background:light-dark(#edf2f6, #1a2431);}.ds-project-button[aria-pressed=\"true\"],.ds-nav-agent[aria-pressed=\"true\"]{background:light-dark(#e0f0f3, #17313b);color:light-dark(#006d78, #78d4df);}.ds-project-group{border-top:1px solid light-dark(#c4d0da, #334458);padding:5px 0;}.ds-repo-path{grid-column:1/-1;color:light-dark(#526477, #9aaabd);font:inherit;font-size:11px;overflow-wrap:anywhere;}.ds-project-agents{padding:0 7px 4px 12px;}.ds-nav-agent{font:inherit;color:inherit;display:grid;grid-template-columns:60px minmax(0,1fr);gap:7px;width:100%;padding:8px 7px;border:0;background:transparent;font-size:11px;text-align:left;cursor:pointer;}.ds-nav-agent>span:last-child{overflow-wrap:anywhere;}.ds-wait{color:light-dark(#87500a, #efbd72);}.ds-running{color:light-dark(#006d78, #78d4df);}.ds-project-button:focus-visible,.ds-nav-agent:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:3px;}.ds-project-nav>summary:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:-3px;}@media(pointer:coarse){.ds-project-button,.ds-nav-agent{min-height:44px;}}"
+    },
+    {
+      "name": "Services",
+      "kind": "custom",
+      "refersTo": "service-table",
+      "description": "Representative per-Run health row, controls, explicitly synthetic endpoint information and source-filtered log well.",
+      "html": "<section class=\"ds-services\" aria-label=\"此 Run 的服務示例\"><strong>env-dev-api / services</strong><p class=\"ds-service-note\">此 Run 專用 · Database → Backend → Frontend</p><div class=\"ds-service-table\"><div class=\"ds-service-row\"><div><strong>Backend</strong><span class=\"ds-port\">:8000 · 環境內</span></div><span class=\"ds-state ds-ready\"><span class=\"ds-dot\" aria-hidden=\"true\"></span>就緒 · 模擬</span><div class=\"ds-service-command\"><code>$ uvicorn src.app:app --host 0.0.0.0 --port 8000</code><span>. · GET /health</span></div><div class=\"ds-service-controls\"><button type=\"button\" class=\"ds-service-button\">重啟</button><button type=\"button\" class=\"ds-service-button\">停止</button><button type=\"button\" class=\"ds-service-button\">網址</button></div></div></div><div class=\"ds-endpoint\"><strong>Backend 預覽網址（示例）</strong><code>https://preview.example.invalid/env-dev-api/api</code><span>此示例不會開啟連線。</span></div><p class=\"ds-service-note\">狀態與命令均為模擬。健康檢查通過不代表功能測試通過。</p><div class=\"ds-log-heading\"><strong>Logs</strong><div class=\"ds-log-filters\" role=\"group\" aria-label=\"篩選服務 logs\"><button type=\"button\" class=\"ds-service-button\" aria-pressed=\"true\">全部</button><button type=\"button\" class=\"ds-service-button\">Backend</button></div></div><div class=\"ds-service-logs\" role=\"log\" aria-live=\"off\" aria-label=\"此環境的服務輸出\"><div class=\"ds-service-log\"><time>14:12:08</time><span class=\"ds-running\">api/health</span><span>GET /health 通過，服務可用（模擬）</span></div></div><p class=\"ds-log-note\">最近 60 筆 · 僅此環境 · 啟停事件同步至 Run timeline</p></section>",
+      "css": ".ds-services{color-scheme:light dark;font:13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Noto Sans TC', monospace;color:light-dark(#1b2a38, #d9e2ed);background:light-dark(#f6f8fa, #10151c);}.ds-service-note{font-size:12px;color:light-dark(#526477, #9aaabd);margin:3px 0 12px;}.ds-service-table{border-top:1px solid light-dark(#c4d0da, #334458);}.ds-service-row{display:grid;grid-template-columns:112px 112px minmax(0,1fr) 166px;gap:10px;align-items:center;border-top:1px solid light-dark(#c4d0da, #334458);padding:12px 0;}.ds-service-row strong{font-size:12px;}.ds-port{display:block;color:light-dark(#526477, #9aaabd);font-size:11px;margin-top:3px;}.ds-state{display:flex;align-items:center;gap:7px;white-space:nowrap;}.ds-ready{color:light-dark(#277242, #93c7a3);}.ds-dot{display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0;}.ds-service-command{min-width:0;font-size:11px;}.ds-service-command code{display:block;font:inherit;white-space:pre-wrap;overflow-wrap:anywhere;}.ds-service-command>span{display:block;color:light-dark(#526477, #9aaabd);margin-top:4px;}.ds-service-controls,.ds-log-filters{display:flex;flex-wrap:wrap;gap:5px;}.ds-service-button{font:inherit;font-size:11px;color:inherit;border:1px solid light-dark(#c4d0da, #334458);background:transparent;border-radius:3px;padding:4px 7px;cursor:pointer;}.ds-service-button:hover:not(:disabled){background:light-dark(#edf2f6, #1a2431);}.ds-service-button[aria-pressed=\"true\"]{color:light-dark(#006d78, #78d4df);border-color:light-dark(#006d78, #78d4df);background:light-dark(#e0f0f3, #17313b);}.ds-service-button:focus-visible{outline:2px solid light-dark(#006d78, #78d4df);outline-offset:3px;}.ds-service-button:disabled{opacity:.55;cursor:default;}.ds-endpoint{display:grid;gap:5px;padding:12px;background:light-dark(#e0f0f3, #17313b);color:light-dark(#006d78, #78d4df);margin:12px 0;font-size:12px;overflow-wrap:anywhere;}.ds-endpoint code{font:inherit;}.ds-log-heading{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:9px;margin-bottom:9px;}.ds-log-filters .ds-service-button{padding:4px 8px;}.ds-service-logs{max-height:220px;min-height:110px;padding:10px;background:light-dark(#ffffff, #131a23);border:1px solid light-dark(#c4d0da, #334458);overflow-y:auto;scrollbar-width:thin;scrollbar-color:light-dark(#c4d0da, #334458) light-dark(#ffffff, #131a23);}.ds-service-log{display:grid;grid-template-columns:62px 94px minmax(0,1fr);gap:8px;padding:3px 0;font-size:11px;overflow-wrap:anywhere;}.ds-service-log time,.ds-log-note{color:light-dark(#526477, #9aaabd);font-size:11px;}.ds-running{color:light-dark(#006d78, #78d4df);}.ds-log-note{margin:7px 0 0;}@media(max-width:800px){.ds-service-row{grid-template-columns:100px 104px minmax(0,1fr);}.ds-service-controls{grid-column:3;}}@media(max-width:600px){.ds-service-row{grid-template-columns:minmax(0,1fr) auto;gap:10px;}.ds-service-row>.ds-state{grid-row:1;grid-column:2;font-size:11px;}.ds-service-command,.ds-service-controls{grid-column:1/-1;}.ds-service-button,.ds-log-filters .ds-service-button{min-height:36px;padding:6px 10px;}.ds-service-log{grid-template-columns:58px minmax(0,1fr);gap:3px 7px;}.ds-service-log>span:last-child{grid-column:1/-1;padding-bottom:6px;}}@media(pointer:coarse){.ds-service-button{min-height:44px;}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Terminal team roster",
+    "overview": "This is a provisional system shared by the [standalone HTML prototype](preview/index.html) and the earlier [conversation preview](output/agent-workbench-preview.html). The user chose [Noopher-AI/oat-agents](https://github.com/Noopher-AI/oat-agents): compact agent rows, fine rules and a selected Run with detail tabs. The built HTML/CSS is the source for these tokens; the production React + Ink interface does not exist yet. The standalone page uses local CSS and JavaScript without a host runtime, CDN or build dependency.\n\nThe standalone extends that surface with project/repo navigation and a Services view for each Run. Paths, service processes, health checks, logs and preview endpoints are simulated UI content; this document records only `preview/`, regardless of separately developed runtime work.\n\nThe atmosphere is restrained and operational. Native mono text, quiet blue-gray surfaces and small state accents keep simultaneous Runs readable. Commands, evidence and decision receipts retain explicit demo labels: every project, event and result is synthetic. These pixel sizes describe the HTML mock and remain provisional for a real terminal renderer.",
+    "keyCharacteristics": [
+      "Dense agent roster with a clearly selected Run.",
+      "Flat surfaces, fine borders and native mono typography.",
+      "Cyan selection, amber decisions and readable text beside state colors.",
+      "Inline actions with explicit simulated acceptance and delivery.",
+      "Project hierarchy and per-Run service status using the same visual vocabulary."
+    ],
+    "rules": [
+      {
+        "name": "The State Text Rule",
+        "body": "Pair state color with a readable state label; the small colored dot is supplementary.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "**Do** reuse the paired theme tokens and preserve readable secondary labels in both appearances.",
+      "**Do** keep selection, pending decisions and outcome text visually distinct.",
+      "**Do** retain demo, unexecuted and simulated-delivery labels while the preview has no live connection.",
+      "**Do** preserve visible focus and keyboard access; use the standalone page's cyan outline for its buttons and inputs."
+    ],
+    "donts": [
+      "**Don't** treat this HTML preview or its synthetic green states as a finished Ink app or verified provider behavior.",
+      "**Don't** replace the user-pinned oat-agents reference with Root-IO-Labs/Open Agent Teams.",
+      "**Don't** add ornamental elevation or perpetual activity motion to the observed flat terminal system."
+    ]
+  }
+}

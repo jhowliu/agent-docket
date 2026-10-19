@@ -1,0 +1,231 @@
+<div id="pr-change-demo" class="viz-dotted-background">
+  <style>
+    #pr-change-demo {
+      --pe-bg: light-dark(#ffffff, #151b23);
+      --pe-fg: light-dark(#1c2936, #e3eaf2);
+      --pe-muted: light-dark(#536474, #a2b2c3);
+      --pe-line: light-dark(#dbe3eb, #344252);
+      --pe-soft: light-dark(#f3f6f9, #202a36);
+      --pe-accent: light-dark(#155f9c, #92caff);
+      --pe-accent-soft: light-dark(#edf5ff, #203c54);
+      --pe-add: light-dark(#14613d, #9ed8b8);
+      --pe-add-bg: light-dark(#eef8f0, #19372a);
+      --pe-remove: light-dark(#973728, #ffc0b2);
+      --pe-remove-bg: light-dark(#fff1ed, #432c27);
+      color: var(--pe-fg);
+      font: 14px/1.6 system-ui, -apple-system, "PingFang TC", sans-serif;
+      padding: 12px;
+    }
+    #pr-change-demo * { box-sizing: border-box; }
+    #pr-change-demo [hidden] { display: none !important; }
+    #pr-change-demo .pe-window { background: var(--pe-bg); border: 1px solid var(--pe-line); border-radius: 14px; padding: 22px; }
+    #pr-change-demo .pe-caption { color: var(--pe-muted); font-size: 12px; }
+    #pr-change-demo h2 { font-size: 19px; font-weight: 500; line-height: 1.5; margin: 5px 0 12px; padding-right: 64px; }
+    #pr-change-demo .pe-pipeline { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; color: var(--pe-muted); font-size: 12px; padding-bottom: 15px; border-bottom: 1px solid var(--pe-line); }
+    #pr-change-demo .pe-stage { padding: 3px 7px; background: var(--pe-soft); border-radius: 5px; }
+    #pr-change-demo .pe-stage-current { color: var(--pe-accent); background: var(--pe-accent-soft); }
+    #pr-change-demo .pe-mode { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 17px 0 8px; }
+    #pr-change-demo button { font: inherit; color: inherit; }
+    #pr-change-demo .pe-mode button { border: 1px solid var(--pe-line); border-radius: 6px; padding: 5px 12px; background: var(--pe-bg); }
+    #pr-change-demo .pe-mode button[aria-pressed="true"] { border-color: var(--pe-accent); color: var(--pe-accent); background: var(--pe-accent-soft); }
+    #pr-change-demo .pe-behavior { min-height: 44px; margin: 8px 0 15px; }
+    #pr-change-demo .pe-flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; margin: 0 0 20px; padding: 0; list-style: none; }
+    #pr-change-demo .pe-flow li { position: relative; min-width: 0; }
+    #pr-change-demo .pe-flow li:not(:last-child)::after { content: "→"; position: absolute; right: -18px; top: 32px; color: var(--pe-muted); }
+    #pr-change-demo .pe-node { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 4px; width: 100%; min-height: 102px; padding: 10px; text-align: left; border: 1px solid var(--pe-line); background: var(--pe-bg); border-radius: 8px; }
+    #pr-change-demo .pe-node[aria-pressed="true"] { border-color: var(--pe-accent); background: var(--pe-accent-soft); }
+    #pr-change-demo .pe-node small { color: var(--pe-muted); font-size: 11px; overflow-wrap: anywhere; }
+    #pr-change-demo .pe-node .pe-change { color: var(--pe-accent); font-size: 11px; }
+    #pr-change-demo .pe-detail { border-top: 1px solid var(--pe-line); padding-top: 15px; }
+    #pr-change-demo .pe-detail-heading { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    #pr-change-demo .pe-detail-heading strong { font-weight: 500; }
+    #pr-change-demo .pe-path { color: var(--pe-muted); background: var(--pe-soft); font: 12px/1.5 ui-monospace, monospace; overflow-wrap: anywhere; }
+    #pr-change-demo .pe-tabs { display: flex; gap: 14px; flex-wrap: wrap; margin: 10px 0 12px; border-bottom: 1px solid var(--pe-line); }
+    #pr-change-demo .pe-tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; padding: 7px 0; color: var(--pe-muted); }
+    #pr-change-demo .pe-tabs button[aria-selected="true"] { border-bottom-color: var(--pe-accent); color: var(--pe-accent); }
+    #pr-change-demo .pe-panel { min-height: 126px; }
+    #pr-change-demo .pe-panel p { margin: 0 0 8px; }
+    #pr-change-demo .pe-code { margin: 0; font: 12px/1.7 ui-monospace, SFMono-Regular, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #pr-change-demo .pe-code span { display: block; padding: 2px 8px; }
+    #pr-change-demo .pe-code .pe-added { background: var(--pe-add-bg); color: var(--pe-add); }
+    #pr-change-demo .pe-code .pe-removed { background: var(--pe-remove-bg); color: var(--pe-remove); }
+    #pr-change-demo .pe-tests { margin: 0; padding-left: 20px; }
+    #pr-change-demo .pe-comment { border-left: 2px solid var(--pe-line); padding-left: 12px; }
+    #pr-change-demo .pe-footer { border-top: 1px solid var(--pe-line); padding-top: 12px; color: var(--pe-muted); font-size: 12px; }
+    @media (max-width: 560px) {
+      #pr-change-demo { padding: 4px; }
+      #pr-change-demo .pe-window { padding: 16px; }
+      #pr-change-demo h2 { padding-right: 55px; font-size: 17px; }
+      #pr-change-demo .pe-flow { grid-template-columns: 1fr; gap: 21px; }
+      #pr-change-demo .pe-node { min-height: 64px; padding: 9px 12px; flex-direction: row; justify-content: flex-start; align-items: center; flex-wrap: wrap; gap: 5px 10px; }
+      #pr-change-demo .pe-flow li:not(:last-child)::after { content: "↓"; left: 20px; right: auto; top: auto; bottom: -22px; }
+      #pr-change-demo .pe-tabs { gap: 16px; }
+      #pr-change-demo .pe-tabs button, #pr-change-demo .pe-mode button { min-height: 44px; }
+      #pr-change-demo .pe-behavior { min-height: 0; }
+    }
+  </style>
+  <section class="pe-window" aria-label="PR 變更解說示意">
+    <div class="pe-caption">示意 PR · 範例程式碼與評論 · 未連接 GitHub</div>
+    <h2>重試建立任務時，避免重複排程</h2>
+    <div class="pe-pipeline" aria-label="階段與能力設定">
+      <span class="pe-stage">Dev · Python</span><span aria-hidden="true">→</span>
+      <span class="pe-stage">Review · Python</span><span aria-hidden="true">→</span>
+      <span class="pe-stage">Verify · pytest</span><span aria-hidden="true">→</span>
+      <span class="pe-stage pe-stage-current">PR · 變更解說</span>
+    </div>
+    <div class="pe-mode" role="group" aria-label="比較修改前後">
+      <button type="button" class="cursor-interaction" data-version="before" aria-pressed="false">修改前</button>
+      <button type="button" class="cursor-interaction" data-version="after" aria-pressed="true">修改後</button>
+    </div>
+    <div class="pe-behavior" data-behavior aria-live="polite"></div>
+    <ol class="pe-flow" aria-label="請求執行路徑；可選擇節點查看證據">
+      <li><button type="button" class="pe-node cursor-interaction" data-node="request" aria-pressed="false"><span data-label>收到請求</span><small data-file>api/tasks.py</small><span class="pe-change" data-change>修改</span></button></li>
+      <li><button type="button" class="pe-node cursor-interaction" data-node="validate" aria-pressed="false"><span data-label>驗證請求</span><small data-file>schemas/task.py</small><span class="pe-change" data-change>修改</span></button></li>
+      <li><button type="button" class="pe-node cursor-interaction" data-node="dedup" aria-pressed="true"><span data-label>檢查是否重複</span><small data-file>repositories/tasks.py</small><span class="pe-change" data-change>新增</span></button></li>
+      <li><button type="button" class="pe-node cursor-interaction" data-node="store" aria-pressed="false"><span data-label>建立或回傳任務</span><small data-file>models/task.py</small><span class="pe-change" data-change>修改</span></button></li>
+    </ol>
+    <section class="pe-detail" aria-label="所選節點的變更與證據">
+      <div class="pe-detail-heading"><strong data-detail-title></strong><code class="pe-path" data-detail-path></code></div>
+      <div class="pe-tabs" role="tablist" aria-label="節點詳情">
+        <button id="pe-tab-summary" type="button" class="cursor-interaction" role="tab" aria-selected="true" aria-controls="pe-panel-summary" data-tab="summary">說明</button>
+        <button id="pe-tab-diff" type="button" class="cursor-interaction" role="tab" aria-selected="false" aria-controls="pe-panel-diff" data-tab="diff">Diff</button>
+        <button id="pe-tab-tests" type="button" class="cursor-interaction" role="tab" aria-selected="false" aria-controls="pe-panel-tests" data-tab="tests">驗證</button>
+        <button id="pe-tab-comments" type="button" class="cursor-interaction" role="tab" aria-selected="false" aria-controls="pe-panel-comments" data-tab="comments">Comments</button>
+      </div>
+      <div id="pe-panel-summary" class="pe-panel" role="tabpanel" aria-labelledby="pe-tab-summary"><p data-summary></p><p class="pe-caption" data-evidence></p></div>
+      <div id="pe-panel-diff" class="pe-panel" role="tabpanel" aria-labelledby="pe-tab-diff" hidden><pre class="pe-code"><code data-code></code></pre></div>
+      <div id="pe-panel-tests" class="pe-panel" role="tabpanel" aria-labelledby="pe-tab-tests" hidden><ul class="pe-tests" data-tests></ul></div>
+      <div id="pe-panel-comments" class="pe-panel" role="tabpanel" aria-labelledby="pe-tab-comments" hidden><div class="pe-comment"><div class="pe-caption">Review agent · 範例評論</div><p data-comment></p><div class="pe-caption" data-comment-anchor></div></div></div>
+    </section>
+    <div class="pe-footer">待你決定：同一個 key 帶入不同內容時，是否回傳 409？</div>
+    <div class="pe-caption" data-state-note aria-live="polite">報告版本 demo-head · 測試尚未實際執行</div>
+  </section>
+  <script>
+    (() => {
+      const root = document.getElementById('pr-change-demo');
+      const data = {
+        request: {
+          label: '收到請求', file: 'api/tasks.py', line: 24, change: '修改',
+          before: '每次 POST 都直接新增任務；客戶端重試可能造成重複排程。',
+          after: 'API 取得 Idempotency-Key，並把 key 與請求內容交給後續流程。',
+          diff: ['- return repository.create(payload)', '+ return service.create_once(key, payload)'],
+          tests: ['待執行：帶相同 key 重試時，回傳相同 task id', '待執行：不同 key 仍能建立不同任務'],
+          comment: '這個入口也被 CLI 使用；請把相容性結果連到同一份報告。',
+          evidence: '實際版本會連到入口函式與呼叫端；此處為示意資料。'
+        },
+        validate: {
+          label: '驗證請求', file: 'schemas/task.py', line: 12, change: '修改',
+          before: '驗證任務內容，沒有重試識別資訊。',
+          after: '驗證 key，並比對同一個 key 對應的請求內容是否一致。',
+          diff: ['+ validate_key(idempotency_key)', '+ verify_payload_matches_existing_key()'],
+          tests: ['待執行：相同 key、相同內容的重試', '待確認：相同 key、不同內容的回應規則'],
+          comment: '同一個 key 帶入不同 payload 時，是否回傳 409？這需要產品決策。',
+          evidence: '實際版本會區分產品決策、程式碼檢查和測試結果。'
+        },
+        dedup: {
+          label: '檢查是否重複', beforeLabel: '直接新增', file: 'repositories/tasks.py', line: 38, change: '新增',
+          before: '沒有去重步驟；請求驗證完後直接寫入新的任務。',
+          after: '找到同一個 key 就回傳既有任務；找不到時才嘗試建立。並行請求仍需要資料庫唯一性保護。',
+          diff: ['- return insert_task(payload)', '+ existing = find_by_key(key)', '+ if existing:', '+     return existing', '+ return insert_or_load_on_conflict(key, payload)'],
+          tests: ['待執行：連續重試只建立一筆任務', '待執行：同時送出兩個相同 key 的請求', '未驗證：真實 worker 是否只執行一次'],
+          comment: '請把「並行請求」和「worker 實際執行次數」分開驗證，資料庫只有一筆不代表工作只執行一次。',
+          evidence: '流程圖代表程式碼路徑；只有執行過的案例才會顯示已驗證。'
+        },
+        store: {
+          label: '建立或回傳任務', beforeLabel: '建立新任務', file: 'models/task.py', line: 9, change: '修改',
+          before: '每次呼叫都產生新 task id。',
+          after: '資料庫以唯一 key 保護重複建立；衝突時載入同一筆任務。',
+          diff: ['+ idempotency_key: str  # unique index', '+ # migration required for the index'],
+          tests: ['待執行：唯一索引 migration', '待執行：重複 key 的資料庫衝突處理', '未驗證：migration 回復流程'],
+          comment: '模型變更需要對應 migration。驗證報告應指向實際使用的 schema 版本。',
+          evidence: '實際版本會連結 model、migration 與資料庫驗證 log。'
+        }
+      };
+      const versions = ['before', 'after'];
+      const tabs = ['summary', 'diff', 'tests', 'comments'];
+      let state = { version: 'after', node: 'dedup', tab: 'summary' };
+      function applySaved(saved) {
+        const next = saved && saved.privateContent && saved.privateContent.prChangeDemo;
+        if (!next) return;
+        if (versions.includes(next.version)) state.version = next.version;
+        if (Object.hasOwn(data, next.node)) state.node = next.node;
+        if (tabs.includes(next.tab)) state.tab = next.tab;
+      }
+      function save() {
+        if (typeof window.openai?.setWidgetState === 'function') {
+          window.openai.setWidgetState({
+            modelContent: { demo: 'PR change explanation concept', node: state.node, version: state.version, tab: state.tab },
+            privateContent: { prChangeDemo: { ...state } }
+          }).catch(() => {});
+        }
+      }
+      function render() {
+        const current = data[state.node];
+        root.querySelectorAll('[data-version]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.version === state.version)));
+        root.querySelector('[data-behavior]').textContent = state.version === 'after'
+          ? '修改後：相同 key 重試時，目標是回傳同一個任務。'
+          : '修改前：每次重試都可能建立一個新任務。';
+        root.querySelectorAll('[data-node]').forEach(button => {
+          const item = data[button.dataset.node];
+          button.setAttribute('aria-pressed', String(button.dataset.node === state.node));
+          button.querySelector('[data-label]').textContent = state.version === 'before' && item.beforeLabel ? item.beforeLabel : item.label;
+          button.querySelector('[data-file]').textContent = state.version === 'before' && button.dataset.node === 'dedup' ? 'api/tasks.py' : item.file;
+          button.querySelector('[data-change]').textContent = state.version === 'after' ? item.change : '原有路徑';
+        });
+        root.querySelector('[data-detail-title]').textContent = state.version === 'before' && current.beforeLabel ? current.beforeLabel : current.label;
+        root.querySelector('[data-detail-path]').textContent = state.version === 'before' && state.node === 'dedup' ? 'api/tasks.py:24 · demo-base' : current.file + ':' + current.line + (state.version === 'before' ? ' · demo-base' : ' · demo-head');
+        root.querySelector('[data-summary]').textContent = current[state.version];
+        root.querySelector('[data-evidence]').textContent = current.evidence;
+        const code = root.querySelector('[data-code]');
+        code.replaceChildren();
+        current.diff.forEach(line => {
+          const span = document.createElement('span');
+          span.textContent = line;
+          span.className = line.startsWith('+') ? 'pe-added' : line.startsWith('-') ? 'pe-removed' : '';
+          code.appendChild(span);
+        });
+        const tests = root.querySelector('[data-tests]');
+        tests.replaceChildren();
+        current.tests.forEach(value => {
+          const item = document.createElement('li');
+          item.textContent = value;
+          tests.appendChild(item);
+        });
+        root.querySelector('[data-comment]').textContent = current.comment;
+        root.querySelector('[data-comment-anchor]').textContent = '評論對應：' + current.file + ':' + current.line + ' · demo-head';
+        root.querySelectorAll('[data-tab]').forEach(button => {
+          const selected = button.dataset.tab === state.tab;
+          button.setAttribute('aria-selected', String(selected));
+          root.querySelector('#' + button.getAttribute('aria-controls')).hidden = !selected;
+        });
+        root.querySelector('[data-state-note]').textContent = (state.version === 'before' ? '比較基準 demo-base' : '報告版本 demo-head') + ' · Diff、驗證與評論針對此示意變更 · 測試尚未實際執行';
+      }
+      applySaved(window.openai?.widgetState);
+      render();
+      root.addEventListener('click', event => {
+        const button = event.target.closest('button');
+        if (!button || !root.contains(button)) return;
+        if (button.dataset.version && versions.includes(button.dataset.version)) state.version = button.dataset.version;
+        else if (button.dataset.node && Object.hasOwn(data, button.dataset.node)) state.node = button.dataset.node;
+        else if (button.dataset.tab && tabs.includes(button.dataset.tab)) state.tab = button.dataset.tab;
+        else return;
+        render();
+        save();
+      });
+      root.querySelector('.pe-tabs').addEventListener('keydown', event => {
+        const active = event.target.closest('[data-tab]');
+        if (!active || !['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+        const buttons = Array.from(root.querySelectorAll('[data-tab]'));
+        const current = buttons.indexOf(active);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
+        event.preventDefault();
+        buttons[next].focus();
+        buttons[next].click();
+      });
+      window.addEventListener('openai:set_globals', event => {
+        applySaved(event.detail?.globals?.widgetState);
+        render();
+      });
+    })();
+  </script>
+</div>
