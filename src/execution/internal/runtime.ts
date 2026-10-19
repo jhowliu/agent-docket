@@ -17,6 +17,9 @@ import type {
 } from '../index.js';
 import { launchManaged } from './worker.js';
 import type { ManagedProcess } from './worker.js';
+import { createProgressChannel } from './progress.js';
+import type { ProgressChannel } from './progress.js';
+import { progressInstructions } from './progress-protocol.js';
 
 const workerFields = {
   image: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,200}$/),
@@ -153,9 +156,12 @@ type Slot = {
   authMethods: { id: string; label: string }[];
   epoch: number;
   responses: Map<acp.JsonRpcId, AttentionId>;
+  tools: Map<string, Extract<RunEventPayload, { type: 'tool' }>>;
   promptTask: Promise<acp.PromptResponse> | null;
   cancelTask: Promise<void> | null;
   cleanup: Promise<void> | null;
+  progress: ProgressChannel | null;
+  progressTask: Promise<ProgressChannel> | null;
 };
 const terminal = (state: RunState) =>
   ['cancelled', 'closed', 'failed', 'interrupted'].includes(state.kind);
@@ -247,7 +253,13 @@ export function createExecution(options: ExecutionOptions): Execution {
         slot.connection?.close();
         const managed =
           slot.managed ?? (await slot.launchTask?.catch(() => null));
-        await managed?.stop();
+        const progress =
+          slot.progress ?? (await slot.progressTask?.catch(() => null));
+        try {
+          await managed?.stop();
+        } finally {
+          await progress?.close();
+        }
       })().catch((error: unknown) => {
         slot.cleanup = null;
         throw error;
@@ -328,12 +340,19 @@ export function createExecution(options: ExecutionOptions): Execution {
       update.sessionUpdate === 'tool_call' ||
       update.sessionUpdate === 'tool_call_update'
     ) {
-      emit(slot, {
+      const previous = slot.tools.get(update.toolCallId);
+      const tool = {
         type: 'tool',
         id: update.toolCallId,
-        title: safeText(update.title ?? 'Tool update'),
-        status: update.status ?? 'unknown',
-      });
+        title: safeText(update.title ?? previous?.title ?? 'Tool update'),
+        status: update.status ?? previous?.status ?? 'unknown',
+      } as const;
+      slot.tools.set(tool.id, tool);
+      if (slot.tools.size > maxEvents) {
+        const oldest = slot.tools.keys().next().value;
+        if (oldest !== undefined) slot.tools.delete(oldest);
+      }
+      emit(slot, tool);
       for (const content of update.content ?? [])
         if (content.type === 'diff')
           emit(slot, {
@@ -351,7 +370,7 @@ export function createExecution(options: ExecutionOptions): Execution {
       const response = await deadline(
         slot.connection.agent.request(acp.methods.agent.session.new, {
           cwd: slot.managed.cwd,
-          mcpServers: [],
+          mcpServers: slot.progress ? [slot.progress.server] : [],
         }),
         20_000,
       );
@@ -409,9 +428,12 @@ export function createExecution(options: ExecutionOptions): Execution {
       authMethods: [],
       epoch: 0,
       responses: new Map(),
+      tools: new Map(),
       promptTask: null,
       cancelTask: null,
       cleanup: null,
+      progress: null,
+      progressTask: null,
     };
     slots.set(id, slot);
     emit(slot, { type: 'run.state', state: { kind: 'starting' } });
@@ -426,6 +448,31 @@ export function createExecution(options: ExecutionOptions): Execution {
       slot.snapshot = { ...slot.snapshot, environment: managed.environment };
       if (closing || terminal(slot.snapshot.state) || cancelling(slot))
         throw new Error('Run startup was cancelled');
+      if (
+        ['local', 'trusted-fixture-directory'].includes(
+          managed.environment.kind,
+        )
+      ) {
+        slot.progressTask = createProgressChannel(
+          (summary) => {
+            if (slot.snapshot.state.kind === 'running')
+              emit(slot, {
+                type: 'agent.progress',
+                summary: safeText(summary),
+              });
+          },
+          () => {
+            if (!terminal(slot.snapshot.state) && !cancelling(slot))
+              emit(slot, {
+                type: 'diagnostic',
+                message: 'Agent progress reporting became unavailable.',
+              });
+          },
+        );
+        slot.progress = await slot.progressTask;
+        if (closing || terminal(slot.snapshot.state) || cancelling(slot))
+          throw new Error('Run startup was cancelled');
+      }
       if (managed.environment.kind === 'local')
         emit(slot, {
           type: 'diagnostic',
@@ -596,14 +643,27 @@ export function createExecution(options: ExecutionOptions): Execution {
       if (typeof text !== 'string' || !text.trim() || text.length > 100_000)
         throw new Error('Prompt must contain 1–100000 characters');
       setState(slot, { kind: 'running' });
+      slot.tools.clear();
+      emit(slot, { type: 'turn.start', text: safeText(text) });
       const epoch = slot.epoch;
       try {
+        await slot.progress?.beginTurn();
+        if (epoch !== slot.epoch) return { stopReason: 'cancelled' };
         const task = slot.connection.agent.request(
           acp.methods.agent.session.prompt,
-          { sessionId: slot.sessionId, prompt: [{ type: 'text', text }] },
+          {
+            sessionId: slot.sessionId,
+            prompt: [
+              ...(slot.progress
+                ? [{ type: 'text' as const, text: progressInstructions }]
+                : []),
+              { type: 'text', text },
+            ],
+          },
         );
         slot.promptTask = task;
         const result = await deadline(task, 10 * 60_000);
+        await slot.progress?.endTurn();
         if (epoch !== slot.epoch) return { stopReason: 'cancelled' };
         attention.invalidate(id, 'Prompt turn ended');
         emit(slot, { type: 'turn.end', reason: result.stopReason });

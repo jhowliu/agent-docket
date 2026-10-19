@@ -11,10 +11,16 @@ import type {
 } from '../execution/index.js';
 import type { WorkbenchState } from './workbench-protocol.js';
 import { terminalText } from './tui-input.js';
+import { readableEvents, timelineEntries } from './tui-timeline.js';
+import type { TimelineEntry } from './tui-timeline.js';
 
 export type View = 'live' | 'diff' | 'timeline';
 export type Filter = 'active' | 'inbox' | 'history';
-export type Line = { text: string; color?: string };
+export type Line = {
+  text: string;
+  color?: string;
+  timeline?: { time: string; entry: TimelineEntry };
+};
 const views: readonly View[] = ['live', 'diff', 'timeline'];
 const tone = (color: string | undefined) => (color ? { color } : {});
 const states = {
@@ -57,6 +63,10 @@ function eventSummary(event: RunEvent): string {
       );
     case 'agent.message':
       return event.text;
+    case 'agent.progress':
+      return 'Progress · ' + event.summary;
+    case 'turn.start':
+      return 'Request · ' + event.text;
     case 'tool':
       return `${event.title} · ${event.status}`;
     case 'attention':
@@ -74,7 +84,8 @@ function eventSummary(event: RunEvent): string {
 function eventColor(event: RunEvent): string | undefined {
   return event.type === 'attention'
     ? 'yellow'
-    : event.type === 'diagnostic'
+    : event.type === 'diagnostic' ||
+        (event.type === 'tool' && event.status === 'failed')
       ? 'red'
       : undefined;
 }
@@ -83,8 +94,10 @@ function detailLines(
   runId: RunId | null,
   view: View,
   width: number,
+  attention: readonly AttentionItem[],
 ): Line[] {
-  const selected = events.filter((event) => event.runId === runId);
+  const ownEvents = events.filter((event) => event.runId === runId);
+  const selected = view === 'live' ? readableEvents(ownEvents) : ownEvents;
   const lines: Line[] = [];
   const append = (text: string, color?: string) => {
     for (const part of wrapAnsi(terminalText(text), width, {
@@ -106,6 +119,8 @@ function detailLines(
     for (const event of selected) {
       if (
         event.type === 'agent.message' ||
+        event.type === 'agent.progress' ||
+        event.type === 'turn.start' ||
         event.type === 'tool' ||
         event.type === 'diagnostic' ||
         event.type === 'turn.end'
@@ -113,15 +128,39 @@ function detailLines(
         append(eventSummary(event), eventColor(event));
     }
   } else {
-    for (const event of selected) {
-      const date = new Date(event.at);
+    for (const entry of timelineEntries(ownEvents, attention)) {
+      const date = new Date(entry.at);
       const time = Number.isNaN(date.getTime())
         ? '--:--:--'
         : date.toLocaleTimeString('en-GB', { hour12: false });
-      // Timeline is a scan view. Live/Diff retain wrapped content for reading.
+      if (entry.wrap) {
+        const prefix = `${time} ${entry.label} · `;
+        const wrapped = wrapAnsi(
+          prefix + entry.detail,
+          Math.max(1, width - 2),
+          {
+            hard: true,
+            trim: false,
+          },
+        ).split('\n');
+        for (const [index, part] of wrapped.entries())
+          lines.push(
+            index === 0
+              ? {
+                  text: part,
+                  timeline: {
+                    time,
+                    entry: { ...entry, detail: part.slice(prefix.length) },
+                  },
+                }
+              : { text: '  ' + part },
+          );
+        continue;
+      }
+      // Timeline groups observations; full output remains in Live.
       lines.push({
-        text: `${time}  ${terminalText(eventSummary(event)).replace(/\s+/g, ' ')}`,
-        ...tone(eventColor(event)),
+        text: `${time}  ${terminalText(entry.text).replace(/\s+/g, ' ')}`,
+        timeline: { time, entry },
       });
     }
   }
@@ -174,8 +213,8 @@ export function WorkbenchScreen(props: ScreenProps) {
   const pending = state.attention.filter((item) => item.status === 'pending');
   const ownPending = pending.filter((item) => item.runId === selectedId);
   const lines = useMemo(
-    () => detailLines(state.events, selectedId, view, width),
-    [state.events, selectedId, view, width],
+    () => detailLines(state.events, selectedId, view, width, state.attention),
+    [state.events, state.attention, selectedId, view, width],
   );
   if (columns < 60 || rows < 20) {
     return (
@@ -274,9 +313,11 @@ export function WorkbenchScreen(props: ScreenProps) {
   const empty = selected
     ? view === 'diff'
       ? 'No file changes yet'
-      : fixture
-        ? 'i to prompt · s for fixture scenarios'
-        : 'i to prompt when idle · s actions'
+      : view === 'timeline'
+        ? 'No milestones yet · 1 Live for full output'
+        : fixture
+          ? 'i to prompt · s for fixture scenarios'
+          : 'i to prompt when idle · s actions'
     : 'n new Run · :history for past Runs';
   const connection = !connected
     ? 'Disconnected · reconnecting'
@@ -348,7 +389,13 @@ export function WorkbenchScreen(props: ScreenProps) {
                         ? 'yellow'
                         : ['failed', 'interrupted'].includes(run.state.kind)
                           ? 'red'
-                          : undefined,
+                          : run.state.kind === 'authentication-required'
+                            ? 'yellow'
+                            : ['starting', 'running'].includes(run.state.kind)
+                              ? 'blue'
+                              : run.state.kind === 'idle'
+                                ? 'gray'
+                                : undefined,
                     )}
                     wrap="truncate-end"
                   >
@@ -392,7 +439,22 @@ export function WorkbenchScreen(props: ScreenProps) {
         {log.length ? (
           log.map((line, index) => (
             <Text key={index} {...tone(line.color)} wrap="truncate-end">
-              {line.text || ' '}
+              {line.timeline ? (
+                <>
+                  <Text dimColor>{line.timeline.time} </Text>
+                  <Text color={line.timeline.entry.color} bold>
+                    {line.timeline.entry.label}
+                  </Text>
+                  {line.timeline.entry.detail ? (
+                    <Text bold={line.timeline.entry.detailBold}>
+                      {' · '}
+                      {line.timeline.entry.detail}
+                    </Text>
+                  ) : null}
+                </>
+              ) : (
+                line.text || ' '
+              )}
             </Text>
           ))
         ) : (

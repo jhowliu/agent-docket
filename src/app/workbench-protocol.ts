@@ -82,6 +82,11 @@ const event: z.ZodType<RunEvent> = z.discriminatedUnion('type', [
   eventBase.extend({ type: z.literal('capabilities'), capabilities }),
   eventBase.extend({ type: z.literal('agent.message'), text: z.string() }),
   eventBase.extend({
+    type: z.literal('agent.progress'),
+    summary: z.string().min(1).max(2000),
+  }),
+  eventBase.extend({ type: z.literal('turn.start'), text: z.string() }),
+  eventBase.extend({
     type: z.literal('tool'),
     id: z.string(),
     title: z.string(),

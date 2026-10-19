@@ -119,6 +119,8 @@ async function replay(path: string): Promise<void> {
         'run.state',
         'capabilities',
         'agent.message',
+        'agent.progress',
+        'turn.start',
         'tool',
         'diff',
         'attention',
@@ -171,6 +173,10 @@ async function shell(initial?: Launch): Promise<void> {
     const number = runNumber(event.runId);
     if (event.type === 'agent.message')
       console.log(`[${number}] ${JSON.stringify(event.text)}`);
+    else if (event.type === 'agent.progress')
+      console.log(`[${number}] progress ${JSON.stringify(event.summary)}`);
+    else if (event.type === 'turn.start')
+      console.log(`[${number}] request ${JSON.stringify(event.text)}`);
     else if (event.type === 'run.state')
       console.log(`[${number}] ${JSON.stringify(event.state)}`);
     else if (event.type === 'tool')

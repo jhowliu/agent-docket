@@ -4,6 +4,8 @@
 
 Current decision: implement [explicit local Codex execution](local-execution.md) first, as requested on 2026-10-19. Each Run gets its own code/home copy; this is not OS security isolation. [Container isolation and actual results](isolation-results-plan.md) retains the proposed ownership/network/reconciliation design for later. No container provisioning or isolation acceptance has started.
 
+2026-10-19 follow-up: the user chose [agent-authored progress reports](agent-progress.md), at most 50 words, rather than a rule-based semantic summary of chat/tool text. Local/fixture Sessions now receive a Run-specific MCP reporting tool; Timeline wraps its explicit reports and leaves ordinary conversation in Live. Real model compliance and quality remain unverified.
+
 **目標與選型**
 
 使用者在同一個 terminal 工作台管理多個專案的 Codex／Claude：提出需求、查看串流與工具紀錄、回答問題、核准操作、追蹤 Dev → Review → Verify → PR，並透過有程式碼與驗證依據的互動報告理解交付。

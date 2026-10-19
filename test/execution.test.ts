@@ -22,6 +22,55 @@ const waiting = (attention: Attention, id: RunId) =>
     attention.list(id).find((item) => item.status === 'pending'),
   );
 
+test('accepted prompt inputs enter the journal once and busy rejections do not create a turn', async (t) => {
+  const runtime = createExecution({ attention: createAttention() });
+  t.after(() => runtime.close());
+  const run = await runtime.start({ provider: 'fixture' });
+  await runtime.prompt(run.id, 'question');
+  const running = runtime.prompt(run.id, 'wait');
+  await assert.rejects(runtime.prompt(run.id, 'must not be recorded'), /idle/);
+  await runtime.cancel(run.id);
+  await running;
+  const journal = runtime.events();
+  const starts = journal.filter((event) => event.type === 'turn.start');
+  assert.deepEqual(
+    starts.map((event) => event.text),
+    ['question', 'wait'],
+  );
+  assert.ok(
+    (starts[0]?.sequence ?? Infinity) <
+      (journal.find((event) => event.type === 'agent.message')?.sequence ?? 0),
+  );
+});
+
+test('partial ACP tool updates keep the original title for meaningful activity records', async (t) => {
+  const attention = createAttention(),
+    runtime = createExecution({ attention });
+  t.after(() => runtime.close());
+  const run = await runtime.start({ provider: 'fixture' });
+  const prompt = runtime.prompt(run.id, 'fix');
+  const decision = await waiting(attention, run.id);
+  attention.answer(decision.id, 'choice-1');
+  await prompt;
+  const tools = runtime.events().filter((event) => event.type === 'tool');
+  const first = tools[0],
+    last = tools.at(-1);
+  assert.ok(first && last);
+  assert.equal(last.id, first.id);
+  assert.equal(last.status, 'failed');
+  assert.equal(last.title, first.title);
+});
+
+test('recorded prompt inputs apply the journal redaction boundary', async (t) => {
+  const runtime = createExecution({ attention: createAttention() });
+  t.after(() => runtime.close());
+  const run = await runtime.start({ provider: 'fixture' });
+  await runtime.prompt(run.id, 'reply:sk-abcdefghijklmnopqrstuv');
+  const start = runtime.events().find((event) => event.type === 'turn.start');
+  assert.ok(start);
+  assert.equal(start.text, 'reply:[redacted]');
+});
+
 test('two real ACP subprocesses isolate edits, correlate opaque options and retain ordered receipts', async (t) => {
   const source = await readFile(resolve('fixtures/project/token.mjs'), 'utf8');
   const attention = createAttention(),

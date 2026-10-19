@@ -87,6 +87,8 @@ test('Ink controls configured local startup, advertised sign-in and prompts in p
   ui.stdin.write('\r');
   await stateWhen(client, (state) => state.runs[0]?.state.kind === 'idle');
   await frameHas(ui, 'Idle');
+  // Run readiness can arrive before the previous command's UI receipt is complete.
+  await frameHas(ui, 'Sending', false);
   ui.stdin.write('i');
   await frameHas(ui, 'Reply · Enter');
   ui.stdin.write('hello');

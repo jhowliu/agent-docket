@@ -8,6 +8,7 @@ import {
   readdir,
   rm,
   symlink,
+  truncate,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir, homedir } from 'node:os';
@@ -179,6 +180,34 @@ test('native cancellation stops its process group, including ordinary descendant
   for (const pid of descendants)
     assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
   await access(run.environment.location);
+});
+
+test('a Rust project copies source while excluding its oversized root target directory', async (t) => {
+  const { directory, source, launch } = await setup();
+  const execution = createExecution({ attention: createAttention() });
+  t.after(async () => {
+    await execution.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  await mkdir(join(source, 'target'));
+  const artifact = join(source, 'target', 'compiled-output');
+  await writeFile(artifact, '');
+  await truncate(artifact, 300 * 1024 * 1024);
+  await mkdir(join(source, 'src', 'target'), { recursive: true });
+  await writeFile(
+    join(source, 'src', 'target', 'logic.rs'),
+    '// source module\n',
+  );
+  const run = await execution.start(launch);
+  await assert.rejects(access(join(run.environment.location, 'target')));
+  assert.equal(
+    await readFile(
+      join(run.environment.location, 'src', 'target', 'logic.rs'),
+      'utf8',
+    ),
+    '// source module\n',
+  );
+  await access(artifact);
 });
 
 test('configured workbench starts local Runs without accepting executable settings from clients', async (t) => {

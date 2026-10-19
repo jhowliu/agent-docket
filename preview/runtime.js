@@ -135,6 +135,10 @@
         );
       case 'agent.message':
         return event.text;
+      case 'agent.progress':
+        return 'Progress · ' + event.summary;
+      case 'turn.start':
+        return 'Request · ' + event.text;
       case 'tool':
         return event.title + ' · ' + event.status;
       case 'attention':
@@ -179,9 +183,14 @@
       const visible =
         state.tab === 'live'
           ? events.filter((event) =>
-              ['agent.message', 'tool', 'diagnostic', 'turn.end'].includes(
-                event.type,
-              ),
+              [
+                'agent.message',
+                'agent.progress',
+                'turn.start',
+                'tool',
+                'diagnostic',
+                'turn.end',
+              ].includes(event.type),
             )
           : events;
       content = visible.length

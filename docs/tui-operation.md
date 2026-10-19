@@ -31,11 +31,29 @@ npm run daemon:stop
 
 1. `n` 建立 Run，`i` 輸入 `fix`，Enter 送出。這會啟動真實的 deterministic ACP fixture 程序。
 2. 收到核准時，顯示聚焦請求的標題與實際一次性選項。`a` 允許一次，`r` 拒絕；`Tab` 換另一筆，`w` 換另一個等待的 Run。一次回答後，須明確選定下一筆，避免長按誤答。
-3. `2` 看實際 before／after 文字，`3` 回 timeline。`PgUp/PgDn` 捲動；`g/G` 頂端／末端。Timeline 是單行摘要，Live 與 Diff 可讀取換行內容。
+3. `1` 看完整回覆與工具活動，`2` 看實際 before／after 文字，`3` 回 timeline。`PgUp/PgDn` 捲動；`g/G` 頂端／末端。Timeline 只列操作事件摘要；Live 與 Diff 可讀取換行內容。
 4. `p` 看來源 repo 與 Run 副本的不同路徑。`x` 或 `:cancel` 取消整個 Run，舊核准失效；`:history` 可看結束的 Run。
 5. `q` 離開後重開 `npm run tui`，等待中的請求仍在。
 
 `:prompt question` 觸發文字提問，閒置後用 i 回覆 `reply:名稱`。`:prompt two-permissions` 同時提出兩筆核准；`:prompt wait` 等取消；`:prompt crash` 測異常退出。一般文字指令只在 idle 接受，尚無執行中 steering。
+
+## Timeline and streaming output
+
+The TUI keeps three views. Timeline shows Request previews, explicit agent-authored Progress reports, one activity row per tool per turn, named approval receipts, file-change notices and failures. Reports are at most 50 words and wrap in full; ordinary chat no longer becomes a first-line Timeline preview. Turn endings include elapsed time and tool/file counts instead of the raw `end_turn` label and another Idle row. Technical diagnostics stay in Live and the environment header. A turn ending is not task acceptance, and a provider-reported tool status is not authoritative verification.
+
+Timeline uses the user's revised status palette: green for provider-reported tool completion or a delivered human answer, blue for starting/running, cyan for messages, yellow for attention and red for failures. Idle and turn endings are gray: a turn ending alone does not establish success. This deliberately changes Oat's green-start/blue-exit convention. Timestamps are dim; event labels are colored and bold; commands and paths are bold; descriptions stay ordinary text. Decisions/retries will use magenta when their reporting protocol exists. Colors use the terminal theme, and every status remains readable without color. Role colors await actual role identities.
+
+Live holds accepted prompts, full assistant text and tool activity. Consecutive text deltas in the selected Run are concatenated exactly before sanitizing and wrapping to terminal cells. Whitespace, newlines and split Unicode sequences are preserved; other Runs do not split a message. A tool, approval, lifecycle or turn-ending event in the same Run closes the text group. Projections leave raw journal entries and cursors unchanged. Activity grouping is TUI-only; browser and legacy debug CLI also recognize the new `turn.start` event. History is still bounded to the retained 2,000 events.
+
+The information split follows the inspected [oat-agents tabs](https://github.com/Noopher-AI/oat-agents/blob/c830f3e59726086fcb3d86dd6e0415687bd40d9b/src/tui/tabbed.rs#L15-L24): its Timeline reads workflow-log entries, Live shows the real tmux terminal, and Log reads the agent transcript. Its [Timeline filters](https://github.com/Noopher-AI/oat-agents/blob/c830f3e59726086fcb3d86dd6e0415687bd40d9b/src/tui/mod.rs#L77-L118) select all workflow events, lifecycle or decisions; “all” does not mean every streamed token. Our Live continues to render ACP data directly; no native CLI attachment or separate Log tab was added.
+
+See [Timeline ingestion](timeline-ingestion.md) for oat-agents' actual producers/JSONL reader, our event ownership and compatibility. Reopening the TUI improves old retained events; Request records require new prompts handled by an upgraded daemon. Existing prompt text cannot be reconstructed from lifecycle-only history.
+
+Operational summaries remain single-row previews. Explicit Progress reports wrap in full, with rendered rows used for page scrolling. Full retained assistant messages remain in `1 Live`. See [Agent progress](agent-progress.md) for the Run-specific MCP tool, 50-word limit and upgrade requirements. Oat uses [single-line Timeline summaries](https://github.com/Noopher-AI/oat-agents/blob/main/src/tui/text.rs#L293-L335); its [Log view wraps the transcript or full event fields](https://github.com/Noopher-AI/oat-agents/blob/main/src/tui/tabbed.rs#L249-L280). Its Timeline `e` key cycles filters, not expansion. Our earlier proposed general `z` toggle and tab removal were not implemented.
+
+Use `:prompt stream` in fixture mode to reproduce six small ACP chunks forming `summarize its purpose.`. `test/streaming.test.tsx` covers the original per-fragment display bug, selected-Run/turn boundaries, whitespace/CJK/emoji, terminal widths 60/80/120, Timeline filtering, incremental polling and reconnection.
+
+Use `:prompt progress` in fixture mode to exercise the actual MCP reporting path. `:prompt progress:<summary>` submits a chosen report; excessive/empty reports return a tool error. This is a deterministic fixture, not a live model. New real Sessions receive the same reporting tool and brief instructions.
 
 詳細按鍵、草稿與貼上行為見 [tui-keyboard.md](tui-keyboard.md)。所有 `:` 命令都是工作台白名單，沒有 shell 執行。`a` 不會自動選永久允許；d 顯示實際選項與細節，可用 `:answer N` 明確指定。
 

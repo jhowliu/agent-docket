@@ -169,6 +169,7 @@ export async function launchLocal(
           if (
             entry !== path &&
             (entry === root ||
+              (entry === join(path, 'target') && info.isDirectory()) ||
               excluded.has(name) ||
               name === '.env' ||
               name.startsWith('.env.') ||

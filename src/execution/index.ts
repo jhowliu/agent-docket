@@ -70,7 +70,11 @@ export type RunSnapshot = Readonly<{
 export type RunEventPayload =
   | { type: 'run.state'; state: RunState }
   | { type: 'capabilities'; capabilities: Capabilities }
+  /** Input accepted locally; does not assert provider delivery or task success. */
+  | { type: 'turn.start'; text: string }
   | { type: 'agent.message'; text: string }
+  /** Agent-authored progress, at most 50 whitespace-separated words; not a verified verdict. */
+  | { type: 'agent.progress'; summary: string }
   | { type: 'tool'; id: string; title: string; status: string }
   | { type: 'diff'; path: string; oldText: string; newText: string }
   | { type: 'attention'; id: string; status: string }

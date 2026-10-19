@@ -21,7 +21,11 @@ const app = agent({ name: 'workbench-fixture' })
   }))
   .onRequest(methods.agent.session.new, ({ params }) => {
     const sessionId = randomUUID();
-    sessions.set(sessionId, { cwd: params.cwd, abort: null });
+    sessions.set(sessionId, {
+      cwd: params.cwd,
+      abort: null,
+      mcpServers: params.mcpServers,
+    });
     return { sessionId };
   })
   .onNotification(methods.agent.session.cancel, ({ params }) => {
@@ -42,14 +46,79 @@ const app = agent({ name: 'workbench-fixture' })
         sessionUpdate: 'agent_message_chunk',
         content: { type: 'text', text },
       });
-    const text = params.prompt
-      .filter((p) => p.type === 'text')
-      .map((p) => p.text)
-      .join('');
+    const text =
+      params.prompt.filter((p) => p.type === 'text').at(-1)?.text ?? '';
+    if (
+      text === 'progress' ||
+      text.startsWith('progress:') ||
+      text === 'progress-wait'
+    ) {
+      const [{ Client }, { StdioClientTransport }] = await Promise.all([
+        import('@modelcontextprotocol/sdk/client/index.js'),
+        import('@modelcontextprotocol/sdk/client/stdio.js'),
+      ]);
+      const configured = session.mcpServers.find(
+        (server) => server.name === 'workbench_progress',
+      );
+      if (!configured || !('command' in configured))
+        throw new Error('Fixture progress tool missing');
+      const transport = new StdioClientTransport({
+        command: configured.command,
+        args: configured.args,
+        env: {
+          ...Object.fromEntries(
+            Object.entries(process.env).filter(
+              ([, value]) => value !== undefined,
+            ),
+          ),
+          ...Object.fromEntries(
+            configured.env.map(({ name, value }) => [name, value]),
+          ),
+        },
+        stderr: 'pipe',
+      });
+      const progress = new Client({
+        name: 'workbench-fixture',
+        version: '1.0.0',
+      });
+      try {
+        await progress.connect(transport);
+        const tools = await progress.listTools();
+        if (!tools.tools.some((tool) => tool.name === 'report_progress'))
+          throw new Error('Fixture could not discover progress reporting');
+        const summary = text.startsWith('progress:')
+          ? text.slice(9)
+          : 'Located the theme configuration and its entry point. I am checking how the setting reaches the rendered page; no changes have been made yet.';
+        const result = await progress.callTool({
+          name: 'report_progress',
+          arguments: { summary },
+        });
+        await message(
+          result.isError
+            ? 'Progress report rejected.'
+            : 'Progress report submitted. Full conversation remains here.',
+        );
+        if (text === 'progress-wait' && !abort.signal.aborted)
+          await new Promise((resolve) =>
+            abort.signal.addEventListener('abort', resolve, { once: true }),
+          );
+      } finally {
+        await progress.close();
+      }
+      return { stopReason: abort.signal.aborted ? 'cancelled' : 'end_turn' };
+    }
     if (text === 'crash') process.exit(17);
     if (text === 'question') {
       await message('What name should this check use? Reply in the next turn.');
       return { stopReason: 'end_turn' };
+    }
+    if (text === 'stream') {
+      for (const chunk of ['sum', 'marize', ' its', ' pur', 'pose', '.']) {
+        if (abort.signal.aborted) break;
+        await message(chunk);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return { stopReason: abort.signal.aborted ? 'cancelled' : 'end_turn' };
     }
     if (text === 'wait') {
       await message('Fixture is waiting for cancellation.');
