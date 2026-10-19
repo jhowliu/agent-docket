@@ -9,6 +9,28 @@ import { WorkbenchScreen } from '../src/app/tui-view.js';
 import type { RunEvent } from '../src/execution/index.js';
 import type { WorkbenchState } from '../src/app/workbench-protocol.js';
 
+test('progress instructions preserve provider slash-command dispatch', async (t) => {
+  const attention = createAttention();
+  const execution = createExecution({ attention });
+  t.after(() => execution.close());
+  attention.subscribe((item) => {
+    if (item.status !== 'pending') return;
+    const reject = item.choices.find((choice) => choice.kind === 'reject-once');
+    if (reject) attention.answer(item.id, reject.id);
+  });
+  const run = await execution.start({ provider: 'fixture' });
+  await execution.prompt(run.id, '/mcp');
+  const reply = execution
+    .events()
+    .flatMap((event) => (event.type === 'agent.message' ? [event.text] : []))
+    .join('');
+  assert.equal(reply, 'workbench_progress: report_progress');
+  assert.equal(attention.list().length, 0);
+  assert.ok(
+    !execution.events().some((event) => event.type === 'agent.progress'),
+  );
+});
+
 test('an agent discovers and calls its Run-bound progress tool; its wording enters the journal unchanged', async (t) => {
   const execution = createExecution({ attention: createAttention() });
   t.after(() => execution.close());

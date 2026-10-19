@@ -160,10 +160,21 @@ export const replySchema = z.union([
 ]);
 export type WorkbenchReply = z.infer<typeof replySchema>;
 
+// Fetch Standard bad ports within our supported 1024–65535 range.
+// https://fetch.spec.whatwg.org/#port-blocking
+const blockedHttpPorts = new Set([
+  1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666,
+  6667, 6668, 6669, 6679, 6697, 10080,
+]);
+
 export function workbenchOrigin(
   port = process.env['WORKBENCH_PORT'] ?? '4177',
 ): string {
   if (!/^\d{4,5}$/.test(port) || Number(port) < 1024 || Number(port) > 65535)
     throw new Error('WORKBENCH_PORT must be an integer between 1024 and 65535');
+  if (blockedHttpPorts.has(Number(port)))
+    throw new Error(
+      `WORKBENCH_PORT ${Number(port)} is blocked by Fetch; choose another port, for example 4182.`,
+    );
   return `http://127.0.0.1:${Number(port)}`;
 }

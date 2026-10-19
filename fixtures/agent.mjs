@@ -46,9 +46,11 @@ const app = agent({ name: 'workbench-fixture' })
         sessionUpdate: 'agent_message_chunk',
         content: { type: 'text', text },
       });
-    const text =
-      params.prompt.filter((p) => p.type === 'text').at(-1)?.text ?? '';
+    // Codex dispatches slash commands from the first prompt block.
+    const first = params.prompt[0];
+    const text = first?.type === 'text' ? first.text : '';
     if (
+      text === '/mcp' ||
       text === 'progress' ||
       text.startsWith('progress:') ||
       text === 'progress-wait'
@@ -86,6 +88,13 @@ const app = agent({ name: 'workbench-fixture' })
         const tools = await progress.listTools();
         if (!tools.tools.some((tool) => tool.name === 'report_progress'))
           throw new Error('Fixture could not discover progress reporting');
+        if (text === '/mcp') {
+          await message(
+            'workbench_progress: ' +
+              tools.tools.map((tool) => tool.name).join(', '),
+          );
+          return { stopReason: 'end_turn' };
+        }
         const summary = text.startsWith('progress:')
           ? text.slice(9)
           : 'Located the theme configuration and its entry point. I am checking how the setting reaches the rendered page; no changes have been made yet.';

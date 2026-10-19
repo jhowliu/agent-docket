@@ -3,6 +3,7 @@ import {
   commandSchema,
   replySchema,
   stateSchema,
+  workbenchOrigin,
 } from './workbench-protocol.js';
 import type {
   WorkbenchCommand,
@@ -31,6 +32,8 @@ export function createWorkbenchClient(
     address.origin !== origin
   )
     throw new Error('Workbench client requires an HTTP loopback origin');
+  // Reject unusable ports before bootstrap can spawn a background server.
+  workbenchOrigin(address.port);
   let token: string | null = null;
   let instance: string | null = null;
   let state: WorkbenchState | null = null;

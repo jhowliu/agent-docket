@@ -6,6 +6,8 @@ Current decision: implement [explicit local Codex execution](local-execution.md)
 
 2026-10-19 follow-up: the user chose [agent-authored progress reports](agent-progress.md), at most 50 words, rather than a rule-based semantic summary of chat/tool text. Local/fixture Sessions now receive a Run-specific MCP reporting tool; Timeline wraps its explicit reports and leaves ordinary conversation in Live. Real model compliance and quality remain unverified.
 
+2026-10-19 live acceptance: a real Codex task again returned `workspace routing discovery failed` before tools or reports. Fixed a discovered prompt-order regression that blocked native slash commands; the real adapter's `/mcp` now confirms the local progress server is connected. Autonomous reporting and native approval/edit/in-flight cancellation remain incomplete. See [real Codex acceptance](codex-live-acceptance.md).
+
 **目標與選型**
 
 使用者在同一個 terminal 工作台管理多個專案的 Codex／Claude：提出需求、查看串流與工具紀錄、回答問題、核准操作、追蹤 Dev → Review → Verify → PR，並透過有程式碼與驗證依據的互動報告理解交付。

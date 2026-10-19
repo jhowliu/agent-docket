@@ -654,10 +654,11 @@ export function createExecution(options: ExecutionOptions): Execution {
           {
             sessionId: slot.sessionId,
             prompt: [
+              // Provider slash commands are dispatched from the first block.
+              { type: 'text', text },
               ...(slot.progress
                 ? [{ type: 'text' as const, text: progressInstructions }]
                 : []),
-              { type: 'text', text },
             ],
           },
         );

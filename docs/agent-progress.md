@@ -7,7 +7,9 @@
 The tool accepts one field:
 
 ```json
-{ "summary": "Located the theme configuration. I am tracing preference initialization before proposing changes; no files have been modified." }
+{
+  "summary": "Located the theme configuration. I am tracing preference initialization before proposing changes; no files have been modified."
+}
 ```
 
 The instructions ask for English, at most 50 words, and updates when there is meaningful progress, a discovery, a blocker, a needed decision, or an outcome. These are examples of useful moments, not required categories or a fixed reporting schedule. Ordinary conversation and the final answer remain in Live.
@@ -20,7 +22,7 @@ The tool takes no Run ID, status, percentage, verdict or approval choice. A sent
 
 `execution` owns the private tool, current-turn identity, validation, redaction, journal events and cleanup. It adds an `agent.progress { summary }` event to its public Interface; `app` only reads and renders it.
 
-For each supported Run, execution provides a private MCP stdio configuration through ACP `session/new.mcpServers`. Each prompt contains a reporting-instructions text block followed by the original user text. The existing `turn.start` event still records the original accepted user input only. The source project and the user's CLI configuration are not edited.
+For each supported Run, execution provides a private MCP stdio configuration through ACP `session/new.mcpServers`. Each prompt preserves the original user text as its first block, followed by a reporting-instructions text block. The first block must remain user input because the pinned Codex adapter dispatches slash commands such as `/mcp` from that block. The existing `turn.start` event still records the original accepted user input only. The source project and the user's CLI configuration are not edited.
 
 The standard MCP server uses the pinned TypeScript SDK 1.32.1. It exposes only `report_progress`; it follows MCP's [tool discovery/call contract](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) and [stdio transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio). No additional network listener is created.
 

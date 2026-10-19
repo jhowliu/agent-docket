@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { connectWorkbench } from '../src/app/workbench-daemon.js';
@@ -102,6 +102,19 @@ test('one-command bootstrap creates a real shared server; client detach preserve
       return true;
     }
   });
+});
+
+test('a blocked HTTP port is rejected before autostart creates a log or daemon', async (t) => {
+  const logDirectory = await mkdtemp(join(tmpdir(), 'workbench-blocked-port-'));
+  t.after(() => rm(logDirectory, { recursive: true, force: true }));
+  await assert.rejects(
+    connectWorkbench('http://127.0.0.1:4190', {
+      autostart: true,
+      logDirectory,
+    }),
+    /4190.*blocked.*4182/,
+  );
+  assert.deepEqual(await readdir(logDirectory), []);
 });
 
 test('connect-only fails without starting a background listener', async () => {
