@@ -6,10 +6,18 @@
 
 | 模式／按鍵             | 操作                                     |
 | ---------------------- | ---------------------------------------- |
-| 導覽：`j/k`、↑ / ↓     | 選下一個／上一個可見 Run                 |
-| `h/l`、← / →、`1–3`    | 切換 Live／Diff／Timeline                |
+| 工作區：`j/k`、↑ / ↓   | 選下一個／上一個可見 Run                 |
+| 工作區：`h/l`、← / →、`1–3` | 切換 Live／Diff／Timeline           |
+| `Ctrl+w` 後 `h/l` 或 `w` | 聚焦工作區／Project，或切換兩者；保留資料夾展開與選取 |
 | `n` / `i`              | 新增已設定類型的 Run／在 idle Run 輸入文字 |
-| `p` / `s` / `?`        | 展開路徑／操作／說明                     |
+| `p` / `s` / `?`        | 瀏覽 Project 檔案樹／操作／說明        |
+| Project：`j/k`、↑ / ↓、`[` / `]` | 上下選取項目；略過狀態提示 |
+| Project：`h/l`、← / → | 收合／展開資料夾；已收合時回父層、已展開時進入子項 |
+| Project：`g/G`、Home/End、PgUp/PgDn | 首／末項；上下移動多個項目       |
+| `o`                    | 右側 Workflow 欄切換 Roadmap；窄視窗開關小視窗 |
+| Project 中 `Enter` / `R` | 展開／收合資料夾；重新整理檔案樹          |
+| outline 中 `[` / `]`  | 瀏覽上一個／下一個 Phase；不推進進度     |
+| outline 中 `{` / `}`  | 捲動 Task 清單                           |
 | `a` / `r`              | 回答畫面聚焦的核准：允許一次／拒絕一次   |
 | `Tab` / `Shift+Tab`    | 選定同 Run 的下一筆／上一筆待處理核准    |
 | `w` / `d`              | 跳到等待核准的 Run／展開核准細節與選項   |
@@ -17,16 +25,18 @@
 | `x`                    | 取消整個所選 Run，讓舊核准失效           |
 | `:`                    | 開啟白名單命令欄                         |
 | 輸入中 `Enter` / `Esc` | 送出／收起並保留草稿                     |
-| 導覽中 `Esc`           | 收起路徑、操作與說明                     |
+| 導覽中 `Esc`           | 收起 Project、操作與說明，回工作區焦點  |
 | `q` / Ctrl+C           | 只離開 TUI，背景 Run 繼續                |
 
 路徑、操作、說明與核准細節一次只展開一組，新要求的資訊會取代上一組。每個 Run 有自己的草稿，送出後沒有繼續改字才會清空／收起；草稿不跨 TUI 退出保存。輸入中的 jkar 都是文字；左右、Home／End、Backspace／Delete、Ctrl+A／E／U 可編輯，刪除以完整 grapheme 為單位。超過 1000 字元的輸入不接受，換行貼上轉成空格。
 
-Bracketed paste 使用獨立通道，導覽模式貼上 a／:cancel 不觸發動作。Ctrl／Alt／Command 組合不觸發導覽；kitty terminal 的 repeat／release 不執行 mutation。一般 terminal 沒有 key-up，因此相同 mutation key 連按會鎖住，需先換選或做另一個明確操作。每次回答後，即使下一筆核准補上，也要 Tab／換選 Run 明確選定再答。a/r 沒有對應一次性選項時不會推定其他選項；d 可看原本選項，再用 `:answer N` 明確指定。
+Bracketed paste 使用獨立通道，導覽模式貼上 a／:cancel 不觸發動作。除導覽模式的 `Ctrl+w` 焦點前綴外，Ctrl／Alt／Command 組合不觸發導覽；kitty terminal 的 repeat／release 不執行 mutation。一般 terminal 沒有 key-up，因此相同 mutation key 連按會鎖住，需先換選或做另一個明確操作。每次回答後，即使下一筆核准補上，也要 Tab／換選 Run 明確選定再答。a/r 沒有對應一次性選項時不會推定其他選項；d 可看原本選項，再用 `:answer N` 明確指定。Tab 從 Project 回工作區選核准，不用來切換面板。輸入文字時不啟用焦點切換。
 
-命令：`new`、`use 2`（目前可見清單的編號）、`active`、`inbox`、`history`、`live`、`diff`、`timeline`、`prompt fix`、`answer 1`、`cancel`、`help`、`quit`。這些都是工作台操作，不執行 shell。Fixture 情境包含 `fix`、`question`、`reply:名稱`、`wait`、`two-permissions`、`crash`。啟動與限制見 [TUI 操作](tui-operation.md)。
+命令：`new`、`use 2`（目前可見清單的編號）、`active`、`inbox`、`live`、`diff`、`timeline`、`prompt fix`、`answer 1`、`cancel`、`help`、`quit`。`g/G` 只捲動目前保留的事件視窗。這些都是工作台操作，不執行 shell。Fixture 情境包含 `fix`、`question`、`reply:名稱`、`wait`、`two-permissions`、`crash`。啟動與限制見 [TUI 操作](tui-operation.md)、[Run 生命週期](run-lifecycle.md)。
 
 本機 Codex 需要登入時，`s` 顯示 agent 廣告的登入方法；在命令欄輸入 `auth <method-id>`。取消會停止本機管理的程序群組並清理暫存 home，程式副本保留在 `p` 顯示的路徑。本機模式沒有 OS 安全隔離。
+
+Roadmap 命令：`:roadmap <title>`、`:phase <title>`、`:task <phase> <title>`、`:track <phase>.<task>`、`:focus <phase>`、`:spec <text>`、`:confirm`、`:stage <stage>`、`:direct`。支援的 stage ID 為 `clarification`、`development`、`agent-review`、`human-review`；設定工作位置不等於階段通過。詳見 [Roadmap 操作](roadmap-operation.md)。
 
 ## 瀏覽器 Demo
 
@@ -39,6 +49,7 @@ Bracketed paste 使用獨立通道，導覽模式貼上 a／:cancel 不觸發動
 | `n`                | 新增內建測試執行                                                      |
 | `i`                | 展開所選 agent 的文字回覆欄                                           |
 | `p` / `s`          | 展開／收起專案來源與執行操作                                          |
+| `o`                | 開關所選 Task 的小型 Roadmap；一般 Run 開啟手動設定                    |
 | `a` / `r`          | 允許一次／拒絕；優先回答 Tab 焦點所在的核准，否則回答所選執行的第一筆 |
 | `w`                | 跳到下一個需要核准的執行                                              |
 | `:`                | 開啟命令輸入欄                                                        |
@@ -48,7 +59,7 @@ Bracketed paste 使用獨立通道，導覽模式貼上 a／:cancel 不觸發動
 
 輸入文字、中文組字或按住 Ctrl／Alt／Command 時，不觸發導覽或核准。長按 `a`／`r`／`n` 不會自動重複操作。`a` 不替使用者選擇永久允許；沒有對應一次性選項時，仍須使用 agent 提供的實際選項。
 
-命令欄支援 `new`、`use 2`、`active`、`inbox`、`history`、`live`、`diff`、`timeline`、`cancel`、`help`。閒置測試可輸入 `fix`、`question`、`wait`、`permissions`、`crash`，觸發固定情境。這是畫面操作的白名單，不會執行 shell 命令。
+命令欄支援 `new`、`use 2`、`active`、`inbox`、`live`、`diff`、`timeline`、`cancel`、`help`。閒置測試可輸入 `fix`、`question`、`wait`、`permissions`、`crash`，觸發固定情境。這是畫面操作的白名單，不會執行 shell 命令。
 
 精簡版預設只顯示 agents 與 timeline。回覆欄按 i 才展開，Esc 收起並保留草稿；成功送出且未繼續修改的草稿也會收起。路徑、測試情境和說明均按需展開。
 

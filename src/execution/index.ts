@@ -1,4 +1,7 @@
 import type { Attention } from '../attention/index.js';
+import type { z } from 'zod';
+import type { directoryListingSchema } from './internal/directory.js';
+export type DirectoryListing = z.infer<typeof directoryListingSchema>;
 export type RunId = `run-${string}`;
 export type Provider = 'fixture' | 'codex' | 'claude';
 export type LocalWorker = Readonly<{
@@ -91,10 +94,17 @@ export interface Execution {
   authenticate(id: RunId, methodId: string): Promise<RunSnapshot>;
   /** One prompt per Run at a time. Busy prompts are rejected, not represented as steering. */
   prompt(id: RunId, text: string): Promise<{ stopReason: string }>;
+  /** Accepts input into the current process. Turn outcomes arrive as events. */
+  submit(id: RunId, text: string, context?: string): void;
   /** Invalidates decisions and stops managed work. Local code copies are retained. */
   cancel(id: RunId): Promise<void>;
   snapshot(id: RunId): RunSnapshot;
   list(): readonly RunSnapshot[];
+  /** Read-only, at most 200 entries per relative directory; fixture/local only.
+   * Links are listed but never expanded. No file contents or prior Runs are read.
+   * Invalid paths/unknown Runs throw; unavailable/ended environments return a reason.
+   */
+  listDirectory(id: RunId, path?: string): Promise<DirectoryListing>;
   /** Bounded cursor page. Throws when a cursor predates retained events. */
   events(after?: number): readonly RunEvent[];
   subscribe(listener: (event: RunEvent) => void): () => void;
@@ -104,4 +114,13 @@ export type ExecutionOptions = Readonly<{
   attention: Attention;
   maxEvents?: number;
 }>;
+export {
+  runIdSchema,
+  runSnapshotSchema,
+  runEventSchema,
+} from './internal/contract.js';
 export { createExecution, parseLaunch } from './internal/runtime.js';
+export {
+  directoryPathSchema,
+  directoryListingSchema,
+} from './internal/directory.js';

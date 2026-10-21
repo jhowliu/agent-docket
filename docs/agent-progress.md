@@ -38,7 +38,7 @@ Timeline shows these explicit reports with a cyan `Progress` label and the full 
 
 Reopening the TUI applies the new presentation, but reports need a new Session on the upgraded daemon so the tool is registered. Existing sessions have no such tool and old conversation is not retroactively converted into reports. No existing user-owned daemon or Run is restarted by this change. The current three tabs remain; there is no `z` mode or tab removal.
 
-These temporary records do not implement durable history, workflow-stage transitions, Candidate-bound verification or an independent review pipeline. A real model may omit reports despite the instructions; its autonomous use and report quality require live provider acceptance.
+The temporary reporting channel and bounded daemon journal are not durable. Reports remain available while the same daemon is running; a new daemon starts empty. See [Run lifecycle](run-lifecycle.md). Reports do not implement workflow-stage transitions, Candidate-bound verification or an independent review pipeline. A real model may omit reports despite the instructions; its autonomous use and report quality require live provider acceptance.
 
 ## Validation
 

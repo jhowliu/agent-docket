@@ -107,6 +107,16 @@ test('server restart replaces the journal and credentials without restoring old 
   assert.notEqual(fresh.instanceId, original.instanceId);
   assert.equal(fresh.runs.length, 0);
   assert.equal(fresh.events.length, 0);
+  assert.deepEqual(fresh.attention, []);
+  assert.equal(fresh.cursor, 0);
+  await assert.rejects(
+    client.command({
+      kind: 'prompt',
+      runId: run.runId,
+      text: 'must not resume',
+    }),
+    /Unknown Run/,
+  );
   await assert.rejects(
     client.command({ kind: 'answer', id: old.id, choiceId: old.choices[0].id }),
     /Unknown attention/,

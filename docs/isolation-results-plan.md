@@ -2,6 +2,8 @@
 
 2026-10-19 · Container isolation proposal, deferred by the user. The current implementation target is explicit local Codex execution; see [local mode](local-execution.md). The container ownership, network enforcement and reconciliation design below is retained for a later slice and is not implemented.
 
+2026-10-20: the user cancelled Run History. Current Runs and approval receipts are process-local only; see [Run lifecycle](run-lifecycle.md). The proposed resource ownership ledger below is future cleanup bookkeeping, not authorization to reintroduce conversation archives or past-Run browsing.
+
 This covers items 3 and 4 of the next-stage recommendation: verify isolation, and preserve actual commands, logs, code changes and failures. Implement them together: stopping an Environment must not erase the information needed to understand its Run.
 
 ## Starting point
@@ -30,7 +32,7 @@ Before creating a container, network or workspace, record its intended identity 
 
 Keep one controller per worker initially. Cleanup is idempotent and deletes only resources whose identity and ownership match the catalog. Never use a machine-wide prune. Record lifecycle and cleanup status independently: a Run can be interrupted while cleanup is still unconfirmed.
 
-On daemon restart, invalidate old approval callbacks, mark disconnected executions interrupted and reconcile owned resources. Saved history does not restore a live ACP session. If the worker is unreachable, show `Cleanup unconfirmed` and retry when it becomes reachable. A local daemon cannot guarantee remote deletion while disconnected.
+In this future resource-reconciliation slice, a daemon restart must reconcile owned resources while old approval callbacks remain unavailable. Resource ownership records do not restore a live ACP session. If the worker is unreachable, show `Cleanup unconfirmed` and retry when it becomes reachable. A local daemon cannot guarantee remote deletion while disconnected.
 
 ### Preserve code outside the agent's lifetime
 

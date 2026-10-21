@@ -2,11 +2,12 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { commandSchema } from './workbench-protocol.js';
+import { commandSchema, directoryRequestSchema } from './workbench-protocol.js';
 import { createAttention } from '../attention/index.js';
 import { createExecution, parseLaunch } from '../execution/index.js';
-import type { Launch } from '../execution/index.js';
+import type { Execution, Launch } from '../execution/index.js';
 import { launchFingerprint } from './launch-config.js';
+import { createWork } from '../work/index.js';
 
 const assets: Readonly<Record<string, { file: string; type: string }>> = {
   '/': { file: 'runtime.html', type: 'text/html; charset=utf-8' },
@@ -15,6 +16,10 @@ const assets: Readonly<Record<string, { file: string; type: string }>> = {
   '/styles.css': { file: 'styles.css', type: 'text/css; charset=utf-8' },
   '/runtime.css': { file: 'runtime.css', type: 'text/css; charset=utf-8' },
   '/runtime.js': { file: 'runtime.js', type: 'text/javascript; charset=utf-8' },
+  '/runtime-work.js': {
+    file: 'runtime-work.js',
+    type: 'text/javascript; charset=utf-8',
+  },
   '/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
   '/services.js': {
     file: 'services.js',
@@ -37,28 +42,54 @@ function json(value: unknown, status = 200): Response {
 /** Browser transport/composition only. All Run and permission rules stay in their domains. */
 export function createWebWorkbench(
   origin: string,
-  options: { onShutdown?: () => void; launch?: Launch } = {},
+  options: {
+    onShutdown?: () => void;
+    launch?: Launch;
+    maxEvents?: number;
+    planDirectory?: string;
+  } = {},
 ) {
   const address = new URL(origin);
   if (address.protocol !== 'http:' || address.hostname !== '127.0.0.1')
     throw new Error('The test workbench must use an HTTP loopback origin');
   const token = randomBytes(32).toString('hex');
   const instanceId = randomBytes(16).toString('hex');
-  const attention = createAttention();
-  const execution = createExecution({ attention });
   const directory = previewDirectory();
   const launch = parseLaunch(options.launch ?? { provider: 'fixture' });
   const configurationId = launchFingerprint(launch);
+  if ((options.maxEvents ?? 2000) > 2000)
+    throw new Error('Workbench polling supports at most 2000 events');
+  const attention = createAttention();
+  let execution: Execution;
+  try {
+    execution = createExecution({
+      attention,
+      maxEvents: options.maxEvents ?? 2000,
+    });
+  } catch (error) {
+    attention.close();
+    throw error;
+  }
   const source =
     launch.provider === 'fixture' || launch.source.kind === 'fixture'
       ? fileURLToPath(new URL('../fixtures/project/', directory))
       : launch.source.kind === 'directory'
         ? launch.source.path
         : `${launch.source.url}@${launch.source.revision}`;
+  const work = createWork({
+    execution,
+    projectKey:
+      launch.provider === 'fixture' || launch.source.kind === 'fixture'
+        ? `fixture:${source}`
+        : launch.source.kind === 'directory'
+          ? `directory:${launch.source.path}`
+          : `git:${launch.source.url}`,
+    ...(options.planDirectory ? { directory: options.planDirectory } : {}),
+  });
   let closing = false;
   let closingTask: Promise<void> | null = null;
   let launchPending = false;
-  let counter = 0;
+  let counter = execution.list().length;
 
   async function route(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -95,6 +126,8 @@ export function createWebWorkbench(
         reset,
         source,
         configurationId,
+        work: await work.snapshot(),
+        features: { directoryTree: true },
         launch: {
           provider: launch.provider,
           kind:
@@ -103,6 +136,30 @@ export function createWebWorkbench(
               : launch.worker.transport,
         },
       });
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/directory') {
+      if (
+        request.headers.get('x-workbench-token') !== token ||
+        (request.headers.has('origin') &&
+          request.headers.get('origin') !== address.origin)
+      )
+        return json({ error: 'Reconnect before browsing project files' }, 403);
+      const parsed = directoryRequestSchema.safeParse({
+        runId: url.searchParams.get('runId'),
+        path: url.searchParams.get('path') ?? '',
+      });
+      if (!parsed.success)
+        return json({ error: 'Invalid workspace directory' }, 400);
+      try {
+        const result = json(
+          await execution.listDirectory(parsed.data.runId, parsed.data.path),
+        );
+        result.headers.set('cache-control', 'no-store');
+        return result;
+      } catch {
+        return json({ error: 'Run workspace is unavailable' }, 404);
+      }
     }
 
     if (request.method === 'POST' && url.pathname === '/api/commands') {
@@ -118,7 +175,7 @@ export function createWebWorkbench(
       if (!request.headers.get('content-type')?.startsWith('application/json'))
         return json({ error: 'Expected application/json' }, 415);
       const text = await request.text();
-      if (Buffer.byteLength(text) > 8192)
+      if (Buffer.byteLength(text) > 32768)
         return json({ error: 'Command is too large' }, 413);
       let input: unknown;
       try {
@@ -131,6 +188,10 @@ export function createWebWorkbench(
         return json({ error: 'Invalid workbench command' }, 400);
       const command = parsed.data;
       try {
+        if ('expectedRevision' in command) {
+          await work.apply(command);
+          return json({ result: 'accepted' }, 202);
+        }
         if (command.kind === 'shutdown') {
           if (!options.onShutdown)
             return json(
@@ -143,12 +204,12 @@ export function createWebWorkbench(
         if (command.kind === 'start') {
           if (launchPending)
             return json({ error: 'A Run is already starting' }, 409);
-          // Bound both retained history and concurrent child processes in this test UI.
-          if (execution.list().length >= 20)
+          // Keep the current process's in-memory Run roster bounded.
+          if (execution.list().length >= 64)
             return json(
               {
                 error:
-                  '20 Runs reached; restart the test server for a fresh session',
+                  '64 Runs reached; restart the server for a fresh session',
               },
               409,
             );
@@ -224,7 +285,7 @@ export function createWebWorkbench(
           );
         // Do not hold the request open while the prompt waits for an approval.
         // Execution records asynchronous failures and owns cancellation/cleanup.
-        void execution.prompt(id, command.text).catch(() => {});
+        await work.submit(id, command.text);
         return json({ result: 'accepted' }, 202);
       } catch (error: unknown) {
         return json(
@@ -267,7 +328,10 @@ export function createWebWorkbench(
     },
     close(): Promise<void> {
       closing = true;
-      closingTask ??= execution.close();
+      closingTask ??= work
+        .close()
+        .then(() => execution.close())
+        .finally(() => attention.close());
       return closingTask;
     },
   };

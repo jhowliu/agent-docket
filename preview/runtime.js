@@ -30,7 +30,36 @@
     source: 'fixtures/project',
     launch: { provider: 'fixture', kind: 'trusted-fixture-directory' },
     drafts: {},
+    work: undefined,
   };
+  let roadmap = null;
+  let roadmapModule = null;
+  async function updateRoadmap(input) {
+    if (input === undefined) {
+      state.work = undefined;
+      return;
+    }
+    try {
+      // Old daemons read current assets from disk but do not allowlist the new module.
+      // Keep their ordinary Run controls working without requesting unsupported assets.
+      roadmapModule ??= import('./runtime-work.js');
+      const module = await roadmapModule;
+      state.work = module.parseWorkSnapshot(input);
+      roadmap ??= module.createRoadmapView({
+        root,
+        read: () => state,
+        command: (input) => command(input),
+        selectRun: (id) => selectRun(id),
+        feedback: (text, error) => feedback(text, error),
+      });
+    } catch {
+      state.work = undefined;
+      feedback(
+        'Roadmap controls are unavailable; reload to retry. Ordinary Run controls remain connected.',
+        true,
+      );
+    }
+  }
   const lastHtml = new WeakMap();
   let polling = false;
   let panelKey = '';
@@ -82,11 +111,9 @@
     'Run ' + (state.runs.findIndex((item) => item.id === run.id) + 1);
   const visibleRuns = () =>
     state.runs.filter((run) =>
-      state.filter === 'history'
-        ? terminal(run)
-        : state.filter === 'attention'
-          ? pending(run.id).length > 0
-          : !terminal(run),
+      state.filter === 'attention'
+        ? pending(run.id).length > 0
+        : !terminal(run),
     );
   function changeFilter(filter) {
     state.filter = filter;
@@ -247,6 +274,7 @@
     else if (changedView) panel.scrollTop = 0;
   }
   function render() {
+    roadmap?.render();
     statusText(
       $('[data-connection]'),
       state.connected
@@ -282,7 +310,6 @@
     $('[data-total]').textContent = state.runs.filter(
       (run) => !terminal(run),
     ).length;
-    $('[data-history-count]').textContent = state.runs.filter(terminal).length;
     $('[data-pending]').textContent = pending().length;
     $('[data-source]').textContent = state.source;
     $('[data-start]').disabled = !state.connected || state.busy;
@@ -305,7 +332,12 @@
                 '" aria-pressed="' +
                 (run.id === state.selected) +
                 '"><span class="aw-run-title">' +
-                escape(runLabel(run)) +
+                escape(
+                  runLabel(run) +
+                    (roadmap?.title(run.id)
+                      ? ' · ' + roadmap.title(run.id)
+                      : ''),
+                ) +
                 '</span><span class="aw-state ' +
                 color +
                 '"><span class="aw-dot"></span>' +
@@ -317,9 +349,7 @@
         : '<p class="aw-empty">' +
             (state.filter === 'attention'
               ? 'No pending approvals. Switch to Active to select a Run.'
-              : state.filter === 'history'
-                ? 'No past Runs yet.'
-                : 'Press n for a new Run. Finished Runs appear in History.') +
+              : 'Press n for a new Run.') +
             '</p>',
     );
     const run = selectedRun();
@@ -348,7 +378,9 @@
       return;
     }
     const [text, color] = status(run);
-    $('[data-title]').textContent = runLabel(run);
+    $('[data-title]').textContent =
+      runLabel(run) +
+      (roadmap?.title(run.id) ? ' · ' + roadmap.title(run.id) : '');
     $('[data-state]').textContent = text;
     $('[data-state]').className = 'aw-state ' + color;
     html(
@@ -468,6 +500,7 @@
         provider: 'fixture',
         kind: 'trusted-fixture-directory',
       };
+      await updateRoadmap(snapshot.work);
       if (!visibleRuns().some((run) => run.id === state.selected))
         selectRun(visibleRuns()[0]?.id ?? null, false);
       if (!state.connected) feedback('Connected · press n for a new Run');
@@ -523,7 +556,9 @@
               ? 'Response accepted · awaiting transport delivery'
               : input.kind === 'cancel'
                 ? 'Run cancelled · old approvals expired'
-                : 'Last message accepted'),
+                : input.kind.startsWith('work.')
+                  ? 'Roadmap updated'
+                  : 'Last message accepted'),
       );
       return true;
     } catch (error) {
@@ -544,8 +579,7 @@
     $('#rt-message').value = state.drafts[id] ?? '';
     if (shouldRender) {
       const run = selectedRun();
-      if (run && !visibleRuns().includes(run))
-        state.filter = terminal(run) ? 'history' : 'active';
+      if (run && !visibleRuns().includes(run)) state.filter = 'active';
       render();
     }
   }
@@ -659,7 +693,7 @@
       selectTab(name);
       return true;
     }
-    if (['active', 'inbox', 'history'].includes(name)) {
+    if (['active', 'inbox'].includes(name)) {
       changeFilter(name === 'inbox' ? 'attention' : name);
       return true;
     }
@@ -669,7 +703,7 @@
     }
     if (name === 'use' && /^\d+$/.test(parts[1] ?? '')) {
       const run = state.runs[Number(parts[1]) - 1];
-      if (run) {
+      if (run && !terminal(run)) {
         selectRun(run.id);
         return true;
       }
@@ -719,6 +753,10 @@
       event.target instanceof HTMLSelectElement ||
       event.target.isContentEditable;
     if (event.key === 'Escape') {
+      if (roadmap?.escape()) {
+        event.preventDefault();
+        return;
+      }
       if (typing || state.composing || !$('[data-command-form]').hidden) {
         event.preventDefault();
         state.composing = false;
@@ -746,9 +784,15 @@
       's',
       '?',
       ':',
+      'o',
     ];
     if (!keys.includes(event.key)) return;
     event.preventDefault();
+    if (event.key === 'o') {
+      if (roadmap) roadmap.open();
+      else feedback('Roadmap controls need a new server on another port.');
+      return;
+    }
     if (event.key === 'n') {
       $('[data-start]').click();
       return;
@@ -776,7 +820,7 @@
         state.composing = true;
         render();
         $('#rt-message').focus();
-      } else feedback('Press n for a new Run, or select one from History.');
+      } else feedback('Press n for a new Run.');
       return;
     }
     if (['h', 'l', '1', '2', '3'].includes(event.key)) {

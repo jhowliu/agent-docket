@@ -18,13 +18,13 @@ export type AttentionItem = Content &
   (
     | Readonly<{ status: 'pending' }>
     | Readonly<{ status: 'accepted' | 'delivered'; choiceId: string }>
-    | Readonly<{ status: 'stale'; reason: string }>
+    | Readonly<{ status: 'stale'; reason: string; choiceId?: string }>
   );
 export type Decision =
   | Readonly<{ kind: 'selected'; choiceId: string }>
   | Readonly<{ kind: 'cancelled' }>;
 export interface Attention {
-  /** At most 100 pending items; terminal history is bounded to 500 items. */
+  /** At most 100 pending items; in-memory receipts are bounded to 500 items. */
   request(input: Omit<Content, 'id' | 'createdAt'>): {
     id: AttentionId;
     decision: Promise<Decision>;
@@ -39,5 +39,8 @@ export interface Attention {
   invalidate(target: RunReference | AttentionId, reason: string): void;
   list(runId?: RunReference): readonly AttentionItem[];
   subscribe(listener: (item: AttentionItem) => void): () => void;
+  /** Invalidates unfinished decisions and closes the in-memory inbox. */
+  close(): void;
 }
+export { attentionItemSchema } from './internal/contract.js';
 export { createAttention } from './internal/broker.js';

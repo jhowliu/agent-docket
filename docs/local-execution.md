@@ -39,7 +39,7 @@ Directory sources include uncommitted regular files. Copying omits `.git`, `.wor
 
 HTTPS Git sources at an immutable full SHA remain supported. They use a separate clone with hooks disabled during initialization, not a shared source working directory.
 
-Workspaces use `workspaceRoot/run-…/repo`; remove retained copies explicitly when no longer needed. There is no automatic retention/GC yet. Workspace files alone are not a durable Run history or a sealed Candidate. Timeline remains bounded in memory and disappears when the daemon restarts.
+Workspaces use `workspaceRoot/run-…/repo`; remove retained copies explicitly when no longer needed. There is no automatic retention/GC yet. Workspace files alone are not a sealed Candidate. Run events and approvals stay only in bounded daemon memory; a restarted daemon begins empty and does not restore Sessions. Crash-time environment cleanup remains unconfirmed. See [Run lifecycle](run-lifecycle.md).
 
 ## Domain and failure behavior
 
@@ -57,4 +57,4 @@ The bundled real adapter also completed an initialization/new-session handshake 
 
 On 2026-10-19, the user-selected `ptt-web` directory was copied and the real Ink application sent `Describe this project in 200 words.` to the real adapter with a private copy of the existing file login. The harness used in-memory application transport, without a listener or physical terminal. The adapter reached Idle, accepted the prompt and returned `workspace routing discovery failed`; the current execution sandbox reports networking disabled. No project description, model tool activity, approval or diff was received. The adapter still reported `end_turn` and returned to Idle: a completed turn does not establish task success. Cancellation reached Cancelled, the code copy remained, and fingerprints confirmed all 17 selected original source, test, manifest and documentation files were unchanged. Private trial configuration, state and frames are under `.workbench/acceptance/ptt-web/`. Real inference must be retried in an environment with the required connectivity; this attempt does not establish that the login can perform inference.
 
-These tests establish native orchestration behavior, not model correctness or security isolation. Real Codex account authentication/inference, Claude local mode, actual check-result recording, persistent history, Services and the role pipeline remain separate acceptance work.
+These tests establish native orchestration behavior, not model correctness or security isolation. Real Codex account authentication/inference, Claude local mode, actual check-result recording, Services and the role pipeline remain separate acceptance work.

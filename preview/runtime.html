@@ -12,7 +12,7 @@
     <title>Agent Workbench · Fixture Demo</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./runtime.css" />
-    <script src="./runtime.js" defer></script>
+    <script src="./runtime.js" type="module"></script>
   </head>
   <body>
     <main class="workbench-page">
@@ -42,6 +42,14 @@
                     >Deterministic fixture; no model connection.</span
                   ><a href="./index.html">Multi-project / Services prototype</a>
                 </p>
+                <button
+                  type="button"
+                  class="aw-button"
+                  data-project-roadmap
+                  hidden
+                >
+                  Roadmap
+                </button>
               </div>
             </details>
             <button type="button" class="aw-button" data-start disabled>
@@ -67,14 +75,6 @@
                 aria-pressed="false"
               >
                 Needs attention <span data-pending>0</span>
-              </button>
-              <button
-                type="button"
-                class="aw-button"
-                data-filter="history"
-                aria-pressed="false"
-              >
-                History <span data-history-count>0</span>
               </button>
             </div>
           </div>
@@ -150,6 +150,7 @@
               <details class="aw-run-options" data-run-options>
                 <summary>Actions <kbd>s</kbd></summary>
                 <div class="aw-detail-meta" data-meta></div>
+                <div class="aw-scenarios" data-work-options hidden></div>
                 <div class="aw-environment">
                   <span>Run copy</span><code data-environment></code>
                 </div>
@@ -177,6 +178,69 @@
                 </div>
               </details>
             </div>
+            <div class="aw-workflow" data-workflow hidden>
+              <ol
+                class="aw-work-steps"
+                aria-label="Task stages"
+                data-work-steps
+              ></ol>
+              <details class="aw-roadmap" data-roadmap>
+                <summary data-roadmap-summary>Roadmap</summary>
+                <section class="aw-roadmap-window" aria-label="Project Roadmap">
+                  <div class="aw-work-heading">
+                    <strong data-roadmap-title>Roadmap</strong
+                    ><button
+                      class="aw-button"
+                      type="button"
+                      data-work-close-map
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div data-work-phases></div>
+                  <div class="aw-roadmap-tasks" data-work-tasks></div>
+                  <p class="aw-note" data-work-summary></p>
+                  <div class="aw-work-actions">
+                    <button class="aw-button" type="button" data-work-focus>
+                      Work on this phase</button
+                    ><button
+                      class="aw-button"
+                      type="button"
+                      data-work-open-editor
+                    >
+                      Manage
+                    </button>
+                  </div>
+                </section>
+              </details>
+            </div>
+            <section
+              class="aw-work-inspector"
+              data-work-inspector
+              aria-label="Task stage"
+              hidden
+            >
+              <div class="aw-work-heading">
+                <strong data-work-stage-title></strong
+                ><button class="aw-button" type="button" data-work-close-stage>
+                  Close
+                </button>
+              </div>
+              <p class="aw-note" data-work-stage-description></p>
+              <div class="aw-work-actions">
+                <button class="aw-button" type="button" data-work-stage-use>
+                  Work on this stage</button
+                ><button class="aw-button" type="button" data-work-open-editor>
+                  Edit requirements
+                </button>
+              </div>
+            </section>
+            <section
+              class="aw-work-editor"
+              data-work-editor
+              aria-label="Roadmap editor"
+              hidden
+            ></section>
             <div
               id="rt-panel"
               class="aw-panel"
@@ -217,7 +281,7 @@
                 id="rt-command"
                 class="aw-input"
                 autocomplete="off"
-                placeholder="new · use 2 · fix · inbox · history · cancel · help"
+                placeholder="new · use 2 · fix · inbox · cancel · help"
                 maxlength="100"
               />
             </div>
@@ -251,14 +315,15 @@
                 <dd>Allow once / reject; Tab selects a request</dd>
                 <dt>p / s</dt>
                 <dd>Project / Run actions</dd>
+                <dt>o</dt>
+                <dd>Roadmap for the selected tracked Run</dd>
                 <dt>:</dt>
                 <dd>Command mode</dd>
               </dl>
               <p>
-                Commands: new, use 2, active, inbox, history, live, diff,
-                timeline, cancel, help. Scenarios: fix, question, wait,
-                permissions, crash. These are workbench actions, not shell
-                commands.
+                Commands: new, use 2, active, inbox, live, diff, timeline,
+                cancel, help. Scenarios: fix, question, wait, permissions,
+                crash. These are workbench actions, not shell commands.
               </p>
               <p>
                 This page shares the server with npm run tui. Closing a tab

@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="description" content="An interactive Agent Workbench concept with compact, optional task progress." />
+    <title>Agent Workbench · Compact Roadmap Concept</title>
+    <style>
+      :root { color-scheme: dark light; }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 24px; background: light-dark(#edf2f6, #10151c); }
+      #run-workspace-preview {
+        --aw-bg: light-dark(#f6f8fa, #10151c);
+        --aw-panel: light-dark(#ffffff, #131a23);
+        --aw-raised: light-dark(#edf2f6, #1a2431);
+        --aw-text: light-dark(#1b2a38, #d9e2ed);
+        --aw-muted: light-dark(#526477, #9aaabd);
+        --aw-line: light-dark(#c4d0da, #334458);
+        --aw-cyan: light-dark(#006d78, #78d4df);
+        --aw-cyan-wash: light-dark(#e0f0f3, #17313b);
+        --aw-amber: light-dark(#87500a, #efbd72);
+        --aw-amber-wash: light-dark(#fff4dc, #30291e);
+        --aw-green: light-dark(#277242, #93c7a3);
+        --aw-red: light-dark(#ac343f, #f09aa3);
+        max-width: 1280px;
+        margin: 0 auto;
+        border: 1px solid var(--aw-line);
+        border-radius: 3px;
+        color: var(--aw-text);
+        background: var(--aw-bg);
+        font: 400 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      #run-workspace-preview [hidden] { display: none !important; }
+      #run-workspace-preview button, #run-workspace-preview input, #run-workspace-preview textarea { font: inherit; color: inherit; }
+      #run-workspace-preview button, #run-workspace-preview summary { touch-action: manipulation; }
+      #run-workspace-preview button { background: transparent; }
+      #run-workspace-preview button:hover, #run-workspace-preview summary:hover { background: var(--aw-raised); }
+      #run-workspace-preview button:focus-visible, #run-workspace-preview summary:focus-visible, #run-workspace-preview input:focus-visible, #run-workspace-preview textarea:focus-visible { outline: 2px solid var(--aw-cyan); outline-offset: 2px; }
+      #run-workspace-preview button:disabled { color: var(--aw-muted); background: transparent; }
+      #run-workspace-preview input, #run-workspace-preview textarea { caret-color: var(--aw-cyan); }
+      #run-workspace-preview ::selection { color: var(--aw-text); background: var(--aw-cyan-wash); }
+      #run-workspace-preview strong { font-weight: 500; }
+      #run-workspace-preview p { margin: 0; }
+      #run-workspace-preview kbd { font: inherit; color: var(--aw-cyan); }
+      #run-workspace-preview .aw-muted { color: var(--aw-muted); }
+      #run-workspace-preview .aw-small { font-size: 12px; }
+      #run-workspace-preview .aw-chrome, #run-workspace-preview .aw-toolbar, #run-workspace-preview .aw-detail-title, #run-workspace-preview .aw-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+      #run-workspace-preview .aw-chrome { padding: 10px 12px; border-bottom: 1px solid var(--aw-line); }
+      #run-workspace-preview .aw-brand { color: var(--aw-cyan); }
+      #run-workspace-preview .aw-demo { margin-left: auto; color: var(--aw-muted); font-size: 12px; }
+      #run-workspace-preview .aw-button { border: 1px solid var(--aw-line); border-radius: 3px; padding: 3px 9px; font-size: 12px; }
+      #run-workspace-preview .aw-button[aria-pressed="true"] { color: var(--aw-cyan); background: var(--aw-cyan-wash); border-color: var(--aw-cyan); }
+      #run-workspace-preview .aw-toolbar { padding: 10px 12px 6px; justify-content: space-between; }
+      #run-workspace-preview .aw-toolbar > strong { color: var(--aw-cyan); font-weight: 400; }
+      #run-workspace-preview .aw-filters { display: flex; flex-wrap: wrap; gap: 5px; }
+      #run-workspace-preview .aw-table-head, #run-workspace-preview .aw-run { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 12px; align-items: center; }
+      #run-workspace-preview .aw-table-head { padding: 3px 12px; color: var(--aw-muted); font-size: 11px; }
+      #run-workspace-preview .aw-roster { padding-bottom: 10px; }
+      #run-workspace-preview .aw-run { width: 100%; padding: 7px 12px; border: 0; border-top: 1px solid transparent; border-bottom: 1px solid transparent; text-align: left; }
+      #run-workspace-preview .aw-run[aria-pressed="true"] { background: var(--aw-cyan-wash); border-color: var(--aw-cyan); }
+      #run-workspace-preview .aw-run-name { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 12px; min-width: 0; }
+      #run-workspace-preview .aw-run-name > span { overflow-wrap: anywhere; }
+      #run-workspace-preview .aw-run-meta { color: var(--aw-muted); font-size: 12px; }
+      #run-workspace-preview .aw-state { color: var(--aw-cyan); font-size: 12px; }
+      #run-workspace-preview .aw-state[data-tone="waiting"] { color: var(--aw-amber); }
+      #run-workspace-preview .aw-detail { border-top: 1px solid var(--aw-line); }
+      #run-workspace-preview .aw-detail-title { padding: 7px 12px; border-bottom: 1px solid var(--aw-line); }
+      #run-workspace-preview .aw-detail-title > strong { overflow-wrap: anywhere; }
+      #run-workspace-preview .aw-tabs { display: flex; gap: 3px; margin-left: auto; }
+      #run-workspace-preview .aw-tab { padding: 4px 7px; border: 0; border-bottom: 1px solid transparent; font-size: 12px; }
+      #run-workspace-preview .aw-tab[aria-selected="true"] { color: var(--aw-cyan); border-bottom-color: var(--aw-cyan); }
+      #run-workspace-preview .aw-direct { color: var(--aw-muted); font-size: 12px; }
+      #run-workspace-preview .aw-workflow { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 12px; padding: 5px 12px; border-bottom: 1px solid var(--aw-line); }
+      #run-workspace-preview .aw-steps { display: flex; align-items: center; flex-wrap: wrap; gap: 0 5px; margin: 0; padding: 0; list-style: none; }
+      #run-workspace-preview .aw-steps li { display: flex; align-items: center; }
+      #run-workspace-preview .aw-steps li + li::before { content: "/"; padding-right: 5px; color: var(--aw-line); }
+      #run-workspace-preview .aw-step { border: 0; border-bottom: 1px solid transparent; padding: 3px 1px; color: var(--aw-muted); font-size: 12px; white-space: nowrap; }
+      #run-workspace-preview .aw-step[data-status="complete"] { color: var(--aw-green); }
+      #run-workspace-preview .aw-step[aria-current="step"] { color: var(--aw-cyan); border-bottom-color: var(--aw-cyan); }
+      #run-workspace-preview .aw-step[aria-current="step"][data-status="waiting"] { color: var(--aw-amber); border-bottom-color: var(--aw-amber); }
+      #run-workspace-preview .aw-short { display: none; }
+      #run-workspace-preview .aw-map { position: relative; margin-left: auto; font-size: 12px; }
+      #run-workspace-preview .aw-map > summary { color: var(--aw-muted); padding: 3px 0; }
+      #run-workspace-preview .aw-map[open] > summary { color: var(--aw-cyan); }
+      #run-workspace-preview .aw-map-window { position: absolute; right: 0; top: calc(100% + 6px); width: 330px; padding: 10px; border: 1px solid var(--aw-line); border-radius: 3px; background: var(--aw-panel); z-index: 3; }
+      #run-workspace-preview .aw-map-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+      #run-workspace-preview .aw-text-button { border: 0; padding: 2px 4px; color: var(--aw-muted); font-size: 12px; }
+      #run-workspace-preview .aw-phase { width: 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 8px; text-align: left; border: 0; padding: 6px 4px; }
+      #run-workspace-preview .aw-phase > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+      #run-workspace-preview .aw-phase[aria-pressed="true"] { background: var(--aw-cyan-wash); color: var(--aw-cyan); }
+      #run-workspace-preview .aw-phase-status { font-size: 11px; color: var(--aw-muted); }
+      #run-workspace-preview .aw-phase-status[data-state="current"] { color: var(--aw-cyan); }
+      #run-workspace-preview .aw-phase-status[data-state="complete"] { color: var(--aw-green); }
+      #run-workspace-preview .aw-map-tasks { margin-top: 7px; padding-top: 8px; border-top: 1px solid var(--aw-line); }
+      #run-workspace-preview .aw-map-task { border: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; width: 100%; padding: 5px 4px; text-align: left; }
+      #run-workspace-preview .aw-map-task > span { min-width: 0; overflow-wrap: anywhere; }
+      #run-workspace-preview .aw-map-task > small { font: inherit; color: var(--aw-muted); }
+      #run-workspace-preview .aw-map-task[aria-current="true"] { color: var(--aw-cyan); }
+      #run-workspace-preview .aw-map-note { font-size: 11px; color: var(--aw-muted); margin-top: 8px; }
+      #run-workspace-preview .aw-stage-detail { padding: 7px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; border-bottom: 1px solid var(--aw-line); background: var(--aw-panel); font-size: 12px; }
+      #run-workspace-preview .aw-stage-detail p { grid-column: 1; color: var(--aw-muted); overflow-wrap: anywhere; }
+      #run-workspace-preview .aw-stage-detail button { grid-row: 1 / 3; grid-column: 2; align-self: start; }
+      #run-workspace-preview .aw-panel { min-height: 235px; padding: 13px 12px 16px; }
+      #run-workspace-preview .aw-log { display: grid; gap: 13px; }
+      #run-workspace-preview .aw-event { display: grid; grid-template-columns: 48px 55px minmax(0, 1fr); gap: 10px; align-items: baseline; }
+      #run-workspace-preview .aw-time, #run-workspace-preview .aw-kind { font-size: 12px; color: var(--aw-muted); }
+      #run-workspace-preview .aw-kind[data-kind="agent"] { color: var(--aw-cyan); }
+      #run-workspace-preview .aw-kind[data-kind="tool"] { color: var(--aw-green); }
+      #run-workspace-preview .aw-message { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+      #run-workspace-preview .aw-diff { display: block; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+      #run-workspace-preview .aw-diff span { display: block; }
+      #run-workspace-preview .aw-added { color: var(--aw-green); }
+      #run-workspace-preview .aw-removed { color: var(--aw-red); }
+      #run-workspace-preview .aw-path { color: var(--aw-muted); margin-bottom: 10px; font-size: 12px; overflow-wrap: anywhere; }
+      #run-workspace-preview .aw-review { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 8px 12px; border-top: 1px solid var(--aw-line); background: var(--aw-amber-wash); font-size: 12px; }
+      #run-workspace-preview .aw-review > strong { color: var(--aw-amber); font-weight: 400; }
+      #run-workspace-preview .aw-review-actions { display: flex; gap: 6px; margin-left: auto; }
+      #run-workspace-preview .aw-button-primary { border-color: var(--aw-cyan); color: var(--aw-bg); background: var(--aw-cyan); }
+      #run-workspace-preview .aw-button-primary:hover { color: var(--aw-cyan); background: var(--aw-cyan-wash); }
+      #run-workspace-preview .aw-composer { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--aw-line); }
+      #run-workspace-preview .aw-input-wrap { flex: 1 1 230px; min-width: 0; }
+      #run-workspace-preview label { display: block; font-size: 12px; color: var(--aw-muted); margin-bottom: 4px; }
+      #run-workspace-preview input, #run-workspace-preview textarea { background: var(--aw-bg); border: 1px solid var(--aw-line); border-radius: 3px; padding: 6px 8px; width: 100%; min-width: 0; }
+      #run-workspace-preview textarea { display: block; resize: vertical; }
+      #run-workspace-preview .aw-form-error { width: 100%; color: var(--aw-red); font-size: 12px; }
+      #run-workspace-preview .aw-footer { padding: 7px 12px; border-top: 1px solid var(--aw-line); color: var(--aw-muted); font-size: 11px; justify-content: space-between; align-items: baseline; }
+      #run-workspace-preview .aw-feedback { max-width: 70ch; overflow-wrap: anywhere; }
+      #run-workspace-preview .aw-empty { padding: 12px; color: var(--aw-muted); font-size: 12px; }
+      @media (max-width: 760px) {
+        body { padding: 12px; }
+        #run-workspace-preview .aw-run-name { display: block; }
+        #run-workspace-preview .aw-run-meta { display: block; }
+        #run-workspace-preview .aw-detail-title > strong { flex: 1 1 70%; }
+        #run-workspace-preview .aw-tabs { margin-left: 0; }
+        #run-workspace-preview .aw-detail-title > .aw-button { margin-left: auto; }
+      }
+      @media (max-width: 540px) {
+        body { padding: 8px; }
+        #run-workspace-preview { font-size: 12px; }
+        #run-workspace-preview .aw-chrome { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+        #run-workspace-preview .aw-brand { grid-column: 1; grid-row: 1; }
+        #run-workspace-preview .aw-demo { grid-column: 1; grid-row: 2; margin-left: 0; }
+        #run-workspace-preview .aw-chrome > button { grid-column: 2; grid-row: 1 / 3; }
+        #run-workspace-preview .aw-toolbar { align-items: start; gap: 6px; }
+        #run-workspace-preview .aw-table-head { display: none; }
+        #run-workspace-preview .aw-run { grid-template-columns: minmax(0, 1fr) 100px; gap: 8px; }
+        #run-workspace-preview .aw-run-project { display: none; }
+        #run-workspace-preview .aw-state { font-size: 11px; }
+        #run-workspace-preview .aw-workflow { gap: 1px 8px; }
+        #run-workspace-preview .aw-steps { flex-basis: 100%; gap: 0 4px; }
+        #run-workspace-preview .aw-step { font-size: 11px; }
+        #run-workspace-preview .aw-full { display: none; }
+        #run-workspace-preview .aw-short { display: inline; }
+        #run-workspace-preview .aw-map { margin-left: 0; max-width: 100%; }
+        #run-workspace-preview .aw-map[open] { flex-basis: 100%; }
+        #run-workspace-preview .aw-map-window { position: static; width: 100%; margin-top: 5px; }
+        #run-workspace-preview .aw-panel { min-height: 220px; }
+        #run-workspace-preview .aw-event { grid-template-columns: 38px minmax(0, 1fr); gap: 2px 8px; }
+        #run-workspace-preview .aw-kind { grid-column: 2; }
+        #run-workspace-preview .aw-message { grid-column: 2; }
+        #run-workspace-preview .aw-log { gap: 12px; }
+        #run-workspace-preview .aw-review-actions { margin-left: 0; }
+        #run-workspace-preview input, #run-workspace-preview textarea { font-size: 16px; }
+      }
+      @media (pointer: coarse) {
+        #run-workspace-preview button, #run-workspace-preview summary { min-height: 44px; }
+        #run-workspace-preview .aw-run { min-height: 58px; }
+        #run-workspace-preview .aw-steps { column-gap: 2px; }
+        #run-workspace-preview .aw-steps li + li::before { padding-right: 2px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="run-workspace-preview" aria-label="Agent Workbench interactive concept">
+      <header class="aw-chrome">
+        <span class="aw-brand">agent / workbench</span>
+        <span class="aw-demo">Concept · sample runs</span>
+        <button class="aw-button" type="button" data-theme>Light</button>
+      </header>
+      <div class="aw-toolbar">
+        <strong>agents</strong>
+        <div class="aw-filters" aria-label="Run filters">
+          <button class="aw-button" type="button" data-filter="active" aria-pressed="true">Active <span data-active-count>3</span></button>
+          <button class="aw-button" type="button" data-filter="attention" aria-pressed="false">Needs attention <span data-attention-count>1</span></button>
+        </div>
+      </div>
+      <section class="aw-roster" aria-label="Active agent Runs">
+        <div class="aw-table-head" aria-hidden="true"><span>AGENT</span><span>STATE</span></div>
+        <div data-roster></div>
+      </section>
+      <section class="aw-detail" aria-label="Selected Run workspace" data-detail>
+        <div class="aw-detail-title">
+          <strong data-run-title></strong>
+          <span class="aw-direct" data-mode-label></span>
+          <div class="aw-tabs" role="tablist" aria-label="Activity views">
+            <button id="workspace-tab-live" class="aw-tab" type="button" role="tab" aria-controls="workspace-panel" aria-selected="true" data-tab="live">Live</button>
+            <button id="workspace-tab-diff" class="aw-tab" type="button" role="tab" aria-controls="workspace-panel" aria-selected="false" data-tab="diff">Diff</button>
+            <button id="workspace-tab-timeline" class="aw-tab" type="button" role="tab" aria-controls="workspace-panel" aria-selected="false" data-tab="timeline">Timeline</button>
+          </div>
+          <button class="aw-button" type="button" data-reply aria-expanded="false" aria-controls="workspace-composer">Reply <kbd>i</kbd></button>
+        </div>
+        <div class="aw-workflow" data-workflow>
+          <ol class="aw-steps" aria-label="Task stages" data-steps></ol>
+          <details class="aw-map" data-map>
+            <summary data-map-summary>Phase 2 / 3 · Roadmap</summary>
+            <section class="aw-map-window" aria-label="Project Roadmap">
+              <div class="aw-map-head"><strong>Roadmap</strong><button class="aw-text-button" type="button" data-close-map>Close</button></div>
+              <div data-phases></div>
+              <div class="aw-map-tasks" data-map-tasks></div>
+              <p class="aw-map-note" data-map-note></p>
+            </section>
+          </details>
+        </div>
+        <section class="aw-stage-detail" aria-label="Stage summary" data-stage-detail hidden>
+          <strong data-stage-title></strong><p data-stage-note></p>
+          <button class="aw-text-button" type="button" data-close-stage>Close</button>
+        </section>
+        <div id="workspace-panel" class="aw-panel" role="tabpanel" aria-labelledby="workspace-tab-live" data-panel></div>
+        <div class="aw-review" data-review hidden>
+          <strong>Human review</strong><span class="aw-muted" data-review-candidate></span>
+          <div class="aw-review-actions">
+            <button class="aw-button" type="button" data-request-changes>Request changes</button>
+            <button class="aw-button aw-button-primary" type="button" data-accept>Accept task</button>
+          </div>
+        </div>
+        <form class="aw-composer" data-change-form hidden>
+          <div class="aw-input-wrap"><label for="workspace-changes">Changes needed · demo only</label><textarea id="workspace-changes" rows="2" maxlength="900" required></textarea></div>
+          <button class="aw-button aw-button-primary" type="submit">Return to Development</button>
+          <button class="aw-button" type="button" data-dismiss-changes>Cancel</button>
+          <p class="aw-form-error" data-change-error role="alert" hidden>Describe a change before returning to Development.</p>
+        </form>
+        <form id="workspace-composer" class="aw-composer" data-composer hidden>
+          <div class="aw-input-wrap"><label for="workspace-message">Reply to selected Run · demo only</label><input id="workspace-message" type="text" autocomplete="off" maxlength="900" required /></div>
+          <button class="aw-button" type="submit">Send</button>
+          <button class="aw-button" type="button" data-dismiss-reply>Close</button>
+        </form>
+      </section>
+      <footer class="aw-footer">
+        <span><kbd>j/k</kbd> runs · <kbd>1–3</kbd> views · <kbd>g</kbd> roadmap · <kbd>i</kbd> reply</span>
+        <span class="aw-feedback" data-feedback role="status" aria-live="polite">Sample project · no agent connection</span>
+      </footer>
+    </main>
+    <script>
+      (() => {
+        const root = document.getElementById("run-workspace-preview");
+        const find = (selector) => root.querySelector(selector);
+        const all = (selector) => [...root.querySelectorAll(selector)];
+        const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+        const stages = [
+          { full: "Requirement clarification", label: "Clarify", short: "Clarify" },
+          { full: "Development", label: "Develop", short: "Develop" },
+          { full: "Agent Review", label: "Agent review", short: "Agent" },
+          { full: "Human Review", label: "Human review", short: "Human" },
+        ];
+        const tasks = {
+          foundation: { title: "Connect the workbench", phase: 0, stage: 3, accepted: true, needsRerun: false },
+          token: { title: "Fix token expiry boundary", phase: 1, stage: 3, accepted: false, needsRerun: false },
+          checks: { title: "Capture check results", phase: 1, stage: 1, accepted: false, needsRerun: false },
+          delivery: { title: "Prepare reviewed change", phase: 2, stage: 0, accepted: false, needsRerun: false },
+        };
+        const phases = [
+          { title: "Workbench foundation", tasks: ["foundation"], exitAccepted: true },
+          { title: "Reliable task delivery", tasks: ["token", "checks"], exitAccepted: false },
+          { title: "PR delivery", tasks: ["delivery"], exitAccepted: false },
+        ];
+        const runs = [
+          {
+            id: "token-run", task: "token", title: "Fix token expiry boundary", role: "Dev", provider: "Codex", candidate: "demo-token-v2",
+            events: [
+              ["10:24", "user", "Reject an expired token at the boundary. Keep the refresh behavior unchanged."],
+              ["10:25", "agent", "The equality case uses the same path as an expired token. The change is limited to token validation and its regression coverage."],
+              ["10:27", "tool", "Example edit · src/auth/token.ts\nUpdated the expiry comparison and added the boundary case."],
+              ["10:28", "tool", "Example checks · npm test · exit 0\nIllustrative output; no command was executed by this concept."],
+              ["10:29", "agent", "The example candidate is ready for your review. Open Diff to inspect the change, or reply here to discuss it."],
+            ],
+            timeline: [["10:24", "task", "Requirements confirmed · example spec v1"], ["10:27", "stage", "Development completed · demo-token-v2"], ["10:28", "review", "Example independent review and checks completed"], ["10:29", "task", "Waiting for Human Review · not yet accepted"]],
+            diff: [["context", "src/auth/token.ts · illustrative diff"], ["removed", "- if (expiresAt < now) {"], ["added", "+ if (expiresAt <= now) {"], ["context", "    return { valid: false, reason: 'expired' };"], ["context", "  }"]],
+          },
+          {
+            id: "checks-run", task: "checks", title: "Capture check results", role: "Dev", provider: "Claude", candidate: "demo-checks-wip",
+            events: [
+              ["10:26", "user", "Show the command, exit code and output for each check. Keep skipped checks explicit."],
+              ["10:27", "agent", "I’m working on the check result shape and the selected Run’s output. This work belongs to Phase 2 of the existing Roadmap."],
+              ["10:28", "tool", "Example edit · src/checks/results.ts\nAdded command, status and exit-code fields."],
+              ["10:30", "agent", "Next I’ll connect the result to the activity view and run the relevant checks. Review has not started."],
+            ],
+            timeline: [["10:26", "task", "Requirements confirmed · example spec v1"], ["10:27", "stage", "Development started"], ["10:28", "edit", "Example result contract updated"], ["10:30", "task", "Development in progress · review not started"]],
+            diff: [["context", "src/checks/results.ts · illustrative diff"], ["added", "+ type CheckResult = {"], ["added", "+   command: string;"], ["added", "+   status: 'passed' | 'failed' | 'skipped';"], ["added", "+   exitCode: number | null;"], ["added", "+ };"]],
+          },
+          {
+            id: "docs-run", task: null, title: "Update README links", role: "Dev", provider: "Codex", candidate: null,
+            events: [
+              ["10:31", "user", "Update the README link to the current local-execution guide."],
+              ["10:31", "agent", "I found the outdated link. I’ll update that reference and check the relative path."],
+              ["10:32", "tool", "Example edit · README.md\nChanged the guide link to docs/local-execution.md."],
+              ["10:32", "agent", "This is a direct Run. You can keep discussing the edit here without opening a task workflow."],
+            ],
+            timeline: [["10:31", "run", "Direct Run started"], ["10:32", "edit", "Example README link updated"]],
+            diff: [["context", "README.md · illustrative diff"], ["removed", "- See the old setup guide."], ["added", "+ See [Local execution](docs/local-execution.md)."]],
+          },
+        ];
+        let selected = "token-run";
+        let tab = "live";
+        let filter = "active";
+        let inspectedPhase = 1;
+        let inspectedStage = null;
+        let replyRun = null;
+        let changeRun = null;
+        const currentRun = () => runs.find((run) => run.id === selected);
+        const runActive = (run) => !run.task || !tasks[run.task].accepted;
+        const needsAttention = (run) => Boolean(run.task && !tasks[run.task].accepted && tasks[run.task].stage === 3);
+        const visibleRuns = () => runs.filter((run) => runActive(run) && (filter === "active" || needsAttention(run)));
+        const phaseComplete = (phase) => phase.exitAccepted && phase.tasks.every((id) => tasks[id].accepted);
+        const phaseState = (index) => phaseComplete(phases[index]) ? "complete" : phases.slice(0, index).every(phaseComplete) ? "current" : "planned";
+        const announce = (message) => { find("[data-feedback]").textContent = message; };
+        function stageStatus(task, index) {
+          if (task.accepted || index < task.stage) return "complete";
+          if (task.needsRerun && index > task.stage) return "needs rerun";
+          return index === task.stage ? index === 3 ? "waiting" : "in progress" : "not started";
+        }
+        function closeEditors() {
+          find("[data-composer]").hidden = true;
+          find("[data-reply]").setAttribute("aria-expanded", "false");
+          find("[data-change-form]").hidden = true;
+          find("[data-change-error]").hidden = true;
+          find("#workspace-message").value = "";
+          find("#workspace-changes").value = "";
+          replyRun = null;
+          changeRun = null;
+        }
+        function selectRun(id) {
+          const run = runs.find((item) => item.id === id && runActive(item));
+          if (!run) return;
+          selected = id;
+          inspectedStage = null;
+          if (run.task) inspectedPhase = tasks[run.task].phase;
+          find("[data-map]").open = false;
+          closeEditors();
+          render();
+          announce(`${run.title} · ${run.task ? stages[tasks[run.task].stage].full : "Direct Run"}`);
+        }
+        function renderMap() {
+          find("[data-phases]").innerHTML = phases.map((phase, index) => `<button class="aw-phase" type="button" data-phase="${index}" aria-pressed="${inspectedPhase === index}"><span>Phase ${index + 1} · ${escape(phase.title)}</span><span class="aw-phase-status" data-state="${phaseState(index)}">${phaseState(index) === "complete" ? "Complete" : phaseState(index) === "current" ? "Current" : "Planned"}</span></button>`).join("");
+          const phase = phases[inspectedPhase];
+          find("[data-map-tasks]").innerHTML = phase.tasks.map((id) => {
+            const task = tasks[id];
+            const run = runs.find((item) => item.task === id && runActive(item));
+            return `<button class="aw-map-task" type="button" ${run ? `data-map-run="${run.id}"` : "disabled"} ${currentRun()?.task === id ? 'aria-current="true"' : ""}><span>${escape(task.title)}</span><small>${task.accepted ? "Accepted" : run ? stages[task.stage].label : "Planned"}</small></button>`;
+          }).join("");
+          const accepted = phase.tasks.filter((id) => tasks[id].accepted).length;
+          find("[data-map-note]").textContent = `${accepted} of ${phase.tasks.length} tasks accepted`;
+        }
+        function renderStage() {
+          const run = currentRun();
+          const task = run?.task ? tasks[run.task] : null;
+          const panel = find("[data-stage-detail]");
+          panel.hidden = !task || inspectedStage === null;
+          if (panel.hidden) return;
+          const status = stageStatus(task, inspectedStage);
+          find("[data-stage-title]").textContent = `${stages[inspectedStage].full} · ${status.charAt(0).toUpperCase() + status.slice(1)}`;
+          const notes = [run.events[0][2], task.stage > 1 ? `Example implementation complete for ${run.candidate}. Inspect the change in Diff.` : "Implementation in progress. Review has not started.", task.needsRerun ? "The candidate changed. Independent review and checks need to run again." : task.stage > 2 ? "Example review and checks apply to this sample candidate only." : "Independent review and checks have not started for this candidate.", task.stage === 3 ? "Inspect the candidate, then accept the Task or request changes below." : "Human acceptance is still pending."];
+          find("[data-stage-note]").textContent = notes[inspectedStage];
+        }
+        function renderPanel() {
+          const run = currentRun();
+          const panel = find("[data-panel]");
+          panel.setAttribute("aria-labelledby", `workspace-tab-${tab}`);
+          if (!run) { panel.innerHTML = '<p class="aw-muted">No active Run needs attention. Select Active to continue working.</p>'; return; }
+          if (tab === "diff") {
+            panel.innerHTML = `<p class="aw-path">${escape(run.diff[0][1])}</p><code class="aw-diff">${run.diff.slice(1).map(([kind, line]) => `<span class="${kind === "added" ? "aw-added" : kind === "removed" ? "aw-removed" : ""}">${escape(line)}</span>`).join("")}</code>`;
+            return;
+          }
+          const events = tab === "timeline" ? run.timeline : run.events;
+          panel.innerHTML = `<div class="aw-log">${events.map(([time, kind, message]) => `<div class="aw-event"><span class="aw-time">${escape(time)}</span><span class="aw-kind" data-kind="${escape(kind)}">${escape(kind)}</span><p class="aw-message">${escape(message)}</p></div>`).join("")}</div>`;
+        }
+        function render() {
+          const visible = visibleRuns();
+          if (!visible.some((run) => run.id === selected)) selected = visible[0]?.id ?? null;
+          const run = currentRun();
+          find("[data-active-count]").textContent = runs.filter(runActive).length;
+          find("[data-attention-count]").textContent = runs.filter(needsAttention).length;
+          all("[data-filter]").forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.filter === filter)));
+          find("[data-roster]").innerHTML = visible.length ? visible.map((item) => `<button class="aw-run" type="button" data-run="${item.id}" aria-pressed="${item.id === selected}"><span class="aw-run-name"><span>${escape(item.title)}</span><span class="aw-run-meta">${escape(item.role)} · ${escape(item.provider)}<span class="aw-run-project"> · example-app</span></span></span><span class="aw-state" data-tone="${needsAttention(item) ? "waiting" : "working"}">${needsAttention(item) ? "Needs review" : "Working"}</span></button>`).join("") : '<p class="aw-empty">No active Run needs attention.</p>';
+          find("[data-run-title]").textContent = run?.title ?? "No Run selected";
+          find("[data-mode-label]").textContent = run ? run.task ? "" : "Direct" : "";
+          find("[data-reply]").disabled = !run;
+          all("[data-tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === tab)));
+          const task = run?.task ? tasks[run.task] : null;
+          find("[data-workflow]").hidden = !task;
+          if (task) {
+            find("[data-steps]").innerHTML = stages.map((stage, index) => {
+              const status = stageStatus(task, index);
+              return `<li><button class="aw-step" type="button" data-stage="${index}" data-status="${status}" ${task.stage === index ? 'aria-current="step"' : ""} aria-label="${stage.full} — ${status}">${index + 1} <span class="aw-full">${stage.label}</span><span class="aw-short">${stage.short}</span></button></li>`;
+            }).join("");
+            find("[data-map-summary]").textContent = `Phase ${task.phase + 1} / ${phases.length} · Roadmap`;
+          }
+          find("[data-review]").hidden = !run || !needsAttention(run);
+          find("[data-review-candidate]").textContent = run?.candidate ? `${run.candidate} · example checks passed` : "";
+          renderStage();
+          renderMap();
+          renderPanel();
+        }
+        root.addEventListener("click", (event) => {
+          if (!(event.target instanceof Element)) return;
+          const button = event.target.closest("button");
+          if (!button || !root.contains(button) || button.disabled) return;
+          if (button.hasAttribute("data-run")) { selectRun(button.dataset.run); return; }
+          if (button.hasAttribute("data-map-run")) { filter = "active"; selectRun(button.dataset.mapRun); return; }
+          if (button.hasAttribute("data-filter")) {
+            filter = button.dataset.filter; inspectedStage = null; find("[data-map]").open = false; closeEditors(); render();
+            announce(filter === "attention" ? "Showing Runs that need your review." : "Showing active Runs.");
+          }
+          if (button.hasAttribute("data-tab")) { tab = button.dataset.tab; render(); }
+          if (button.hasAttribute("data-phase")) {
+            inspectedPhase = Number(button.dataset.phase); renderMap(); find(`[data-phase="${inspectedPhase}"]`).focus();
+            announce(`Viewing Phase ${inspectedPhase + 1}. Project progress is unchanged.`);
+          }
+          if (button.hasAttribute("data-stage")) { inspectedStage = Number(button.dataset.stage); renderStage(); }
+          if (button.hasAttribute("data-close-stage")) { const previous = inspectedStage; inspectedStage = null; renderStage(); find(`[data-stage="${previous}"]`)?.focus(); }
+          if (button.hasAttribute("data-close-map")) { find("[data-map]").open = false; find("[data-map-summary]").focus(); }
+          if (button.hasAttribute("data-reply")) {
+            const form = find("[data-composer]"); form.hidden = !form.hidden; replyRun = form.hidden ? null : selected;
+            button.setAttribute("aria-expanded", String(!form.hidden)); if (!form.hidden) find("#workspace-message").focus();
+          }
+          if (button.hasAttribute("data-dismiss-reply")) { closeEditors(); find("[data-reply]").focus(); }
+          if (button.hasAttribute("data-request-changes")) {
+            closeEditors(); find("[data-change-form]").hidden = false; changeRun = selected; find("#workspace-changes").focus();
+          }
+          if (button.hasAttribute("data-dismiss-changes")) { closeEditors(); find("[data-request-changes]").focus(); }
+          if (button.hasAttribute("data-accept")) {
+            const run = currentRun(); if (!run || !needsAttention(run)) return;
+            tasks[run.task].accepted = true; const phase = tasks[run.task].phase;
+            const remaining = phases[phase].tasks.filter((id) => !tasks[id].accepted).length;
+            filter = "active"; inspectedStage = null; find("[data-map]").open = false; closeEditors(); render();
+            announce(`Example task accepted. ${remaining ? `Phase ${phase + 1} still has ${remaining} unfinished Task${remaining === 1 ? "" : "s"}.` : `Phase ${phase + 1} is ready for its exit review.`} No real project was changed.`);
+            find(`[data-run="${selected}"]`)?.focus();
+          }
+          if (button.hasAttribute("data-theme")) {
+            const current = getComputedStyle(document.documentElement).colorScheme;
+            const dark = current === "dark" || (current.includes("dark") && matchMedia("(prefers-color-scheme: dark)").matches);
+            document.documentElement.style.colorScheme = dark ? "light" : "dark";
+            button.textContent = dark ? "Dark" : "Light";
+          }
+        });
+        find("[data-change-form]").addEventListener("submit", (event) => {
+          event.preventDefault();
+          const run = currentRun(); const feedback = find("#workspace-changes").value.trim();
+          if (!feedback) { find("[data-change-error]").hidden = false; return; }
+          if (!run || run.id !== changeRun || !needsAttention(run)) return;
+          const task = tasks[run.task]; task.stage = 1; task.needsRerun = true;
+          run.events.push(["now", "user", feedback], ["now", "agent", "Example change request received. The Task returns to Development; review and checks need to run again for the next candidate."]);
+          run.timeline.push(["now", "task", "Changes requested · Development resumed · prior reviews need rerun"]);
+          inspectedStage = null; filter = "active"; tab = "live"; closeEditors(); render();
+          announce("Example Task returned to Development. Review and checks need rerun.");
+          find(`[data-run="${selected}"]`)?.focus();
+        });
+        find("[data-composer]").addEventListener("submit", (event) => {
+          event.preventDefault(); const run = currentRun(); const message = find("#workspace-message").value.trim();
+          if (!run || run.id !== replyRun || !message) return;
+          run.events.push(["now", "user", message], ["now", "agent", "Demo reply captured. No agent is connected."]);
+          tab = "live"; closeEditors(); render(); announce("Demo reply captured in this page only."); find("[data-reply]").focus();
+        });
+        document.addEventListener("click", (event) => { if (!event.composedPath().includes(find("[data-map]"))) find("[data-map]").open = false; });
+        document.addEventListener("keydown", (event) => {
+          if (!root.contains(event.target) || event.ctrlKey || event.metaKey || event.altKey) return;
+          if (event.key === "Escape") {
+            if (find("[data-map]").open) { find("[data-map]").open = false; find("[data-map-summary]").focus(); }
+            else if (!find("[data-composer]").hidden || !find("[data-change-form]").hidden) { closeEditors(); find("[data-reply]").focus(); }
+            else if (inspectedStage !== null) { const previous = inspectedStage; inspectedStage = null; renderStage(); find(`[data-stage="${previous}"]`)?.focus(); }
+            return;
+          }
+          if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target.isContentEditable) return;
+          if (event.target.matches("[data-tab]") && ["ArrowLeft", "ArrowRight"].includes(event.key)) {
+            event.preventDefault(); const tabs = ["live", "diff", "timeline"]; const next = (tabs.indexOf(tab) + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+            tab = tabs[next]; render(); find(`[data-tab="${tab}"]`).focus(); return;
+          }
+          if (event.key === "j" || event.key === "k") {
+            event.preventDefault(); const visible = visibleRuns(); if (!visible.length) return;
+            const index = visible.findIndex((run) => run.id === selected); const next = (index + (event.key === "j" ? 1 : -1) + visible.length) % visible.length;
+            selectRun(visible[next].id); find(`[data-run="${selected}"]`)?.focus();
+          }
+          if (["1", "2", "3"].includes(event.key)) { event.preventDefault(); tab = ["live", "diff", "timeline"][Number(event.key) - 1]; render(); find(`[data-tab="${tab}"]`).focus(); }
+          if (event.key === "g" && currentRun()?.task) { event.preventDefault(); const map = find("[data-map]"); map.open = !map.open; find("[data-map-summary]").focus(); }
+          if (event.key === "i" && currentRun()) { event.preventDefault(); if (find("[data-composer]").hidden) find("[data-reply]").click(); else find("#workspace-message").focus(); }
+        });
+        const startsDark = matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.style.colorScheme = startsDark ? "dark" : "light";
+        find("[data-theme]").textContent = startsDark ? "Light" : "Dark";
+        render();
+      })();
+    </script>
+  </body>
+</html>

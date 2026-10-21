@@ -5,7 +5,7 @@ import { createAttention } from '../src/attention/index.js';
 import { createExecution } from '../src/execution/index.js';
 import { createWebWorkbench } from '../src/app/web-workbench.js';
 import { createWorkbenchClient } from '../src/app/workbench-client.js';
-import { WorkbenchScreen } from '../src/app/tui-view.js';
+import { WorkbenchScreen, workbenchMainWidth } from '../src/app/tui-view.js';
 import type { RunEvent } from '../src/execution/index.js';
 import type { WorkbenchState } from '../src/app/workbench-protocol.js';
 
@@ -246,10 +246,15 @@ test('Timeline wraps the full brief report at 60/80/120 columns while ordinary c
       />,
       { columns },
     );
-    const reading = output.replace(/[│\s]/gu, '');
+    // Read down the main column; Project entries occupy the adjacent column.
+    const main = output
+      .split('\n')
+      .map((line) => line.slice(0, workbenchMainWidth(columns)))
+      .join('\n');
+    const reading = main.replace(/[│\s]/gu, '');
     assert.ok(reading.includes(summary.replace(/\s/gu, '')), output);
     assert.ok(output.includes('Progress'), output);
     assert.ok(!output.includes('Ordinary conversation'), output);
-    assert.ok(!output.includes('…'), output);
+    assert.ok(!main.includes('…'), output);
   }
 });

@@ -2,12 +2,16 @@ import { createServer } from 'node:http';
 import { createWebWorkbench } from './web-workbench.js';
 import { workbenchOrigin } from './workbench-protocol.js';
 import { loadLaunchConfig } from './launch-config.js';
+import { resolve } from 'node:path';
 
 const origin = workbenchOrigin();
 const port = Number(new URL(origin).port);
 const launchPath = process.env['WORKBENCH_LAUNCH'];
 const configured = launchPath ? await loadLaunchConfig(launchPath) : undefined;
 const workbench = createWebWorkbench(origin, {
+  planDirectory: resolve(
+    process.env['WORKBENCH_PLAN_DIRECTORY'] ?? '.workbench/plans',
+  ),
   ...(configured ? { launch: configured.launch } : {}),
   onShutdown: () => {
     void stop();
@@ -27,7 +31,7 @@ const server = createServer(async (incoming, outgoing) => {
         ? chunk
         : Buffer.from(String(chunk));
       size += buffer.byteLength;
-      if (size > 8192) {
+      if (size > 32768) {
         outgoing.writeHead(413).end('Request body is too large');
         return;
       }

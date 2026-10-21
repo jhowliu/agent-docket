@@ -8,6 +8,14 @@ Current decision: implement [explicit local Codex execution](local-execution.md)
 
 2026-10-19 live acceptance: a real Codex task again returned `workspace routing discovery failed` before tools or reports. Fixed a discovered prompt-order regression that blocked native slash commands; the real adapter's `/mcp` now confirms the local progress server is connected. Autonomous reporting and native approval/edit/in-flight cancellation remain incomplete. See [real Codex acceptance](codex-live-acceptance.md).
 
+2026-10-20 decision: the user cancelled History and past-Run persistence. Run snapshots, events and approval receipts remain only in bounded daemon memory; TUI/browser have no History entry or paging. Reopening the TUI reattaches to a live daemon; a new daemon starts empty and cannot restore old Sessions or approvals. Existing archives are unused and left untouched. See [Run lifecycle](run-lifecycle.md). Next development target remains actual command/exit-code/log results tied to a Candidate, before independent Review/Verify. Native provider acceptance remains open alongside that work.
+
+2026-10-20 design follow-up: the user proposed a task stepper (**Requirement clarification → Development → Agent Review → Human Review**) and a project Roadmap that shows the current implementation Phase and supports continued iteration. These are separate levels: Project → Phase → Task → Stage → Run. See [Roadmap and task stepper proposal](task-roadmap-proposal.md). Candidate-bound checks fit inside Agent Review; handoff gates and project-plan storage are proposals pending clarification, not implemented behavior. The earlier Dev/Review/Verify/PR role breakdown remains a source of internal responsibilities rather than additional visible steps in the proposed four-step UI.
+
+2026-10-20 presentation clarification: retain the original compact Run workspace, adding only a small stepper and an expandable Roadmap window for a selected tracked Run. The revised standalone concept is `output/run-workspace-roadmap.html`; direct Runs hide tracking. Optional mode activation and an agent proposal tool remain under discussion. This is a concept update, not an implemented `work` Module or provider capability.
+
+2026-10-20 implementation: the first `work` slice now supports explicit Roadmap opt-in, Phase/Task planning, versioned requirements confirmation, current-stage tracking, Run attachment/Direct mode, project-plan files and Task context on subsequent prompts. TUI/browser use the approved compact presentation. Planning state survives restart; Runs, permissions and associations do not. Review/check execution, Candidate evidence, Task/Phase acceptance, automatic handoffs and the proposal tool remain next slices. See [Roadmap operation, Interface and module map](roadmap-operation.md).
+
 **目標與選型**
 
 使用者在同一個 terminal 工作台管理多個專案的 Codex／Claude：提出需求、查看串流與工具紀錄、回答問題、核准操作、追蹤 Dev → Review → Verify → PR，並透過有程式碼與驗證依據的互動報告理解交付。
@@ -21,17 +29,17 @@ Current decision: implement [explicit local Codex execution](local-execution.md)
 | 常駐程序   | TypeScript、受支援的 Node.js LTS         | 管理 sessions、核准、排程、事件與恢復     |
 | TUI        | TypeScript、React、Ink                   | 集中 inbox、任務切換、對話與 diff         |
 | Agent 通訊 | ACP v1、`@agentclientprotocol/sdk`       | 統一 Codex／Claude 的結構化資料與雙向互動 |
-| 儲存       | SQLite + artifact 目錄                   | 保存 timeline、任務狀態與驗證證據         |
+| 儲存       | 有界記憶體；後續 Task／artifact 儲存待切片設計 | 當前 Run／timeline 不落盤；後續保存規格與驗證產物 |
 | 隔離執行   | Linux worker 上的獨立 containers／clones | 執行各階段的 agent、工具、測試與瀏覽器    |
 | PR 報告    | TypeScript、React                        | 顯示互動流程圖、diff、驗證與 PR comments  |
 
-ACP 提供 [TypeScript client SDK](https://agentclientprotocol.com/libraries/typescript)；[Ink](https://github.com/vadimdemedes/ink) 提供 React 的 terminal renderer。M0 確認 adapter capabilities、Node LTS 與 SQLite driver 的安裝相容性，釘選正式發布且互相相容的版本。Provider adapters 與各家 CLI 在隔離環境中保留必要 runtime。
+ACP 提供 [TypeScript client SDK](https://agentclientprotocol.com/libraries/typescript)；[Ink](https://github.com/vadimdemedes/ink) 提供 React 的 terminal renderer。M0 確認 adapter capabilities 與 Node LTS 的相容性，釘選正式發布且互相相容的版本。Provider adapters 與各家 CLI 在隔離環境中保留必要 runtime。
 
 **效率判斷**
 
 目前尚無本產品 benchmark。預期主要等待來自模型服務、網路與外部工具；這是待量測的工作負載判斷，不能推導固定的語言速度倍數。Node 能非同步管理多個外部程序；工作台本身的改善不能直接當成 agent 端到端交付的加速。[Node 子程序](https://nodejs.org/api/child_process.html)
 
-第一版先限制記憶體中的 log 視窗、分頁讀取歷史、合併文字串流的畫面更新，並將大量輸出存成 artifact。CPU 密集的 diff／解析工作需與核准、取消和 UI 輸入分開處理；實際優化以 profiling 決定。
+第一版先限制記憶體中的 log 視窗並合併文字串流的畫面更新，不提供 Run 歷史存檔。後續驗證的大型輸出依 artifact 切片設計保存。CPU 密集的 diff／解析工作需與核准、取消和 UI 輸入分開處理；實際優化以 profiling 決定。
 
 需要避免 CPU／同步工作阻塞事件迴圈；經 profiling 確認的重計算先移到 worker thread 或獨立程序。未出現具體瓶頸前，不安排跨語言重寫。[Node 效能指引](https://nodejs.org/learn/asynchronous-work/dont-block-the-event-loop)、[worker threads](https://nodejs.org/api/worker_threads.html)
 
@@ -57,7 +65,7 @@ flowchart LR
   end
   subgraph Worker[Linux worker]
     Daemon[TypeScript 常駐程序]
-    Store[(SQLite / Artifacts)]
+    Store[(Task specs / Artifacts — planned)]
     Runtime[隔離環境管理]
     subgraph RunA[獨立 StageRun 環境 A]
       Codex[codex-acp / Codex]
@@ -90,7 +98,7 @@ Daemon、TUI 與 PR viewer 是執行入口。業務行為放在下列 domain Mod
 | ------------- | --------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `work`        | 需求、Task spec、依賴、階段順序、排程與有限重試           | 定義任務、啟動任務、查詢進度                 | PM 輸出轉 task、階段推進與資料持久化                                                            |
 | `execution`   | 單次 Run 的 session、輸入、取消、隔離與服務生命週期、恢復 | 啟動 Run、送入指令、取消 Run、觀察 Run／服務 | ACP、Codex／Claude adapters、callback 對應、container、terminal／檔案操作、服務啟停／健康／logs |
-| `attention`   | 人工決策的等待、回答、交付狀態、過期與去重                | 提出決策請求、列出待辦、回覆、讓 scope 失效  | 等待中的決策、通知去重、持久化與已回答／已送達的區分                                            |
+| `attention`   | 人工決策的等待、回答、交付狀態、過期與去重                | 提出決策請求、列出待辦、回覆、讓 scope 失效  | 記憶體內等待中的決策、通知去重與已回答／已送達的區分                                            |
 | `evidence`    | Candidate 身分、Artifacts、Review／Verify 證據與通過條件  | 記錄證據、評估候選版本、讀取證據             | 檔案儲存、schema 驗證、SHA／spec revision 比對與證據失效                                        |
 | `delivery`    | PR 說明、互動報告、發佈對帳與 comments                    | 準備交付、發佈交付、同步 comments            | GitHub 整合、報告資料組裝、行號／SHA 對應與重複發佈處理                                         |
 
@@ -143,9 +151,9 @@ ACP 的兩個 provider adapters 是有真實差異的 Seam；儲存與隔離先�
 - 每筆核准保留 session、連線世代、原始 request ID、工具內容與 provider 提供的 options，回覆精確對應的選項 ID。一般工具 pending 狀態不自動推定為等核准。[ACP 核准流程](https://agentclientprotocol.com/protocol/v1/tool-calls)
 - 核准回答、取消與重複按鍵由 daemon 序列化處理。過期或已回答的請求不再次送出；取消時處理該階段的未決請求與所管理的背景程序。
 - Agent 提問依實際能力轉為結構化選項或一般對話；M0 實測兩家能力。執行中的一般指令若不支援 steering，就明確排入下一回合，不假裝已即時送達。
-- Timeline 保存有序的標準事件與必要的 provider 資料，大型內容外存。狀態變更與 inbox 投影用資料庫交易保持一致。憑證不寫入事件或可分享報告。
+- Timeline 在本次程序的有界記憶體保存有序事件與必要的 provider 資料；execution 擁有 Run 快照／事件，attention 擁有核准收據，不使用 Run 歷史資料庫。後續驗證 artifact 另行設計。憑證不寫入事件或可分享報告。
 - TUI 重新連線時，先取得快照，再從 event cursor 補上新事件；關掉 TUI 不會結束 daemon。
-- Daemon 崩潰會使活躍傳輸失效。重啟後先對帳執行環境，將無法恢復的執行標記 interrupted、舊核准標記 stale；歷史重播不等於恢復活躍的 request callback。只有經測試支援的 provider session 才能恢復。
+- Daemon 崩潰會使活躍傳輸失效；新程序從空白開始，不恢復 Run 或舊核准。外部執行環境的資源對帳仍是後續工作，需獨立於已取消的 Run History 設計。
 - 單一大量輸出的 session 不得讓其他任務的核准與按鍵無法處理。
 
 **隔離與階段交接**
@@ -175,7 +183,7 @@ Role 與技術 profile 分開：例如「Review + Python + Claude」或「Dev + 
 | 里程碑               | 可交付結果                                       | 驗收條件                                                                                                                                                                                                               |
 | -------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | M0：整合驗證         | 最小 TypeScript ACP client + 隔離 fixture repo   | 從 `execution` 與 `attention` 的切片開始；兩家各實跑文字、工具、diff、允許／拒絕核准、提問回覆、取消；確認登入方式、版本與能力差異；本機原 repo 不變；留下公開 Interface、能力矩陣與操作指引                           |
-| M1：集中工作台       | TUI、daemon、inbox、timeline、持久化、Services   | 兩個專案混用兩家 agent；左側專案／來源位置、Run 隔離路徑；原地回答／核准／下指令；各 Environment 可啟停前後端／DB、查看健康與 logs，故障進 inbox；關 TUI 後任務存活，重開能補紀錄；daemon crash 不留下可操作的失效核准 |
+| M1：集中工作台       | TUI、daemon、inbox、timeline、Services   | 兩個專案混用兩家 agent；左側專案／來源位置、Run 隔離路徑；原地回答／核准／下指令；各 Environment 可啟停前後端／DB、查看健康與 logs，故障進 inbox；關 TUI 後任務存活，重開連回同一 daemon；新 daemon 從空白開始且不能操作舊核准 |
 | M2：完整任務流程     | 手動建 task 後跑 Dev → Review → Verify → PR 準備 | 各階段獨立 context／環境；真實案例完成全部階段；故意修改 candidate 後，舊證據失效；可產出完整 PR 草稿                                                                                                                  |
 | M3：PM 與 profiles   | 對話拆 task、依賴與並行排程                      | PM 產出的 task spec 經 schema 驗證，範圍定案後交 runner；並發／重試有界；可切換 provider 與 Python／TypeScript profile                                                                                                 |
 | M4：可理解的 PR 交付 | 互動報告、draft PR 與 comments                   | Before／after 圖節點可定位到 code／diff／證據；分開顯示已驗證與推論；PR comments 綁定 SHA；建立 PR 前後對帳避免重試造成重複                                                                                            |
@@ -200,4 +208,4 @@ Worker 位址與佈署模式、兩家可用登入方式、首個真實試跑 rep
 
 完整 M0 尚待真實兩家 provider 往返與 worker 隔離驗收。直接 shell 的 Docker socket 存取被拒；`npm run doctor` 的 Node 子程序則讀到 Docker Server 28.0.4。命令路徑的可達性結果不同，尚未據此啟動 container；缺少遠端 worker 與登入設定。操作、能力與缺口見 `docs/m0-operation.md`、`docs/m0-capability-matrix.md`。
 
-使用者在精簡瀏覽器 Demo 後已要求進入下階段。M1 第一個切片提供 `npm run tui` 的 React + Ink 畫面、同 port 背景 server、自動啟動／重新附著與明確停止；核准、timeline、回覆、取消仍用既有 domain 公開 Interface。退出 TUI 不取消 Run；server 重啟不恢復 Run 或舊核准。尚未完成 SQLite、遠端常駐部署、Services、多專案或真實兩家 provider。此切片的範圍、Interface 影響與驗證記錄見 `docs/tui-operation.md`。
+使用者在精簡瀏覽器 Demo 後已要求進入下階段。M1 第一個切片提供 `npm run tui` 的 React + Ink 畫面、同 port 背景 server、自動啟動／重新附著與明確停止；核准、timeline、回覆、取消仍用 domain 公開 Interface。退出 TUI 不取消 Run；依 2026-10-20 決定取消 History，server 程序重啟後從空白開始。遠端常駐部署、崩潰後環境對帳、Services、多專案或真實兩家 provider 尚未完成。此切片的範圍、Interface 影響與驗證記錄見 `docs/tui-operation.md`、`docs/run-lifecycle.md`。

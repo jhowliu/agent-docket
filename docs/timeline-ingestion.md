@@ -58,7 +58,7 @@ Oat separately colors meta agents magenta, planners cyan, workers green and revi
 
 Reopening the TUI applies the activity projection to retained older events. Existing history has no stored prompt text to recover; Request entries begin when an upgraded daemon records new `turn.start` events. Progress requires a new Session on an upgraded daemon; old chat is not converted into reports. CLI replay and browser rendering also recognize the new events. This change does not restart an existing daemon or its Runs.
 
-Our journal remains bounded in memory (2,000 events by default), not the persistent JSONL store used by oat-agents. Persistent history remains a separate slice.
+The live journal remains bounded in memory (2,000 events by default). Run snapshots, events and approval receipts are not saved to disk or restored after a daemon restart. TUI scrolling reads only the retained event window; there is no archive or history paging. Restart also does not reconcile external processes. See [Run lifecycle](run-lifecycle.md) for operation and validation limits.
 
 The free-form progress ingress now lets an agent explain decisions, findings or blockers in its own words, without a required category. It does not implement workflow transitions or verification results. Future `work` would own workflow transitions and `evidence` check applicability; their contracts must not be inferred from progress prose. The role protocol and Candidate-bound review/verify results remain unimplemented.
 

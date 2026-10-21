@@ -6,8 +6,14 @@ import type { WorkbenchClient } from './workbench-client.js';
 import { WorkbenchError } from './workbench-client.js';
 import type { WorkbenchCommand, WorkbenchState } from './workbench-protocol.js';
 import { PromptInput, terminalText } from './tui-input.js';
-import { WorkbenchScreen, visibleRuns } from './tui-view.js';
-import type { Filter, View } from './tui-view.js';
+import {
+  WorkbenchScreen,
+  visibleRuns,
+  workbenchMainWidth,
+} from './tui-view.js';
+import type { Filter, PaneFocus, View } from './tui-view.js';
+import { roadmapCommand, trackedWork } from './workbench-work.js';
+import { useProjectTree } from './tui-project.js';
 
 type Mode =
   | { kind: 'normal' }
@@ -49,9 +55,14 @@ export function WorkbenchApp({
   draftsRef.current = drafts;
   const [commandText, setCommandText] = useState('');
   const [project, setProject] = useState(false);
+  const [focus, setFocus] = useState<PaneFocus>('workspace');
+  const windowCommand = useRef(false);
   const [options, setOptions] = useState(false);
   const [help, setHelp] = useState(false);
   const [details, setDetails] = useState(false);
+  const [outline, setOutline] = useState(false);
+  const [outlinePhase, setOutlinePhase] = useState(0);
+  const [outlineOffset, setOutlineOffset] = useState(0);
   const [connected, setConnected] = useState(true);
   const connectedRef = useRef(true);
   const [busy, setBusy] = useState(false);
@@ -69,6 +80,12 @@ export function WorkbenchApp({
     (item) => item.status === 'pending' && item.runId === selected?.id,
   );
   const request = pending.find((item) => item.id === focusedId) ?? pending[0];
+  const projectTree = useProjectTree(
+    client,
+    state,
+    selected?.id ?? null,
+    columns >= 80 || project,
+  );
   const answered = state.attention.find((item) => item.id === receipt);
   const footer = !connected
     ? note
@@ -91,7 +108,12 @@ export function WorkbenchApp({
       setReceipt(null);
       setMode({ kind: 'normal' });
       setOffset(0);
-      setNote('Server restarted; fresh state loaded, previous Runs lost');
+      setOutline(false);
+      setProject(false);
+      setFocus('workspace');
+      windowCommand.current = false;
+      setFilter('active');
+      setNote('Server restarted; fresh state loaded');
     }
     setState(snapshot);
     connectedRef.current = true;
@@ -130,12 +152,15 @@ export function WorkbenchApp({
   }, [client, pollInterval]);
 
   function select(id: RunId | null) {
+    setFocus('workspace');
     setSelectedId(id);
     setFocusedId(null);
     setNeedsSelection(false);
     setReceipt(null);
     setDetails(false);
     setOffset(0);
+    setOutline(false);
+    setOutlineOffset(0);
   }
   async function execute(command: WorkbenchCommand): Promise<boolean> {
     if (!connectedRef.current) {
@@ -164,7 +189,17 @@ export function WorkbenchApp({
       else if (command.kind === 'authenticate')
         setNote('Sign-in requested · waiting for agent');
       else if (command.kind === 'cancel')
-        setNote('Run cancelled · :history shows past Runs');
+        setNote('Run cancelled · n starts a new Run');
+      else if ('expectedRevision' in command)
+        setNote(
+          command.kind === 'work.detach'
+            ? 'Direct Run · project plan kept'
+            : command.kind === 'work.confirm'
+              ? 'Requirements confirmed · Development ready'
+              : command.kind === 'work.stage'
+                ? 'Working stage updated · review remains unverified'
+                : 'Roadmap updated · o outline',
+        );
       await refresh();
       return true;
     } catch (error: unknown) {
@@ -182,6 +217,7 @@ export function WorkbenchApp({
     }
   }
   function answer(kind: 'allow-once' | 'reject-once', index?: number) {
+    setFocus('workspace');
     if (!request || needsSelection) {
       setNote('Press Tab to select a pending request first');
       return;
@@ -199,6 +235,7 @@ export function WorkbenchApp({
     void execute({ kind: 'answer', id: request.id, choiceId: choice.id });
   }
   function setTab(tab: View) {
+    setFocus('workspace');
     setView(tab);
     setOffset(0);
   }
@@ -206,19 +243,47 @@ export function WorkbenchApp({
     setFilter(next);
     select(visibleRuns(state, next)[0]?.id ?? null);
   }
+  function focusPane(next: PaneFocus) {
+    setFocus(next);
+    if (next === 'project') {
+      setProject(true);
+      setOutline(false);
+      setOptions(false);
+      setHelp(false);
+      setDetails(false);
+    }
+    setNote(
+      next === 'project'
+        ? 'Project focused · j/k move · h/l folders · Esc back'
+        : 'Workspace focused · j/k Runs · h/l views',
+    );
+  }
   function runCommand(text: string) {
     const [name = '', ...parts] = text.trim().split(/\s+/);
     const argument = parts.join(' ');
     setMode({ kind: 'normal' });
     setCommandText('');
+    try {
+      const workCommand = roadmapCommand(text, state, selected?.id ?? null);
+      if (workCommand) {
+        void execute(workCommand);
+        return;
+      }
+      if (name === 'roadmap' && !argument) {
+        setFocus('workspace');
+        setProject(false);
+        setOutline(!outline);
+        return;
+      }
+    } catch (error) {
+      setNote(message(error));
+      return;
+    }
     if (name === 'new' && !argument) {
       void execute({ kind: 'start' });
       return;
     }
-    if (
-      (name === 'active' || name === 'inbox' || name === 'history') &&
-      !argument
-    ) {
+    if ((name === 'active' || name === 'inbox') && !argument) {
       changeFilter(name);
       return;
     }
@@ -256,6 +321,7 @@ export function WorkbenchApp({
       return;
     }
     if (name === 'help' && !argument) {
+      setFocus('workspace');
       setProject(false);
       setOptions(false);
       setDetails(false);
@@ -266,9 +332,7 @@ export function WorkbenchApp({
       exit();
       return;
     }
-    setNote(
-      'Unknown command · :new / :use 2 / :inbox / :history / :prompt fix / :cancel',
-    );
+    setNote('Unknown command · :new / :use 2 / :inbox / :prompt fix / :cancel');
   }
   useInput(
     (input, key) => {
@@ -276,13 +340,36 @@ export function WorkbenchApp({
         if (heldAction.current === input) heldAction.current = null;
         return;
       }
-      if (key.ctrl || key.meta || key.super || key.hyper) return;
+      if (key.ctrl || key.meta || key.super || key.hyper) {
+        windowCommand.current =
+          key.ctrl &&
+          !key.meta &&
+          !key.super &&
+          !key.hyper &&
+          input === 'w' &&
+          !tooSmall;
+        if (windowCommand.current) {
+          heldAction.current = null;
+          setReceipt(null);
+          setNote('Focus · h workspace · l Project · w switch · Esc cancel');
+        }
+        return;
+      }
       if (input === 'q') {
         exit();
         return;
       }
       if (columns < 60 || rows < 20) return;
       if (input.length > 1) return;
+      if (windowCommand.current) {
+        windowCommand.current = false;
+        if (input === 'h' || key.leftArrow) focusPane('workspace');
+        else if (input === 'l' || key.rightArrow) focusPane('project');
+        else if (input === 'w')
+          focusPane(focus === 'project' ? 'workspace' : 'project');
+        else setNote('Focus unchanged · Ctrl+W h/l switches panes');
+        return;
+      }
       const action = ['n', 'a', 'r', 'x'].includes(input);
       if (action) {
         if (
@@ -293,6 +380,25 @@ export function WorkbenchApp({
           return;
         heldAction.current = input;
       } else heldAction.current = null;
+      if (focus === 'project' && project) {
+        let navigated = true;
+        if (input === 'j' || key.downArrow || input === ']')
+          projectTree.move(1);
+        else if (input === 'k' || key.upArrow || input === '[')
+          projectTree.move(-1);
+        else if (input === 'h' || key.leftArrow) projectTree.left();
+        else if (input === 'l' || key.rightArrow) projectTree.right();
+        else if (input === 'g' || key.home) projectTree.first();
+        else if (input === 'G' || key.end) projectTree.last();
+        else if (key.pageUp || key.pageDown)
+          projectTree.move(
+            (key.pageUp ? -1 : 1) * Math.max(1, Math.floor(rows / 2)),
+          );
+        else if (key.return || input === ' ') projectTree.toggle();
+        else if (input === 'R') projectTree.refresh();
+        else navigated = false;
+        if (navigated) return;
+      }
       if (input === 'j' || key.downArrow || input === 'k' || key.upArrow) {
         const index = runs.findIndex((run) => run.id === selected?.id);
         const direction = input === 'j' || key.downArrow ? 1 : -1;
@@ -315,6 +421,7 @@ export function WorkbenchApp({
             null,
         );
       } else if (key.tab) {
+        setFocus('workspace');
         const index = pending.findIndex((item) => item.id === request?.id);
         setFocusedId(
           pending[
@@ -328,8 +435,10 @@ export function WorkbenchApp({
       else if (input === 'n') {
         void execute({ kind: 'start' });
       } else if (input === 'x' && selected) {
+        setFocus('workspace');
         void execute({ kind: 'cancel', runId: selected.id });
       } else if (input === 'i' && selected) {
+        setFocus('workspace');
         setReceipt(null);
         if (selected.state.kind === 'idle')
           setMode({ kind: 'reply', runId: selected.id });
@@ -337,16 +446,67 @@ export function WorkbenchApp({
       } else if (input === ':') {
         setMode({ kind: 'command' });
         setReceipt(null);
+      } else if (input === 'o') {
+        if (!state.work || state.work.kind === 'unavailable')
+          setNote(
+            state.work?.reason ?? 'This server does not support Roadmaps',
+          );
+        else if (!state.work.plan)
+          setNote('Optional Roadmap · :roadmap <title> starts tracking');
+        else {
+          const current = trackedWork(state, selected?.id ?? null);
+          setOutlinePhase(
+            Math.max(
+              0,
+              state.work.plan.phases.findIndex(
+                (phase) =>
+                  phase.id ===
+                  (current?.phase.id ?? state.work?.plan?.activePhaseId),
+              ),
+            ),
+          );
+          setOutline(!outline);
+          setOutlineOffset(
+            Math.max(
+              0,
+              current?.phase.tasks.findIndex(
+                (task) => task.id === current.task.id,
+              ) ?? 0,
+            ),
+          );
+          setProject(false);
+          setFocus('workspace');
+          setOptions(false);
+          setHelp(false);
+          setDetails(false);
+        }
+      } else if (outline && (input === '[' || input === ']')) {
+        const count = state.work?.plan?.phases.length ?? 0;
+        setOutlinePhase((value) =>
+          Math.max(0, Math.min(count - 1, value + (input === ']' ? 1 : -1))),
+        );
+        setOutlineOffset(0);
+      } else if (outline && (input === '{' || input === '}')) {
+        const count = state.work?.plan?.phases[outlinePhase]?.tasks.length ?? 0;
+        setOutlineOffset((value) =>
+          Math.max(0, Math.min(count - 1, value + (input === '}' ? 1 : -1))),
+        );
       } else if (
         input === 'p' ||
         input === 's' ||
         input === '?' ||
         input === 'd'
       ) {
-        setProject(input === 'p' ? !project : false);
+        if (input === 'p' && (!project || focus !== 'project'))
+          focusPane('project');
+        else {
+          setProject(false);
+          focusPane('workspace');
+        }
         setOptions(input === 's' ? !options : false);
         setHelp(input === '?' ? !help : false);
         setDetails(input === 'd' ? !details : false);
+        setOutline(false);
       } else if (/^[1-3]$/.test(input))
         setTab(views[Number(input) - 1] ?? 'timeline');
       else if (
@@ -371,10 +531,12 @@ export function WorkbenchApp({
       else if (input === 'g' || key.home) setOffset(1_000_000);
       else if (input === 'G' || key.end) setOffset(0);
       else if (key.escape) {
+        if (focus === 'project') focusPane('workspace');
         setProject(false);
         setOptions(false);
         setHelp(false);
         setDetails(false);
+        setOutline(false);
       }
     },
     { isActive: mode.kind === 'normal' || tooSmall },
@@ -391,7 +553,7 @@ export function WorkbenchApp({
       id={mode.kind === 'reply' ? mode.runId : mode.kind}
       active={mode.kind !== 'normal' && !tooSmall}
       value={value}
-      width={Math.max(1, columns - 3)}
+      width={Math.max(1, workbenchMainWidth(columns) - 3)}
       onChange={(next) => {
         if (mode.kind === 'command') setCommandText(next);
         else if (mode.kind === 'reply')
@@ -445,9 +607,14 @@ export function WorkbenchApp({
         busy={busy}
         note={footer}
         project={project}
+        focus={focus}
+        tree={projectTree.view}
         options={options}
         help={help}
         details={details}
+        outline={outline}
+        outlinePhase={outlinePhase}
+        outlineOffset={outlineOffset}
         mode={tooSmall ? 'normal' : mode.kind}
         columns={columns}
         rows={rows}

@@ -77,6 +77,10 @@ test('browser transport allows only its own fixture controls and allowlisted ass
   t.after(() => ui.app.close());
   assert.match(ui.html, /Fixture Demo/);
   assert.doesNotMatch(ui.html, /content="WORKBENCH_TOKEN"/);
+  assert.doesNotMatch(ui.html, /data-filter="history"|data-history-count/);
+  for (const path of ['/api/runs', '/api/runs/run-old/history']) {
+    assert.equal((await ui.app.fetch(new Request(origin + path))).status, 404);
+  }
   assert.equal(
     (await ui.app.fetch(new Request(origin + '/runtime.js'))).status,
     200,

@@ -13,13 +13,13 @@
 3. 在 idle Run 展開操作後點「Text question」，等回合結束後按 i 輸入名稱並送出。這是一般文字的下一回合回覆，沒有假裝支援 structured questions 或即時 steering。
 4. 用「Wait for cancel」、`:permissions` 及 `:crash` 測試取消、兩筆核准與異常退出。取消終止整個 Run，舊核准失效；需要再測時新增 Run。
 
-這仍是瀏覽器操作 Demo，可與 Ink TUI 連到同一個 server。首頁只顯示進行中的測試，已結束項目收在歷史。分頁為 Live／Diff／Timeline；Results 診斷頁依使用者回饋移除，程式版本與連線識別可在 Timeline 展開「Technical details」。
+這仍是瀏覽器操作 Demo，可與 Ink TUI 連到同一個 server。名單只顯示進行中的測試或待核准項目，沒有過去 Run 入口。分頁為 Live／Diff／Timeline；程式版本與連線識別可在 Timeline 展開「Technical details」。
 
 依新參考精簡為上方 agents、下方 timeline，預設不常駐來源側欄、測試按鈕或回覆表單。專案路徑按 p、執行操作按 s、回覆按 i 展開；Esc 保留草稿並收起，成功送出後也會收起。核准顯示精簡操作列，傳送狀態使用頁尾，不另增獨立區塊。
 
 介面每 600ms 取得快照與游標增量，背景頁每 2 秒更新；保留最近 2000 事件，游標過期時明確重取目前視窗。斷線保留草稿但停用操作，回覆遇到失效驗證要求重新整理。工具完成或 idle 不代表功能驗證通過。Vim 風格按鍵、命令欄及輸入防誤觸見 [鍵盤操作](tui-keyboard.md)。
 
-控制傳輸有固定資產白名單、來源／Host 檢查、每次啟動的回覆 token、8KiB body 上限。測試台限制 4 個活躍 Run／20 個總 Run；達上限後先取消 Run 或重新啟動服務。本機 server 可由 TUI 自動啟動並在 TUI 退出後存活；仍沒有遠端部署、持久化或跨重啟恢復。
+控制傳輸有固定資產白名單、來源／Host 檢查、每次啟動的回覆 token、8KiB body 上限。同時最多 4 個活躍 Run，每次程序最多新建 64 個 Run。本機 server 可由 TUI 自動啟動並在 TUI 退出後存活；Run／事件／核准只在本次程序的有界記憶體，重啟從空白開始。詳見 [Run 生命週期](run-lifecycle.md)。遠端部署／環境對帳尚未實作。
 
 關閉頁面不會停止 Run。Ctrl+C／SIGTERM 停止服務時，runtime 清理自己建立的程序與目錄。編譯後可執行 `node dist/src/app/web.js`，需保留 checkout 中的 `preview/` 與 `fixtures/`。
 
@@ -27,13 +27,14 @@
 
 | Module／入口     | 公開 Interface                                   | 封裝的規則                                                                                                       |
 | ---------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `attention`      | `src/attention/index.ts`                         | 建立決策、回答、送達、失效、快照與訂閱；阻擋重複或無效選項，pending 上限 100／總歷史 500                         |
+| `attention`      | `src/attention/index.ts`                         | 建立決策、回答、送達、失效、快照與訂閱；阻擋重複或無效選項，pending 上限 100／記憶體紀錄 500                         |
 | `execution`      | `src/execution/index.ts`                         | 啟動、登入、prompt、取消、Run 快照、timeline、關閉；ACP、來源 request／option／連線世代、worker 與清理均留在內部 |
+| `work`           | `src/work/index.ts`                              | 可選 Roadmap／Phase／Task、需求版本與確認、階段位置、計畫儲存、目前 Run 關聯與 Task context；不宣稱審核通過 |
 | `app`            | `src/app/cli.ts`                                 | CLI 命令與顯示、設定輸入、匯出／閱讀紀錄；只呼叫上述公開 Interface                                               |
 | `app` 瀏覽器入口 | `src/app/web.ts`、`src/app/web-workbench.ts`     | Node loopback 與 Request／Response 轉接、固定資產及輸入驗證；Run 與核准規則仍只使用 domain 公開 Interface        |
 | `app` TUI 入口   | `src/app/tui.tsx`、`src/app/workbench-client.ts` | Ink 鍵盤與畫面、每 Run 草稿、token／快照／游標轉接；共享同一個 server，不持有工作流規則                          |
 
-`work`、`evidence`、`delivery` 尚無實際行為，因此沒有先建立空 Module。Review／Verify 獨立交接與 PR 規則仍在後續里程碑。Services 的真實管理會由 `execution` 封裝環境與程序生命週期，`attention` 呈現故障，Results 保留測試與服務健康的不同意義。
+`work` 已有第一個計畫追蹤切片，詳見 [Roadmap 操作](roadmap-operation.md)。`evidence`、`delivery` 尚無實際行為，因此沒有先建立空 Module。Review／Verify 獨立交接與 PR 規則仍在後續里程碑。Services 的真實管理會由 `execution` 封裝環境與程序生命週期，`attention` 呈現故障，Results 保留測試與服務健康的不同意義。
 
 ## 核准與取消
 
@@ -73,7 +74,7 @@ ACP SDK 使用正式 v1 entry point 與 fluent client。收到 permission 時，
 
 `npm run doctor` 僅檢查本機 CLI 版本與 Docker 可達性，不會連接模型。Adapter stderr 持續排空但不存入 timeline，避免直接保存任意登入診斷；不要把它當成完整 provider log 收集器。
 
-Timeline 是有序且有界的記憶體紀錄，預設最多 2000 事件。過期 cursor 會明確失敗；取得新快照後才能補錄。`save` 匯出目前保留的紀錄，檔案以私有權限建立；已存在檔案的權限沿用檔案本身。內容包含專案輸出，token pattern 遮罩不是完整秘密掃描。
+Timeline 是有序且有界的記憶體紀錄，預設最多 2000 事件。過期 cursor 會明確失敗；取得新快照後才能補錄。Daemon 不自動保存 Run 歷史。獨立文字 CLI 的 `save` 仍可明確匯出目前保留的紀錄，檔案以私有權限建立；已存在檔案的權限沿用檔案本身。內容包含專案輸出，token pattern 遮罩不是完整秘密掃描。
 
 `replay` 只讀取／顯示有序事件，不會恢復程序或舊核准。`npm run build` 後也可用 `node dist/src/app/cli.js demo`，仍需保留 checkout 裡的 fixture 目錄。SDK／adapter 來源與本次結果見能力矩陣。
 

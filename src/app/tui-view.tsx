@@ -9,13 +9,18 @@ import type {
   RunSnapshot,
   RunState,
 } from '../execution/index.js';
+import type { Stage, WorkPlan } from '../work/index.js';
 import type { WorkbenchState } from './workbench-protocol.js';
 import { terminalText } from './tui-input.js';
 import { readableEvents, timelineEntries } from './tui-timeline.js';
 import type { TimelineEntry } from './tui-timeline.js';
+import { stageLabels, trackedWork } from './workbench-work.js';
+import { ProjectPanel } from './tui-project.js';
+import type { ProjectTreeView } from './tui-project.js';
 
 export type View = 'live' | 'diff' | 'timeline';
-export type Filter = 'active' | 'inbox' | 'history';
+export type Filter = 'active' | 'inbox';
+export type PaneFocus = 'workspace' | 'project';
 export type Line = {
   text: string;
   color?: string;
@@ -23,6 +28,12 @@ export type Line = {
 };
 const views: readonly View[] = ['live', 'diff', 'timeline'];
 const tone = (color: string | undefined) => (color ? { color } : {});
+const workflowLabels = {
+  clarification: 'Requirement clarification',
+  development: 'Development',
+  'agent-review': 'Agent Review',
+  'human-review': 'Human Review',
+} satisfies Record<Stage, string>;
 const states = {
   starting: 'Starting',
   idle: 'Idle',
@@ -45,13 +56,11 @@ export function visibleRuns(
   filter: Filter,
 ): readonly RunSnapshot[] {
   return state.runs.filter((run) =>
-    filter === 'history'
-      ? ended.has(run.state.kind)
-      : filter === 'inbox'
-        ? state.attention.some(
-            (item) => item.runId === run.id && item.status === 'pending',
-          )
-        : !ended.has(run.state.kind),
+    filter === 'inbox'
+      ? state.attention.some(
+          (item) => item.runId === run.id && item.status === 'pending',
+        )
+      : !ended.has(run.state.kind),
   );
 }
 function eventSummary(event: RunEvent): string {
@@ -178,14 +187,143 @@ export type ScreenProps = {
   busy: boolean;
   note: string;
   project: boolean;
+  focus?: PaneFocus;
+  tree?: ProjectTreeView;
   options: boolean;
   help: boolean;
   details: boolean;
+  outline?: boolean;
+  outlinePhase?: number;
+  outlineOffset?: number;
   mode: 'normal' | 'reply' | 'command';
   columns: number;
   rows: number;
   input?: ReactNode;
 };
+
+/** Keep the composer and the terminal viewport on the same column boundary. */
+export function workbenchMainWidth(columns: number) {
+  return columns - (columns >= 80 ? 33 : 0);
+}
+
+function WorkflowPanel({
+  plan,
+  tracked,
+  outline,
+  phaseIndex,
+  taskOffset,
+  width,
+  maxRows,
+  compact = false,
+}: {
+  plan: WorkPlan;
+  tracked: ReturnType<typeof trackedWork>;
+  outline: boolean;
+  phaseIndex: number;
+  taskOffset: number;
+  width: number;
+  maxRows: number;
+  compact?: boolean;
+}) {
+  if (!outline && tracked && maxRows < 11)
+    return (
+      <Box width={width} flexDirection="column" flexShrink={0}>
+        <Text bold>Workflow</Text>
+        <Text color="cyan" wrap="truncate-end">
+          &gt; {workflowLabels[tracked.task.stage]}
+        </Text>
+        <Text dimColor>o Roadmap</Text>
+      </Box>
+    );
+  const content: { text: string; current?: boolean; muted?: boolean }[] = [];
+  let footer: string[];
+  if (outline) {
+    const index = Math.max(0, Math.min(phaseIndex, plan.phases.length - 1));
+    const phase = plan.phases[index];
+    if (!compact) content.push({ text: plan.title });
+    const position = `Phase ${index + 1}/${plan.phases.length}`;
+    const status = phase?.id === plan.activePhaseId ? 'Current' : 'Viewing';
+    content.push({
+      text: `${position} · ${status}${compact ? ' · ' + (phase?.title ?? '') : ''}`,
+      muted: true,
+    });
+    if (!compact) content.push({ text: phase?.title ?? '' }, { text: ' ' });
+    footer = compact
+      ? ['[/] Phases · {/} Tasks · Esc close']
+      : ['[/] Phases · {/} Tasks', ':track P.T · Esc close'];
+    const taskRows = Math.max(
+      1,
+      Math.min(6, maxRows - 3 - content.length - footer.length),
+    );
+    const offset = Math.max(
+      0,
+      Math.min(taskOffset, Math.max(0, (phase?.tasks.length ?? 0) - taskRows)),
+    );
+    const tasks = phase?.tasks.slice(offset, offset + taskRows) ?? [];
+    content.push(
+      ...(tasks.length
+        ? tasks.map((task, taskIndex) => ({
+            text: `${task.id === tracked?.task.id ? '>' : ' '} ${index + 1}.${offset + taskIndex + 1} ${task.title} · ${stageLabels[task.stage]}`,
+            current: task.id === tracked?.task.id,
+          }))
+        : [{ text: 'No Tasks in this Phase', muted: true }]),
+    );
+  } else if (tracked) {
+    content.push(
+      {
+        text: `Phase ${plan.phases.findIndex((phase) => phase.id === tracked.phase.id) + 1}/${plan.phases.length}`,
+        muted: true,
+      },
+      { text: tracked.phase.title },
+      { text: 'Current step', muted: true },
+      ...Object.entries(workflowLabels).map(([stage, label]) => ({
+        text: `${tracked.task.stage === stage ? '>' : ' '} ${label}`,
+        current: tracked.task.stage === stage,
+      })),
+    );
+    if (maxRows >= 13) {
+      content.splice(2, 0, { text: ' ' });
+      content.push({ text: ' ' });
+    }
+    footer = ['o Roadmap'];
+  } else return null;
+  return (
+    <Box width={width} flexDirection="column" flexShrink={0}>
+      <Text bold wrap="truncate-end">
+        {compact && tracked
+          ? `Workflow · ${workflowLabels[tracked.task.stage]}`
+          : outline
+            ? 'Roadmap'
+            : 'Workflow'}
+      </Text>
+      <Box
+        borderStyle="single"
+        flexDirection="column"
+        paddingX={1}
+        overflow="hidden"
+      >
+        {content
+          .slice(0, Math.max(0, maxRows - 3 - footer.length))
+          .map((line, index) => (
+            <Text
+              key={index}
+              {...tone(line.current ? 'cyan' : undefined)}
+              bold={line.current === true}
+              dimColor={line.muted === true}
+              wrap="truncate-end"
+            >
+              {terminalText(line.text)}
+            </Text>
+          ))}
+        {footer.map((text) => (
+          <Text key={text} dimColor wrap="truncate-end">
+            {text}
+          </Text>
+        ))}
+      </Box>
+    </Box>
+  );
+}
 
 /** Pure terminal projection; it cannot start Runs or answer permissions. */
 export function WorkbenchScreen(props: ScreenProps) {
@@ -201,7 +339,6 @@ export function WorkbenchScreen(props: ScreenProps) {
     columns,
     rows,
   } = props;
-  const width = Math.max(1, columns - 4);
   const runs = visibleRuns(state, filter);
   const selected = state.runs.find((run) => run.id === selectedId);
   const provider = selected?.provider ?? state.launch?.provider ?? 'fixture';
@@ -212,6 +349,12 @@ export function WorkbenchScreen(props: ScreenProps) {
   const fixture = provider === 'fixture';
   const pending = state.attention.filter((item) => item.status === 'pending');
   const ownPending = pending.filter((item) => item.runId === selectedId);
+  const tracked = trackedWork(state, selectedId);
+  const plan = state.work?.kind === 'ready' ? state.work.plan : null;
+  const mainWidth = workbenchMainWidth(columns);
+  const sidebar = mainWidth < columns;
+  const sidebarWidth = columns - mainWidth - 1;
+  const width = Math.max(1, mainWidth - 4);
   const lines = useMemo(
     () => detailLines(state.events, selectedId, view, width, state.attention),
     [state.events, state.attention, selectedId, view, width],
@@ -235,7 +378,11 @@ export function WorkbenchScreen(props: ScreenProps) {
   }
   const rosterRows = Math.max(
     1,
-    Math.min(5, runs.length || 1, Math.floor(rows / 6)),
+    Math.min(
+      (props.outline || props.project) && !sidebar ? 1 : 5,
+      runs.length || 1,
+      Math.floor(rows / 6),
+    ),
   );
   const selectedIndex = Math.max(
     0,
@@ -246,6 +393,44 @@ export function WorkbenchScreen(props: ScreenProps) {
     Math.min(runs.length - rosterRows, selectedIndex - rosterRows + 1),
   );
   const disclosures: string[] = [];
+  const decisionRows = request ? 2 : 0;
+  const inputRows = props.mode === 'normal' ? 0 : 2;
+  const projectOpen =
+    props.project && !props.outline && !(props.details && request);
+  const focus = props.focus ?? (projectOpen ? 'project' : 'workspace');
+  const projectFocused =
+    projectOpen && focus === 'project' && props.mode === 'normal';
+  const workspaceFocused = focus === 'workspace' && props.mode === 'normal';
+  const inlineCapacity = Math.min(
+    rows >= 24 ? 10 : 6,
+    rows - rosterRows - decisionRows - inputRows - 10,
+  );
+  const compactProjectRows = !sidebar && projectOpen ? inlineCapacity : 0;
+  const projectRows = sidebar
+    ? projectOpen
+      ? Math.min(
+          Math.max(6, (props.tree?.rows.length ?? 0) + 4),
+          rows - 3 - (tracked ? 3 : 0),
+        )
+      : 6
+    : 0;
+  const compactWorkflowRows =
+    props.outline && plan && !sidebar
+      ? Math.min(
+          rows >= 24 ? 9 : 6,
+          rows - rosterRows - decisionRows - inputRows - 10,
+        )
+      : 0;
+  const extraCapacity = Math.max(
+    0,
+    rows -
+      rosterRows -
+      compactWorkflowRows -
+      compactProjectRows -
+      decisionRows -
+      inputRows -
+      12,
+  );
   // The input adapter opens one group at a time; decision details also take priority here.
   if (props.details && request) {
     disclosures.push(
@@ -262,13 +447,10 @@ export function WorkbenchScreen(props: ScreenProps) {
         .split('\n')
         .slice(0, Math.max(1, Math.floor(rows / 5))),
     );
-  } else if (props.project)
-    disclosures.push(
-      'Source · ' + state.source,
-      'Environment · ' +
-        (selected?.environment.location ?? 'Select a Run first'),
-    );
-  else if (props.options && selected?.state.kind === 'authentication-required')
+  } else if (
+    props.options &&
+    selected?.state.kind === 'authentication-required'
+  )
     disclosures.push(
       ...selected.state.methods.map(
         (method) => `:auth ${method.id} · ${method.label}`,
@@ -276,10 +458,15 @@ export function WorkbenchScreen(props: ScreenProps) {
     );
   else if (props.options)
     disclosures.push(
+      state.work
+        ? state.work.plan
+          ? 'o Roadmap · :track P.T attach · :direct detach'
+          : ':roadmap <title> enables optional planning'
+        : '',
       ...(fixture
         ? [
             'i prompts: fix / question / reply:name / wait / crash',
-            'two-permissions · x cancel · :active/:inbox/:history',
+            'two-permissions · x cancel · :active/:inbox',
           ]
         : [
             'i new prompt · a/r approval · x cancel',
@@ -290,21 +477,27 @@ export function WorkbenchScreen(props: ScreenProps) {
     );
   else if (props.help)
     disclosures.push(
+      'Ctrl+W h/l focus workspace/Project · p browse',
+      'Project: j/k move · h/l folders · g/G first/last',
       'j/k agent · w waiting · Tab request · a/r allow/deny',
       'h/l or 1–3 views · PgUp/PgDn scroll · g/G top/end',
       'n new · i reply · Esc keep draft · p paths · s actions',
       ': command · q / Ctrl+C detach; Runs keep running',
+      ':active all agents · :inbox pending approvals',
+      'o Roadmap · :roadmap title · :track P.T · :direct',
+      ':spec requirements · :confirm · :stage development',
     );
   // Bound every optional region to leave a readable timeline at the minimum size.
-  const extras = disclosures.slice(0, Math.max(0, rows - rosterRows - 14));
-  const decisionRows = request ? 2 : 0;
+  const extras = disclosures.filter(Boolean).slice(0, extraCapacity);
   const logRows = Math.max(
     1,
     rows -
       rosterRows -
       extras.length -
       decisionRows -
-      (props.mode === 'normal' ? 0 : 2) -
+      compactWorkflowRows -
+      compactProjectRows -
+      inputRows -
       9,
   );
   const offset = Math.min(props.offset, Math.max(0, lines.length - logRows));
@@ -318,7 +511,7 @@ export function WorkbenchScreen(props: ScreenProps) {
         : fixture
           ? 'i to prompt · s for fixture scenarios'
           : 'i to prompt when idle · s actions'
-    : 'n new Run · :history for past Runs';
+    : 'n new Run';
   const connection = !connected
     ? 'Disconnected · reconnecting'
     : busy
@@ -343,179 +536,268 @@ export function WorkbenchScreen(props: ScreenProps) {
           {pending.length ? ` · ${pending.length} pending` : ''}
         </Text>
       </Box>
-      <Box height={1} flexShrink={0}>
-        <Text color="cyan">agents</Text>
-        <Text dimColor>
-          {' '}
-          · {filter} · {runs.length} runs
-          {runs.length > rosterRows
-            ? ` · ${selectedIndex + 1}/${runs.length}`
-            : ''}
-        </Text>
-      </Box>
-      <Box
-        borderStyle="single"
-        borderColor="cyan"
-        flexDirection="column"
-        height={rosterRows + 2}
-        flexShrink={0}
-        paddingX={1}
-      >
-        {runs.length === 0 ? (
-          <Text dimColor>{empty}</Text>
-        ) : (
-          runs.slice(rosterStart, rosterStart + rosterRows).map((run) => {
-            const count = pending.filter(
-              (item) => item.runId === run.id,
-            ).length;
-            const active = run.id === selectedId;
-            return (
-              <Box key={run.id} height={1} flexShrink={0}>
-                <Box width="55%">
-                  <Text
-                    {...tone(active ? 'cyan' : undefined)}
-                    inverse={active}
-                    wrap="truncate-end"
-                  >
-                    {active ? '> ' : '  '}Run{' '}
-                    {state.runs.findIndex((item) => item.id === run.id) + 1} ·{' '}
-                    {terminalText(run.label)}
-                  </Text>
-                </Box>
-                <Box flexGrow={1}>
-                  <Text
-                    {...tone(
-                      count
-                        ? 'yellow'
-                        : ['failed', 'interrupted'].includes(run.state.kind)
-                          ? 'red'
-                          : run.state.kind === 'authentication-required'
-                            ? 'yellow'
-                            : ['starting', 'running'].includes(run.state.kind)
-                              ? 'blue'
-                              : run.state.kind === 'idle'
-                                ? 'gray'
-                                : undefined,
-                    )}
-                    wrap="truncate-end"
-                  >
-                    {count
-                      ? `Awaiting approval (${count})`
-                      : states[run.state.kind]}
-                  </Text>
-                </Box>
-              </Box>
-            );
-          })
-        )}
-      </Box>
-      <Box height={1} flexShrink={0}>
-        {views.map((name, index) => (
-          <Text
-            key={name}
-            {...tone(view === name ? 'cyan' : undefined)}
-            bold={view === name}
-          >
-            {' '}
-            {index + 1}{' '}
-            {name === 'live'
-              ? 'Live'
-              : name === 'diff'
-                ? 'Diff'
-                : 'Timeline'}{' '}
-          </Text>
-        ))}
-        <Text dimColor>{offset > 0 ? ' · follow paused' : ''}</Text>
-      </Box>
-      <Box
-        borderStyle="single"
-        borderColor={request ? 'yellow' : undefined}
-        height={logRows + 2}
-        flexShrink={0}
-        paddingX={1}
-        flexDirection="column"
-        overflow="hidden"
-      >
-        {log.length ? (
-          log.map((line, index) => (
-            <Text key={index} {...tone(line.color)} wrap="truncate-end">
-              {line.timeline ? (
-                <>
-                  <Text dimColor>{line.timeline.time} </Text>
-                  <Text color={line.timeline.entry.color} bold>
-                    {line.timeline.entry.label}
-                  </Text>
-                  {line.timeline.entry.detail ? (
-                    <Text bold={line.timeline.entry.detailBold}>
-                      {' · '}
-                      {line.timeline.entry.detail}
-                    </Text>
-                  ) : null}
-                </>
-              ) : (
-                line.text || ' '
-              )}
+      <Box height={rows - 3} flexShrink={0} columnGap={sidebar ? 1 : 0}>
+        <Box width={mainWidth} flexDirection="column" flexShrink={0}>
+          <Box height={1} flexShrink={0}>
+            <Text {...tone(workspaceFocused ? 'cyan' : undefined)}>agents</Text>
+            <Text dimColor>
+              {' '}
+              · {filter} · {runs.length} runs
+              {workspaceFocused ? ' · focus' : ''}
+              {runs.length > rosterRows
+                ? ` · ${selectedIndex + 1}/${runs.length}`
+                : ''}
             </Text>
-          ))
-        ) : (
-          <Text dimColor>{empty}</Text>
+          </Box>
+          <Box
+            borderStyle="single"
+            {...(workspaceFocused ? { borderColor: 'cyan' } : {})}
+            flexDirection="column"
+            height={rosterRows + 2}
+            flexShrink={0}
+            paddingX={1}
+          >
+            {runs.length === 0 ? (
+              <Text dimColor>{empty}</Text>
+            ) : (
+              runs.slice(rosterStart, rosterStart + rosterRows).map((run) => {
+                const count = pending.filter(
+                  (item) => item.runId === run.id,
+                ).length;
+                const active = run.id === selectedId;
+                const status = count
+                  ? `Awaiting approval (${count})`
+                  : states[run.state.kind];
+                return (
+                  <Box key={run.id} height={1} flexShrink={0} columnGap={1}>
+                    <Box flexGrow={1} flexBasis={0} minWidth={0}>
+                      <Text
+                        {...tone(active ? 'cyan' : undefined)}
+                        inverse={active && workspaceFocused}
+                        wrap="truncate-end"
+                      >
+                        {active ? '> ' : '  '}Run{' '}
+                        {state.runs.findIndex((item) => item.id === run.id) + 1}{' '}
+                        ·{' '}
+                        {terminalText(
+                          trackedWork(state, run.id)?.task.title ?? run.label,
+                        )}
+                      </Text>
+                    </Box>
+                    <Box width={status.length} flexShrink={0}>
+                      <Text
+                        {...tone(
+                          count
+                            ? 'yellow'
+                            : ['failed', 'interrupted'].includes(run.state.kind)
+                              ? 'red'
+                              : run.state.kind === 'authentication-required'
+                                ? 'yellow'
+                                : ['starting', 'running'].includes(
+                                      run.state.kind,
+                                    )
+                                  ? 'blue'
+                                  : run.state.kind === 'idle'
+                                    ? 'gray'
+                                    : undefined,
+                        )}
+                        wrap="truncate-end"
+                      >
+                        {status}
+                      </Text>
+                    </Box>
+                  </Box>
+                );
+              })
+            )}
+          </Box>
+          <Box height={1} flexShrink={0}>
+            <Box flexGrow={1} minWidth={0}>
+              {views.map((name, index) => (
+                <Text
+                  key={name}
+                  {...tone(view === name ? 'cyan' : undefined)}
+                  bold={view === name}
+                >
+                  {' '}
+                  {index + 1}{' '}
+                  {name === 'live'
+                    ? 'Live'
+                    : name === 'diff'
+                      ? 'Diff'
+                      : 'Timeline'}{' '}
+                </Text>
+              ))}
+              <Text dimColor>
+                {offset > 0
+                  ? mainWidth >= 70
+                    ? ' · follow paused'
+                    : ' · paused'
+                  : ''}
+              </Text>
+            </Box>
+            {!sidebar && (
+              <Box columnGap={1} flexShrink={0}>
+                <Text dimColor>p Project</Text>
+                {tracked && <Text dimColor>o Workflow</Text>}
+              </Box>
+            )}
+          </Box>
+          {compactProjectRows > 0 && (
+            <ProjectPanel
+              tree={props.tree}
+              expanded
+              focused={projectFocused}
+              width={mainWidth}
+              height={compactProjectRows}
+            />
+          )}
+          {compactWorkflowRows > 0 && plan && (
+            <WorkflowPanel
+              plan={plan}
+              tracked={tracked}
+              outline
+              phaseIndex={props.outlinePhase ?? 0}
+              taskOffset={props.outlineOffset ?? 0}
+              width={mainWidth}
+              maxRows={compactWorkflowRows}
+              compact
+            />
+          )}
+          <Box
+            borderStyle="single"
+            borderColor={request ? 'yellow' : undefined}
+            height={logRows + 2}
+            flexShrink={0}
+            paddingX={1}
+            flexDirection="column"
+            overflow="hidden"
+          >
+            {log.length ? (
+              log.map((line, index) => (
+                <Text key={index} {...tone(line.color)} wrap="truncate-end">
+                  {line.timeline ? (
+                    <>
+                      <Text dimColor>{line.timeline.time} </Text>
+                      <Text color={line.timeline.entry.color} bold>
+                        {line.timeline.entry.label}
+                      </Text>
+                      {line.timeline.entry.detail ? (
+                        <Text bold={line.timeline.entry.detailBold}>
+                          {' · '}
+                          {line.timeline.entry.detail}
+                        </Text>
+                      ) : null}
+                    </>
+                  ) : (
+                    line.text || ' '
+                  )}
+                </Text>
+              ))
+            ) : (
+              <Text dimColor>{empty}</Text>
+            )}
+          </Box>
+          {request && (
+            <Box flexDirection="column" height={2} flexShrink={0}>
+              <Text color="yellow" wrap="truncate-end">
+                Approval{' '}
+                {ownPending.findIndex((item) => item.id === request.id) + 1}/
+                {ownPending.length} · {terminalText(request.title)}
+              </Text>
+              <Text wrap="truncate-end">
+                {props.armed
+                  ? request.choices
+                      .filter(
+                        (choice) =>
+                          choice.kind === 'allow-once' ||
+                          choice.kind === 'reject-once',
+                      )
+                      .map(
+                        (choice) =>
+                          `${choice.kind === 'allow-once' ? 'a' : 'r'} ${terminalText(choice.label)}`,
+                      )
+                      .join('  ')
+                  : 'Tab to select another request'}{' '}
+                · d details · Tab next
+              </Text>
+            </Box>
+          )}
+          {extras.map((line, index) => (
+            <Box key={index} height={1} flexShrink={0}>
+              <Text dimColor wrap="truncate-middle">
+                {terminalText(line)}
+              </Text>
+            </Box>
+          ))}
+          {props.mode !== 'normal' && (
+            <Box flexDirection="column" height={2} flexShrink={0}>
+              <Text color="cyan">
+                {props.mode === 'reply'
+                  ? 'Reply · Enter send / Esc keep draft'
+                  : 'Command · Enter run / Esc close'}
+              </Text>
+              <Box height={1}>
+                <Text color="cyan">
+                  {props.mode === 'command' ? ': ' : '> '}
+                </Text>
+                {props.input}
+              </Box>
+            </Box>
+          )}
+          <Box flexGrow={1} />
+        </Box>
+        {sidebar && (
+          <Box width={sidebarWidth} flexDirection="column" flexShrink={0}>
+            <ProjectPanel
+              tree={props.tree}
+              expanded={projectOpen}
+              focused={projectFocused}
+              width={sidebarWidth}
+              height={projectRows}
+            />
+            {plan && (
+              <WorkflowPanel
+                plan={plan}
+                tracked={tracked}
+                outline={props.outline === true}
+                phaseIndex={props.outlinePhase ?? 0}
+                taskOffset={props.outlineOffset ?? 0}
+                width={sidebarWidth}
+                maxRows={rows - 3 - projectRows}
+              />
+            )}
+          </Box>
         )}
       </Box>
-      {request && (
-        <Box flexDirection="column" height={2} flexShrink={0}>
-          <Text color="yellow" wrap="truncate-end">
-            Approval{' '}
-            {ownPending.findIndex((item) => item.id === request.id) + 1}/
-            {ownPending.length} · {terminalText(request.title)}
-          </Text>
-          <Text wrap="truncate-end">
-            {props.armed
-              ? request.choices
-                  .filter(
-                    (choice) =>
-                      choice.kind === 'allow-once' ||
-                      choice.kind === 'reject-once',
-                  )
-                  .map(
-                    (choice) =>
-                      `${choice.kind === 'allow-once' ? 'a' : 'r'} ${terminalText(choice.label)}`,
-                  )
-                  .join('  ')
-              : 'Tab to select another request'}{' '}
-            · d details · Tab next
-          </Text>
-        </Box>
-      )}
-      {extras.map((line, index) => (
-        <Box key={index} height={1} flexShrink={0}>
-          <Text dimColor wrap="truncate-middle">
-            {terminalText(line)}
-          </Text>
-        </Box>
-      ))}
-      {props.mode !== 'normal' && (
-        <Box flexDirection="column" height={2} flexShrink={0}>
-          <Text color="cyan">
-            {props.mode === 'reply'
-              ? 'Reply · Enter send / Esc keep draft'
-              : 'Command · Enter run / Esc close'}
-          </Text>
-          <Box height={1}>
-            <Text color="cyan">{props.mode === 'command' ? ': ' : '> '}</Text>
-            {props.input}
-          </Box>
-        </Box>
-      )}
-      <Box flexGrow={1} />
       <Box height={1} flexShrink={0}>
         <Text {...tone(!connected ? 'yellow' : undefined)} wrap="truncate-end">
           {terminalText(note)}
         </Text>
       </Box>
-      <Box height={1} flexShrink={0}>
-        <Text dimColor wrap="truncate-end">
-          j/k agents · i reply · a/r approve · ? help · q quit
-        </Text>
+      <Box height={1} flexShrink={0} columnGap={1}>
+        <Box flexShrink={0}>
+          <Text dimColor>
+            {selected
+              ? `Run ${state.runs.indexOf(selected) + 1} · ${selected.provider}`
+              : 'workbench'}
+          </Text>
+        </Box>
+        <Box flexGrow={1} flexBasis={0} minWidth={0}>
+          <Text color="cyan" wrap="truncate-middle">
+            {selected
+              ? selected.environment.location === 'pending'
+                ? 'Workspace pending'
+                : terminalText(selected.environment.location).replace(
+                    /[\r\n\t]/g,
+                    ' ',
+                  )
+              : 'No Run selected'}
+          </Text>
+        </Box>
+        <Box flexShrink={0}>
+          <Text dimColor>? help · q quit</Text>
+        </Box>
       </Box>
     </Box>
   );

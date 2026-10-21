@@ -111,6 +111,11 @@ test('explicit local Runs have separate code/config copies and retain edits afte
   assert.notEqual(first.home, homedir());
   assert.notEqual(first.home, second.home);
   assert.equal(first.cwd, one.environment.location);
+  const workspaceListing = await execution.listDirectory(one.id);
+  assert.ok(
+    workspaceListing.kind === 'ready' &&
+      workspaceListing.entries.some((entry) => entry.name === 'token.mjs'),
+  );
   assert.equal(first.auth?.test, 'original');
   assert.equal(
     await readFile(authFile, 'utf8'),

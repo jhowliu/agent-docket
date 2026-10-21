@@ -25,4 +25,4 @@
 
 瀏覽器原型 `preview/index.html` 已驗證 project scoping、各 Run 的服務分離、依賴順序、停止／重設的 callback 失效、log 篩選與故障重試；1440／1024／800／390／320px 無水平 overflow。此多專案／Services 原型仍未連線。
 
-新增 `npm run ui` 的 M0 測試台只連接真實 fixture runtime。已從實際 loopback HTTP 在瀏覽器操作允許／拒絕、各 Run diff、文字問答／回覆與等待取消；相同五種寬度無水平 overflow。真實 Services、模型、登入、跨程序持久化與遠端 daemon 尚未包含。
+新增 `npm run ui` 的 M0 測試台預設連接真實 fixture runtime。已從實際 loopback HTTP 在瀏覽器操作允許／拒絕、各 Run diff、文字問答／回覆與等待取消；相同五種寬度無水平 overflow。2026-10-20 依使用者決定取消 History，以公開 Interface、記憶體內 Request/Response 與 Ink 輸入驗證 [Run 生命週期](run-lifecycle.md)：同程序重連保留活躍請求，新程序從空白開始。沒有在此切片重跑 listener 驗收。真實 Services、模型、登入與遠端 daemon 尚未完成。

@@ -6,10 +6,14 @@
 
 - All product interface copy, CLI help/errors and built-in fixture messages use English. Preserve user-authored text, provider output, paths and historical records in their original language.
 
+- TUI Project tree means actual folder structure in the selected Run workspace. `execution.listDirectory` owns read-only, bounded directory metadata for fixture/local Runs; UI never chooses an arbitrary absolute root. This is separate from ACP client filesystem callbacks, which remain unsupported. Run/provider/working path belong in the bottom status bar. See `docs/project-tree.md`.
+
+- 2026-10-20 已有 `work` 的可選 Roadmap 追蹤切片：保存專案計畫與需求版本，Run 關聯只留在目前程序；TUI／Web 保留原工作區並按需顯示小型 Stepper／Roadmap。工作位置不是審核通過，獨立 Review／checks、Candidate-bound 驗收及 agent 提案 tool 仍待實作。詳見 `docs/roadmap-operation.md`。
+
 - 第一版使用 TypeScript + Node.js；TUI 使用 React + Ink，PR 互動報告使用 TypeScript + React。
 - ACP v1 串接既有 Codex／Claude adapters；實測 capabilities、登入與取消／恢復能力後再承諾行為。
 - 2026-10-19 使用者明確要求先不 containerize：目前允許顯式 `transport: local` 的 Codex 模式，使用每 Run 的專案／home 副本，不能稱為 OS sandbox。Container 隔離記錄為後續工作；不因 container 失敗自動改為 local。操作與限制見 `docs/local-execution.md`。
-- 當前有 HTML／CSS 多專案模擬原型，以及 M0 的 `execution`／`attention` TypeScript 切片、CLI 與 ACP fixture 測試。`npm run tui` 已提供 Ink 終端介面與自動啟動的本機背景服務；與同 port 瀏覽器共用 fixture Runs，退出 TUI 不停止 Run，服務重啟不恢復。`preview/index.html` 的多專案／Services 原型仍是模擬。兩家真實 provider、container／network 隔離與登入尚待實測。詳見 `docs/tui-operation.md`、`docs/m0-operation.md` 與能力矩陣，再按計畫切片增加功能。
+- 當前有 HTML／CSS 多專案模擬原型，以及 M0 的 `execution`／`attention` TypeScript 切片、CLI 與 ACP fixture 測試。`npm run tui` 已提供 Ink 終端介面與自動啟動的本機背景服務；與同 port 瀏覽器共用 Runs，退出 TUI 不停止 Run。2026-10-20 使用者明確取消 History：Run／事件／核准只保留在本次 daemon 的有界記憶體，不保存或載入過去 Run；程序重啟從空白開始，不恢復 Session 或舊核准，崩潰後環境清理仍未對帳。詳見 `docs/run-lifecycle.md`。`preview/index.html` 的多專案／Services 原型仍是模擬。兩家真實 provider、container／network 隔離與登入尚待實測。詳見 `docs/tui-operation.md`、`docs/m0-operation.md` 與能力矩陣，再按計畫切片增加功能。
 
 **Domain 與 deep Modules**
 

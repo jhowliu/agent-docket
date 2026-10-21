@@ -4,7 +4,10 @@ import {
   replySchema,
   stateSchema,
   workbenchOrigin,
+  directoryRequestSchema,
 } from './workbench-protocol.js';
+import { directoryListingSchema } from '../execution/index.js';
+import type { RunId, DirectoryListing } from '../execution/index.js';
 import type {
   WorkbenchCommand,
   WorkbenchReply,
@@ -94,6 +97,33 @@ export function createWorkbenchClient(
   }
   return {
     connect,
+    async directory(runId: RunId, path = ''): Promise<DirectoryListing> {
+      const query = directoryRequestSchema.parse({ runId, path });
+      if (!token)
+        throw new WorkbenchError(
+          'unavailable',
+          'Reconnect before browsing project files',
+        );
+      const response = await send(
+        '/api/directory?' + new URLSearchParams(query),
+        {
+          headers: { 'x-workbench-token': token, origin },
+        },
+      );
+      if (!response.ok)
+        throw new WorkbenchError(
+          'rejected',
+          'Project folders are unavailable; connect to an updated server',
+        );
+      const listing = directoryListingSchema.safeParse(await response.json());
+      if (
+        !listing.success ||
+        listing.data.runId !== runId ||
+        listing.data.path !== path
+      )
+        throw new WorkbenchError('protocol', 'Invalid directory response');
+      return listing.data;
+    },
     poll(): Promise<WorkbenchState> {
       polling ??= (async () => {
         if (!token || !state) return connect();

@@ -70,6 +70,7 @@
 }
 #agent-workbench-preview.aw-runtime .aw-run-title {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 #agent-workbench-preview.aw-runtime .aw-state {
   justify-self: start;
@@ -87,6 +88,9 @@
 }
 #agent-workbench-preview.aw-runtime [data-title] {
   font-size: 12px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 #agent-workbench-preview.aw-runtime [data-state] {
   font-size: 12px;
@@ -251,6 +255,239 @@
   color: var(--aw-muted);
   font-size: 12px;
   margin: 8px 0 3px;
+}
+#agent-workbench-preview.aw-runtime .aw-workflow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--aw-line);
+}
+#agent-workbench-preview.aw-runtime .aw-work-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 5px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+#agent-workbench-preview.aw-runtime .aw-work-steps li {
+  display: flex;
+  align-items: center;
+}
+#agent-workbench-preview.aw-runtime .aw-work-steps li + li::before {
+  content: '/';
+  color: var(--aw-line);
+  padding-right: 5px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-step {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 1px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: transparent;
+  color: var(--aw-muted);
+  white-space: nowrap;
+}
+#agent-workbench-preview.aw-runtime .aw-work-step:hover {
+  background: var(--aw-raised);
+}
+#agent-workbench-preview.aw-runtime .aw-work-step[aria-current='step'] {
+  color: var(--aw-cyan);
+  border-bottom-color: var(--aw-cyan);
+}
+#agent-workbench-preview.aw-runtime .aw-work-step:focus-visible {
+  outline: 2px solid var(--aw-cyan);
+  outline-offset: 2px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-short {
+  display: none;
+}
+#agent-workbench-preview.aw-runtime .aw-roadmap {
+  margin-left: auto;
+  position: relative;
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-roadmap > summary {
+  color: var(--aw-muted);
+  padding: 3px 0;
+  cursor: pointer;
+}
+#agent-workbench-preview.aw-runtime .aw-roadmap[open] > summary {
+  color: var(--aw-cyan);
+}
+#agent-workbench-preview.aw-runtime .aw-roadmap-window {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 330px;
+  padding: 10px;
+  border: 1px solid var(--aw-line);
+  border-radius: 3px;
+  background: var(--aw-panel);
+  z-index: 4;
+  max-height: min(420px, 70vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--aw-line) var(--aw-panel);
+}
+#agent-workbench-preview.aw-runtime .aw-work-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-heading strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 400;
+}
+#agent-workbench-preview.aw-runtime .aw-work-heading .aw-button {
+  padding: 2px 6px;
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-phase,
+#agent-workbench-preview.aw-runtime .aw-work-task {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  text-align: left;
+  gap: 8px;
+  font: inherit;
+  background: transparent;
+  color: var(--aw-text);
+  border: 0;
+  padding: 6px 4px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-phase span,
+#agent-workbench-preview.aw-runtime .aw-work-task span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+#agent-workbench-preview.aw-runtime .aw-work-phase span + span,
+#agent-workbench-preview.aw-runtime .aw-work-task span + span {
+  color: var(--aw-muted);
+  font-size: 11px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-phase:hover,
+#agent-workbench-preview.aw-runtime .aw-work-task:hover {
+  background: var(--aw-raised);
+}
+#agent-workbench-preview.aw-runtime .aw-work-phase[aria-pressed='true'] {
+  background: var(--aw-cyan-wash);
+  color: var(--aw-cyan);
+}
+#agent-workbench-preview.aw-runtime .aw-roadmap-tasks {
+  border-top: 1px solid var(--aw-line);
+  padding-top: 6px;
+  margin-top: 6px;
+}
+#agent-workbench-preview.aw-runtime .aw-roadmap-window .aw-note {
+  padding: 6px 0;
+  margin: 0;
+  font-size: 11px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-actions .aw-button {
+  font-size: 12px;
+  padding: 3px 7px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-inspector,
+#agent-workbench-preview.aw-runtime .aw-work-editor {
+  padding: 10px;
+  border-bottom: 1px solid var(--aw-line);
+  background: var(--aw-panel);
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-inspector .aw-note,
+#agent-workbench-preview.aw-runtime .aw-work-editor .aw-note {
+  padding: 0;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+#agent-workbench-preview.aw-runtime .aw-work-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+  padding: 10px 0;
+}
+#agent-workbench-preview.aw-runtime .aw-work-form label {
+  flex: 1 1 180px;
+  min-width: 0;
+  display: block;
+  color: var(--aw-muted);
+  overflow-wrap: anywhere;
+}
+#agent-workbench-preview.aw-runtime .aw-work-form .aw-work-wide {
+  flex-basis: 100%;
+}
+#agent-workbench-preview.aw-runtime .aw-work-form .aw-input {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-form input[type='checkbox'] {
+  width: auto;
+}
+#agent-workbench-preview.aw-runtime .aw-work-form textarea {
+  resize: vertical;
+}
+#agent-workbench-preview.aw-runtime .aw-work-add {
+  border-top: 1px solid var(--aw-line);
+  padding-top: 6px;
+  margin-top: 6px;
+}
+#agent-workbench-preview.aw-runtime .aw-work-add summary {
+  cursor: pointer;
+}
+@media (max-width: 600px) {
+  #agent-workbench-preview.aw-runtime .aw-work-steps {
+    flex-basis: 100%;
+    gap: 0 4px;
+  }
+  #agent-workbench-preview.aw-runtime .aw-work-step {
+    font-size: 11px;
+  }
+  #agent-workbench-preview.aw-runtime .aw-work-long {
+    display: none;
+  }
+  #agent-workbench-preview.aw-runtime .aw-work-short {
+    display: inline;
+  }
+  #agent-workbench-preview.aw-runtime .aw-roadmap {
+    margin-left: 0;
+    max-width: 100%;
+  }
+  #agent-workbench-preview.aw-runtime .aw-roadmap[open] {
+    flex-basis: 100%;
+  }
+  #agent-workbench-preview.aw-runtime .aw-roadmap-window {
+    position: static;
+    width: 100%;
+    margin-top: 5px;
+  }
+  #agent-workbench-preview.aw-runtime .aw-work-form .aw-input {
+    font-size: 16px;
+  }
+}
+@media (pointer: coarse) {
+  #agent-workbench-preview.aw-runtime .aw-work-step,
+  #agent-workbench-preview.aw-runtime .aw-work-phase,
+  #agent-workbench-preview.aw-runtime .aw-work-task,
+  #agent-workbench-preview.aw-runtime .aw-roadmap > summary {
+    min-height: 44px;
+  }
 }
 @media (max-width: 600px) {
   #agent-workbench-preview.aw-runtime .aw-chrome {

@@ -49,6 +49,15 @@ const app = agent({ name: 'workbench-fixture' })
     // Codex dispatches slash commands from the first prompt block.
     const first = params.prompt[0];
     const text = first?.type === 'text' ? first.text : '';
+    if (text === 'task-context') {
+      await message(
+        params.prompt
+          .slice(1)
+          .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+          .join('\n'),
+      );
+      return { stopReason: 'end_turn' };
+    }
     if (
       text === '/mcp' ||
       text === 'progress' ||

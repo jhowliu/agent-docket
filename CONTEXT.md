@@ -8,9 +8,33 @@
 一個被開發的專案及其驗收約定；可同時存在多個互不相依的 Project。
 _Avoid_: 用工作台本身代稱所有被開發專案
 
+**Roadmap**：
+Project 的分階段交付計畫，描述各 Phase 的目標、依賴及完成條件。
+_Avoid_: 把 Run 紀錄或 agent 對話清單稱為 Roadmap
+
+**Phase**：
+Roadmap 中以交付目標劃分的一段工作，包含相關 Task 與驗收條件；同一 Phase 的 Task 可處於不同 Stage。
+_Avoid_: 把 Phase 與 Stage、Task 或一次 Run 當成同義詞
+
 **Task**：
 具有明確範圍、驗收條件、依賴與交付目標的一份工作；可歷經多個階段與重試。
 _Avoid_: 把 Task 與 agent、Session、Run 當成同義詞
+
+**Stage**：
+Task 工作流程中的一個步驟，包括 Requirement clarification、Development、Agent Review、Human Review；目前工作位置與階段通過是不同概念。
+_Avoid_: 用 Stage 代稱 Roadmap 的 Phase，或把畫面選取步驟視為階段已通過
+
+**Direct mode**：
+Run 不綁定 Task 的直接對話與執行方式；切回此模式不會刪除專案的計畫。
+_Avoid_: 把 Direct mode 視為專案沒有 Roadmap，或視為取消 Run
+
+**Roadmap mode**：
+Run 與 Task 建立關聯，依該 Task 的 Stage 與所屬 Phase 追蹤工作；位置追蹤不代表審核通過或任務完成。
+_Avoid_: 把模式套用到整個專案的所有 Run，或把讀取計畫視為恢復舊 Run
+
+**Human Review**：
+使用者針對特定 Task spec 與 Candidate 做的最終審查，可接受或提出修改要求。
+_Avoid_: 把單次工具操作的允許／拒絕核准視為 Human Review 完成
 
 **Task spec**：
 Task 已定案的需求與驗收約定；修改後形成新版本，原有證據須重新評估適用性。
@@ -29,7 +53,7 @@ _Avoid_: 把 Profile 與 Role 或 provider 當成同義詞
 _Avoid_: 用 Session 代稱 Run
 
 **StageRun**：
-Task 在 Dev、Review、Verify 或 PR 階段的一次 Run；PM 的需求討論可獨立於這些階段存在。
+Task 在某個 Stage 中由一個 Role 執行的一次 Run；同一 Stage 可包含多個 Role 的 Run 或重試。
 _Avoid_: 把每次模型回覆當成一個 StageRun
 
 **Session**：

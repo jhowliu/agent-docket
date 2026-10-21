@@ -22,7 +22,13 @@ web
 
 ## Operating Context
 
+已實作可選的 Roadmap 計畫追蹤，以 Task stepper 呈現 Requirement clarification → Development → Agent Review → Human Review 的工作位置。同一 Phase 可有多個 Task；計畫、需求版本與位置保存於專案計畫檔，Run 關聯只留在目前程序。獨立審核、Candidate 證據、人工驗收與自動交接仍待後續切片；過去 Run 的對話／事件不自動存檔。
+
+Roadmap 與 Stepper 是選取 Run 後的輔助資訊。保留原本工作區風格，agents 清單及 Live／Diff／Timeline 繼續佔主要空間。Web Stepper 使用緊湊單列；TUI 在 80 欄以上使用右側小型 Workflow 欄，直向顯示步驟，`o` 在同一欄展開 Roadmap，避免流程數字與內容分頁混淆。60–79 欄保留完整輸出寬度，按需展開小視窗。一般 Run 隱藏這些資訊；使用者可手動綁定 Task 或回 Direct。Agent 透過 tool 建議採用 Roadmap 的行為仍屬後續提案。
+
 使用者與 PM 討論需求，之後由獨立階段完成 Dev、Review、Verify、PR；各角色可套用自己的技術 profile、skills 與 plugins。
+
+TUI 右側 Workflow 上方提供實際 folder structure，可展開目前 Run 工作目錄內的資料夾與檔案。按 `p` 瀏覽、`[`／`]` 選取、Enter 展開／收合、`R` 重新整理。底部狀態列顯示 Run、provider 與工作路徑，切換 Run 時同步更新。Direct 模式保留檔案樹，窄終端按需展開。
 
 左側依專案顯示來源 repo 位置與所屬 agents；各 Run 顯示自己的隔離工作路徑。Services 集中呈現前後端／資料庫的啟停、健康狀態與 logs，服務故障也進入待處理事項。專案可共用服務定義，實際執行實體各自隔離。
 
@@ -32,11 +38,11 @@ web
 
 另有 `npm run ui` 的瀏覽器測試台，使用相同 domain 的公開 Interface 實際操作可信 ACP fixture 程序，可測多 Run 核准、文字問答、取消、diff 與紀錄。它與多專案模擬原型是不同入口，不連接模型，也不取代後續 Ink 介面的技術選擇。
 
-瀏覽器 demo 先驗證 Vim 風格導覽、回覆與核准。操作 demo 預設顯示進行中的測試，取消／中斷收進歷史。使用者不需要 Results 協定診斷頁，必要診斷以 Timeline 的技術細節提供。
+瀏覽器 demo 先驗證 Vim 風格導覽、回覆與核准。操作 demo 只顯示進行中的測試或待核准項目；2026-10-20 使用者取消 History，不再保存或查閱過去的 Run。使用者不需要 Results 協定診斷頁，必要診斷以 Timeline 的技術細節提供。
 
 新的 oat-agents 畫面參考要求盡量簡潔：操作 demo 常駐內容收斂為狀態列、agents、timeline。來源、測試操作與回覆皆按需展開，核准只在等待決策時出現；維持鍵盤導覽。
 
-使用者已要求進入下一階段。`npm run tui` 現已實作 React + Ink 終端介面，延續精簡布局並共用本機 fixture server。TUI 可自動啟動背景程序；退出畫面後 Run 仍在，重新連線取得目前快照。這只是 M1 第一個切片：尚無真實模型、跨重啟持久化、多專案／Services 管理或完整階段工作流。來源與能力限制見 `docs/tui-operation.md`。
+使用者已要求進入下一階段。`npm run tui` 現已實作 React + Ink 終端介面，延續精簡布局並共用本機 fixture server。TUI 可自動啟動背景程序；退出畫面後 Run 仍在，重新連線取得目前快照。Run／事件／核准僅留於本次程序的有界記憶體，背景程序重啟從空白開始。這只是 M1 第一個切片：尚無真實模型完整驗收、多專案／Services 管理或完整階段工作流。來源與能力限制見 `docs/tui-operation.md`。
 
 HTML Services 僅是本機記憶體模擬，重新載入會回到示例服務狀態。真實服務程序、健康監控與預覽代理尚未實作；能力以 `docs/m0-capability-matrix.md` 的實測記錄為準。
 

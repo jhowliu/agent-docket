@@ -1,12 +1,15 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { renderToString } from 'ink';
 import stringWidth from 'string-width';
 import { createWebWorkbench } from '../src/app/web-workbench.js';
 import { createWorkbenchClient } from '../src/app/workbench-client.js';
-import { WorkbenchScreen } from '../src/app/tui-view.js';
+import { WorkbenchScreen, workbenchMainWidth } from '../src/app/tui-view.js';
+import type { PaneFocus } from '../src/app/tui-view.js';
 import { PromptInput } from '../src/app/tui-input.js';
+import type { TreeRow, ProjectTreeView } from '../src/app/tui-project.js';
+import type { RunId } from '../src/execution/index.js';
 
 const escape = (text: string) =>
   text
@@ -74,6 +77,51 @@ try {
   const three = await client.command({ kind: 'start' });
   if (!('runId' in one && 'runId' in two && 'runId' in three))
     throw new Error('Missing Run');
+  await client.command({
+    kind: 'work.create',
+    expectedRevision: 0,
+    runId: one.runId,
+    title: 'Reliable task delivery',
+    phaseTitle: 'Execution and checks',
+    taskTitle: 'Fix token expiry boundary',
+    spec: 'Reject tokens at the expiry boundary; preserve refresh behavior.',
+  });
+  let planning = (await client.poll()).work;
+  const firstTask = planning?.plan?.phases[0]?.tasks[0];
+  if (!planning?.plan || !firstTask) throw new Error('Missing capture Roadmap');
+  await client.command({
+    kind: 'work.confirm',
+    expectedRevision: planning.plan.revision,
+    taskId: firstTask.id,
+  });
+  planning = (await client.poll()).work;
+  if (!planning?.plan || !planning.plan.phases[0])
+    throw new Error('Missing capture Roadmap');
+  await client.command({
+    kind: 'work.add-task',
+    expectedRevision: planning.plan.revision,
+    phaseId: planning.plan.phases[0].id,
+    title: 'Capture check results',
+    spec: 'Record command, exit code and output.',
+    runId: two.runId,
+  });
+  planning = (await client.poll()).work;
+  const secondTask = planning?.plan?.phases[0]?.tasks[1];
+  if (!planning?.plan || !secondTask)
+    throw new Error('Missing second capture Task');
+  await client.command({
+    kind: 'work.confirm',
+    expectedRevision: planning.plan.revision,
+    taskId: secondTask.id,
+  });
+  planning = (await client.poll()).work;
+  if (!planning?.plan) throw new Error('Missing capture Roadmap');
+  await client.command({
+    kind: 'work.add-phase',
+    expectedRevision: planning.plan.revision,
+    title: 'PR delivery',
+    goal: 'Prepare the reviewed change for delivery.',
+  });
   await client.command({ kind: 'prompt', runId: one.runId, text: 'fix' });
   await client.command({ kind: 'prompt', runId: two.runId, text: 'fix' });
   const deadline = Date.now() + 6000;
@@ -106,15 +154,97 @@ try {
     state = await client.poll();
   }
   const directory = resolve('.impeccable/review/tui');
+  // Owned capture fixture only: create real folders to exercise the read-only tree.
+  for (const run of state.runs) {
+    await mkdir(join(run.environment.location, 'src', 'tasks'), {
+      recursive: true,
+    });
+    await mkdir(join(run.environment.location, 'test'), { recursive: true });
+    await writeFile(
+      join(run.environment.location, 'src', 'main.ts'),
+      'export {};',
+    );
+    await writeFile(
+      join(run.environment.location, 'src', 'tasks', 'work.ts'),
+      'export {};',
+    );
+    await writeFile(
+      join(run.environment.location, 'test', 'work.test.ts'),
+      'export {};',
+    );
+  }
+  async function treeFor(
+    runId: RunId,
+    expand: boolean,
+  ): Promise<ProjectTreeView> {
+    const listing = await client.directory(runId);
+    if (listing.kind !== 'ready')
+      return { rows: [], selected: 0, note: listing.reason };
+    const rows: TreeRow[] = [
+      { path: '', name: 'repo', depth: 0, kind: 'directory', expanded: true },
+    ];
+    for (const entry of listing.entries) {
+      const expanded = expand && entry.kind === 'directory';
+      rows.push({ ...entry, depth: 1, expanded });
+      if (expanded) {
+        const children = await client.directory(runId, entry.path);
+        if (children.kind === 'ready')
+          rows.push(
+            ...children.entries.map((child) => ({
+              ...child,
+              depth: 2,
+              expanded: false,
+            })),
+          );
+      }
+    }
+    return { rows, selected: expand ? 2 : 0, note: '' };
+  }
   await mkdir(directory, { recursive: true });
-  await writeFile(resolve(directory, 'browser-state.json'), JSON.stringify({ ...state, reset: true }));
-  for (const [columns = 80, rows = 24] of [
-    [120, 36],
-    [80, 24],
-    [60, 20],
-  ]) {
-    const composing = columns === 60;
-    const selectedId = composing ? three.runId : two.runId;
+  await writeFile(
+    resolve(directory, 'browser-state.json'),
+    JSON.stringify({ ...state, reset: true }),
+  );
+  const captures: readonly {
+    columns: number;
+    rows: number;
+    outline?: boolean;
+    composing?: boolean;
+    project?: boolean;
+    focus?: PaneFocus;
+    direct?: boolean;
+  }[] = [
+    { columns: 120, rows: 36, outline: false, composing: false },
+    { columns: 120, rows: 36, outline: true, composing: false },
+    { columns: 120, rows: 36, project: true },
+    { columns: 80, rows: 24, outline: false, composing: false },
+    { columns: 80, rows: 24, outline: true, composing: false },
+    { columns: 80, rows: 24, project: true },
+    { columns: 80, rows: 24, project: true, focus: 'workspace' },
+    { columns: 80, rows: 24, direct: true },
+    { columns: 80, rows: 24, outline: false, composing: true },
+    { columns: 60, rows: 20, outline: false, composing: false },
+    { columns: 60, rows: 20, outline: true, composing: false },
+    { columns: 60, rows: 20, project: true },
+    { columns: 60, rows: 20, project: true, focus: 'workspace' },
+    { columns: 60, rows: 20, outline: false, composing: true },
+  ];
+  for (const {
+    columns,
+    rows,
+    outline = false,
+    composing = false,
+    project = false,
+    focus = project ? 'project' : 'workspace',
+    direct = false,
+  } of captures) {
+    const selectedId = direct
+      ? three.runId
+      : composing
+        ? columns >= 80
+          ? one.runId
+          : three.runId
+        : two.runId;
     const output = renderToString(
       <WorkbenchScreen
         state={state}
@@ -129,10 +259,15 @@ try {
         connected
         busy={false}
         note={composing ? 'Last message accepted' : 'Last response accepted'}
-        project={composing}
+        project={project || (composing && columns < 80)}
+        focus={focus}
+        tree={await treeFor(selectedId, project)}
         options={false}
         help={false}
-        details={columns === 80}
+        details={false}
+        outline={outline}
+        outlinePhase={0}
+        outlineOffset={1}
         mode={composing ? 'reply' : 'normal'}
         columns={columns}
         rows={rows}
@@ -141,8 +276,14 @@ try {
             <PromptInput
               id="capture"
               active
-              value="reply:sample draft jkar"
-              width={columns - 3}
+              value={
+                columns >= 80
+                  ? 'reply:Keep the original workspace readable. 中文需求 '.repeat(
+                      4,
+                    )
+                  : 'reply:sample draft jkar'
+              }
+              width={workbenchMainWidth(columns) - 3}
               onChange={() => {}}
               onSubmit={() => {}}
               onEscape={() => {}}
@@ -152,7 +293,7 @@ try {
       />,
       { columns },
     );
-    const name = `${columns}x${rows}`;
+    const name = `${columns}x${rows}${project ? '-project' + (focus === 'workspace' ? '-unfocused' : '') : outline ? '-roadmap' : direct ? '-direct' : composing ? (columns >= 80 ? '-reply' : '-direct-reply') : ''}`;
     await writeFile(resolve(directory, name + '.ansi'), output);
     await writeFile(
       resolve(directory, name + '.txt'),

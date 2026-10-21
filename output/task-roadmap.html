@@ -1,0 +1,741 @@
+<div id="task-roadmap-preview" class="viz-dotted-background">
+  <section class="rw-window" aria-label="Task roadmap concept">
+    <header class="rw-header">
+      <strong>agent / workbench</strong>
+      <span>Concept · example project</span>
+    </header>
+    <nav aria-label="Project roadmap">
+      <ol class="rw-phases" data-phases></ol>
+    </nav>
+    <section class="rw-phase-content" aria-label="Selected phase">
+      <div class="rw-heading">
+        <h3 data-phase-title>Reliable task delivery</h3>
+        <span data-phase-progress>0 of 2 tasks accepted</span>
+      </div>
+      <div class="rw-task-list" data-tasks aria-label="Phase tasks"></div>
+      <nav aria-label="Selected task workflow">
+        <ol class="rw-stages" data-stages></ol>
+      </nav>
+      <section class="rw-detail" aria-label="Selected stage details">
+        <div class="rw-heading">
+          <h3 data-stage-title>Human Review</h3>
+          <span class="rw-status" data-stage-status>Awaiting you</span>
+        </div>
+        <dl data-stage-detail></dl>
+        <div class="rw-actions" data-actions>
+          <button
+            type="button"
+            class="rw-primary cursor-interaction"
+            data-approve
+          >
+            Approve task
+          </button>
+          <button type="button" class="cursor-interaction" data-request>
+            Request changes
+          </button>
+          <button
+            type="button"
+            class="rw-primary cursor-interaction"
+            data-confirm
+            hidden
+          >
+            Confirm requirements
+          </button>
+          <button
+            type="button"
+            class="rw-primary cursor-interaction"
+            data-next
+            hidden
+          >
+            Continue with next task
+          </button>
+        </div>
+        <form data-change-form hidden>
+          <label for="roadmap-change-note">Requested changes</label>
+          <textarea
+            id="roadmap-change-note"
+            rows="2"
+            required
+            placeholder="Describe what needs to change"
+          ></textarea>
+          <div class="rw-actions">
+            <button type="submit" class="rw-primary cursor-interaction">
+              Return to Development
+            </button>
+            <button type="button" class="cursor-interaction" data-keep>
+              Keep reviewing
+            </button>
+          </div>
+        </form>
+      </section>
+      <footer class="rw-footer" data-footer role="status" aria-live="polite">
+        Current phase · Reliable task delivery
+      </footer>
+    </section>
+  </section>
+</div>
+<style>
+  #task-roadmap-preview {
+    color-scheme: light dark;
+    padding: 12px;
+    --rw-bg: light-dark(#f8fafc, #10151c);
+    --rw-fg: light-dark(#172633, #d9e2ed);
+    --rw-muted: light-dark(#485e70, #a8b8c8);
+    --rw-line: light-dark(#bbc8d2, #364b5c);
+    --rw-accent: light-dark(#006675, #78d4df);
+    --rw-active: light-dark(#deeff2, #19353d);
+    --rw-wait: light-dark(#795000, #efbd72);
+    --rw-good: light-dark(#286641, #93c7a3);
+  }
+  #task-roadmap-preview * {
+    box-sizing: border-box;
+  }
+  #task-roadmap-preview .rw-window {
+    background: var(--rw-bg);
+    color: var(--rw-fg);
+    border: 1px solid var(--rw-line);
+    border-radius: 3px;
+    font:
+      14px/1.55 Menlo,
+      Monaco,
+      Consolas,
+      monospace;
+    overflow-wrap: anywhere;
+  }
+  #task-roadmap-preview .rw-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 24px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--rw-line);
+  }
+  #task-roadmap-preview strong {
+    font-weight: 500;
+  }
+  #task-roadmap-preview .rw-header strong {
+    color: var(--rw-accent);
+  }
+  #task-roadmap-preview .rw-header > span {
+    color: var(--rw-muted);
+  }
+  #task-roadmap-preview button,
+  #task-roadmap-preview textarea {
+    font: inherit;
+    color: var(--rw-fg);
+    background: var(--rw-bg);
+    border: 1px solid var(--rw-line);
+    border-radius: 3px;
+  }
+  #task-roadmap-preview button {
+    padding: 8px 10px;
+    text-align: left;
+  }
+  #task-roadmap-preview button:hover {
+    background: var(--rw-active);
+  }
+  #task-roadmap-preview button[aria-pressed='true'] {
+    background: var(--rw-active);
+    border-color: var(--rw-accent);
+  }
+  #task-roadmap-preview .rw-phases,
+  #task-roadmap-preview .rw-stages {
+    list-style: none;
+    display: grid;
+    margin: 0;
+    padding: 16px;
+    gap: 8px;
+  }
+  #task-roadmap-preview .rw-phases {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  #task-roadmap-preview .rw-stages {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 24px 0 18px;
+  }
+  #task-roadmap-preview li {
+    min-width: 0;
+  }
+  #task-roadmap-preview li > button {
+    width: 100%;
+    height: 100%;
+  }
+  #task-roadmap-preview .rw-phases button {
+    display: grid;
+    gap: 4px;
+  }
+  #task-roadmap-preview .rw-number,
+  #task-roadmap-preview .rw-step-status {
+    color: var(--rw-muted);
+    font-size: 12px;
+  }
+  #task-roadmap-preview [data-tone='current'] {
+    color: var(--rw-accent);
+  }
+  #task-roadmap-preview [data-tone='done'] {
+    color: var(--rw-good);
+  }
+  #task-roadmap-preview [data-tone='waiting'] {
+    color: var(--rw-wait);
+  }
+  #task-roadmap-preview .rw-stage-label {
+    display: block;
+    min-height: 44px;
+  }
+  #task-roadmap-preview .rw-stage-number {
+    display: block;
+    color: var(--rw-muted);
+    margin-bottom: 6px;
+  }
+  #task-roadmap-preview .rw-phase-content {
+    padding: 0 16px;
+  }
+  #task-roadmap-preview .rw-heading {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+  }
+  #task-roadmap-preview h3 {
+    font: inherit;
+    font-weight: 500;
+    margin: 0;
+  }
+  #task-roadmap-preview [data-phase-progress] {
+    color: var(--rw-muted);
+    font-size: 12px;
+  }
+  #task-roadmap-preview .rw-task-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 14px;
+  }
+  #task-roadmap-preview .rw-task-list button {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+  }
+  #task-roadmap-preview .rw-task-list button > span:last-child {
+    color: var(--rw-muted);
+    font-size: 12px;
+  }
+  #task-roadmap-preview .rw-detail {
+    border-top: 1px solid var(--rw-line);
+    padding: 16px 0 20px;
+  }
+  #task-roadmap-preview .rw-status {
+    color: var(--rw-wait);
+    font-size: 12px;
+  }
+  #task-roadmap-preview dl {
+    margin: 14px 0 20px;
+    display: grid;
+    grid-template-columns: 94px minmax(0, 1fr);
+    gap: 9px 14px;
+  }
+  #task-roadmap-preview dt {
+    color: var(--rw-muted);
+  }
+  #task-roadmap-preview dd {
+    margin: 0;
+  }
+  #task-roadmap-preview .rw-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #task-roadmap-preview .rw-primary {
+    background: var(--rw-active);
+    border-color: var(--rw-accent);
+  }
+  #task-roadmap-preview .rw-footer {
+    color: var(--rw-muted);
+    border-top: 1px solid var(--rw-line);
+    padding: 12px 0;
+    font-size: 12px;
+  }
+  #task-roadmap-preview label {
+    display: block;
+    margin-bottom: 8px;
+  }
+  #task-roadmap-preview textarea {
+    display: block;
+    width: 100%;
+    resize: vertical;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+  #task-roadmap-preview ::selection {
+    background: var(--rw-accent);
+    color: var(--rw-bg);
+  }
+  #task-roadmap-preview [hidden] {
+    display: none !important;
+  }
+  @media (max-width: 540px) {
+    #task-roadmap-preview {
+      padding: 8px;
+    }
+    #task-roadmap-preview .rw-phases {
+      grid-template-columns: 1fr;
+    }
+    #task-roadmap-preview .rw-phases button {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+    }
+    #task-roadmap-preview .rw-phases button > :nth-child(2) {
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+    #task-roadmap-preview .rw-phases button > :nth-child(3) {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    #task-roadmap-preview .rw-stages {
+      grid-template-columns: 1fr;
+    }
+    #task-roadmap-preview .rw-stages button {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      gap: 2px 8px;
+    }
+    #task-roadmap-preview .rw-stage-number {
+      grid-row: 1 / 3;
+      margin-bottom: 0;
+    }
+    #task-roadmap-preview .rw-stage-label {
+      min-height: 0;
+    }
+    #task-roadmap-preview .rw-stages .rw-step-status {
+      grid-column: 2;
+    }
+    #task-roadmap-preview .rw-task-list button {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 3px;
+    }
+    #task-roadmap-preview dl {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+    #task-roadmap-preview dd {
+      margin-bottom: 8px;
+    }
+    #task-roadmap-preview textarea {
+      font-size: 16px;
+    }
+  }
+  @media (pointer: coarse) {
+    #task-roadmap-preview button {
+      min-height: 44px;
+    }
+  }
+</style>
+<script>
+  (() => {
+    const root = document.getElementById('task-roadmap-preview');
+    const find = (name) => root.querySelector('[data-' + name + ']');
+    const labels = [
+      'Requirement clarification',
+      'Development',
+      'Agent Review',
+      'Human Review',
+    ];
+    const shortLabels = ['Clarify', 'Develop', 'Agent Review', 'Human Review'];
+    const phases = [
+      {
+        id: 'foundation',
+        title: 'Workbench foundation',
+        tasks: [
+          {
+            id: 'bootstrap',
+            title: 'Connect the workbench',
+            stage: 4,
+            accepted: true,
+          },
+        ],
+      },
+      {
+        id: 'reliable-delivery',
+        title: 'Reliable task delivery',
+        tasks: [
+          {
+            id: 'token-boundary',
+            title: 'Fix token expiry boundary',
+            stage: 3,
+            accepted: false,
+          },
+          {
+            id: 'check-results',
+            title: 'Capture check results',
+            stage: 0,
+            accepted: false,
+          },
+        ],
+      },
+      {
+        id: 'pr-delivery',
+        title: 'PR delivery',
+        tasks: [
+          {
+            id: 'prepare-pr',
+            title: 'Prepare the reviewed change',
+            stage: 0,
+            accepted: false,
+          },
+        ],
+      },
+    ];
+    const state = { phase: 1, task: 'token-boundary', view: 3, compact: false };
+    function selected() {
+      return (
+        phases[state.phase].tasks.find((task) => task.id === state.task) ||
+        phases[state.phase].tasks[0]
+      );
+    }
+    function taskStatus(task) {
+      return task.accepted
+        ? 'Accepted'
+        : task.changes
+          ? 'Changes requested'
+          : [
+              'Needs confirmation',
+              'In development',
+              'Agent reviewing',
+              'Awaiting you',
+            ][task.stage];
+    }
+    function stageStatus(task, index) {
+      if (task.accepted || index < task.stage) return ['Complete', 'done'];
+      if (task.changes && index > 1) return ['Needs rerun', 'waiting'];
+      if (index === task.stage)
+        return [
+          task.stage === 0
+            ? 'Confirm scope'
+            : task.stage === 3
+              ? 'Awaiting you'
+              : 'In progress',
+          task.stage === 0 || task.stage === 3 ? 'waiting' : 'current',
+        ];
+      return ['Not started', ''];
+    }
+    function addText(parent, tag, text, className) {
+      const node = document.createElement(tag);
+      node.textContent = text;
+      if (className) node.className = className;
+      parent.append(node);
+      return node;
+    }
+    function remember() {
+      if (!window.openai?.setWidgetState) return;
+      window.openai
+        .setWidgetState({
+          modelContent: {
+            selectedPhase: phases[state.phase].title,
+            selectedTask: selected().title,
+            previewTaskState: taskStatus(selected()),
+          },
+          privateContent: {
+            ...state,
+            tasks: phases.flatMap((phase) =>
+              phase.tasks.map((task) => ({
+                id: task.id,
+                stage: task.stage,
+                accepted: task.accepted,
+                changes: Boolean(task.changes),
+              })),
+            ),
+          },
+        })
+        .catch(() => {});
+    }
+    function restore(saved) {
+      const value = saved?.privateContent;
+      if (!value || typeof value !== 'object') return;
+      if (
+        Number.isInteger(value.phase) &&
+        value.phase >= 0 &&
+        value.phase < phases.length
+      )
+        state.phase = value.phase;
+      if (
+        typeof value.task === 'string' &&
+        phases[state.phase].tasks.some((task) => task.id === value.task)
+      )
+        state.task = value.task;
+      if (Number.isInteger(value.view) && value.view >= 0 && value.view < 4)
+        state.view = value.view;
+      if (typeof value.compact === 'boolean') state.compact = value.compact;
+      for (const item of Array.isArray(value.tasks) ? value.tasks : []) {
+        const task = phases
+          .flatMap((phase) => phase.tasks)
+          .find((task) => task.id === item.id);
+        if (
+          !task ||
+          !Number.isInteger(item.stage) ||
+          item.stage < 0 ||
+          item.stage > 4 ||
+          Boolean(item.accepted) !== (item.stage === 4)
+        )
+          continue;
+        task.stage = item.stage;
+        task.accepted = Boolean(item.accepted);
+        task.changes = Boolean(item.changes);
+      }
+    }
+    function render() {
+      const phase = phases[state.phase];
+      const task = selected();
+      find('phases').replaceChildren();
+      phases.forEach((item, index) => {
+        const li = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'cursor-interaction';
+        button.setAttribute('aria-pressed', String(index === state.phase));
+        if (index === 1) button.setAttribute('aria-current', 'step');
+        addText(button, 'span', 'Phase ' + (index + 1), 'rw-number');
+        addText(button, 'span', item.title);
+        const status = addText(
+          button,
+          'span',
+          index === 0 ? 'Complete' : index === 1 ? 'Current' : 'Planned',
+          'rw-step-status',
+        );
+        status.dataset.tone =
+          index === 0 ? 'done' : index === 1 ? 'current' : '';
+        button.onclick = () => {
+          state.phase = index;
+          state.task = item.tasks[0].id;
+          state.view = Math.min(item.tasks[0].stage, 3);
+          render();
+          remember();
+        };
+        li.append(button);
+        find('phases').append(li);
+      });
+      find('phase-title').textContent = phase.title;
+      find('phase-progress').textContent =
+        phase.tasks.filter((item) => item.accepted).length +
+        ' of ' +
+        phase.tasks.length +
+        ' tasks accepted';
+      find('tasks').replaceChildren();
+      phase.tasks.forEach((item) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'cursor-interaction';
+        button.setAttribute('aria-pressed', String(item.id === task.id));
+        addText(button, 'span', item.title);
+        addText(
+          button,
+          'span',
+          state.phase === 2 ? 'Planned' : taskStatus(item),
+        );
+        button.onclick = () => {
+          state.task = item.id;
+          state.view = Math.min(item.stage, 3);
+          render();
+          remember();
+        };
+        find('tasks').append(button);
+      });
+      find('stages').replaceChildren();
+      labels.forEach((label, index) => {
+        const li = document.createElement('li');
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'cursor-interaction';
+        button.setAttribute('aria-pressed', String(index === state.view));
+        if (index === task.stage) button.setAttribute('aria-current', 'step');
+        addText(button, 'span', String(index + 1), 'rw-stage-number');
+        addText(
+          button,
+          'span',
+          state.compact ? shortLabels[index] : label,
+          'rw-stage-label',
+        );
+        const [status, tone] =
+          state.phase === 2 ? ['Not started', ''] : stageStatus(task, index);
+        addText(button, 'span', status, 'rw-step-status').dataset.tone = tone;
+        button.onclick = () => {
+          state.view = index;
+          render();
+          remember();
+        };
+        li.append(button);
+        find('stages').append(li);
+      });
+      find('stage-title').textContent = labels[state.view];
+      find('stage-status').textContent =
+        state.phase === 2
+          ? 'Phase not started'
+          : stageStatus(task, state.view)[0];
+      const initialTask = task.id === 'token-boundary';
+      const reviewed = task.stage >= 3 && !task.changes;
+      const candidate = initialTask
+        ? 'demo-v1 · example version'
+        : task.stage >= 2
+          ? 'demo-' + task.id + '-v1 · example version'
+          : 'Not created';
+      const details = [
+        [
+          [
+            'Goal',
+            initialTask
+              ? 'Expire tokens at the exact expiry boundary.'
+              : task.title + '.',
+          ],
+          [
+            'Scope',
+            initialTask
+              ? 'Treat expiry <= now as expired.'
+              : 'Confirm the expected outcome and acceptance checks.',
+          ],
+          ['Next', 'Confirm scope before the agent starts Development.'],
+        ],
+        [
+          ['Task', task.title],
+          [
+            'Work',
+            task.changes
+              ? task.reason || 'Address the requested changes.'
+              : task.stage === 1
+                ? 'Awaiting agent execution in this concept.'
+                : 'Implementation belongs to this Task.',
+          ],
+          [
+            'Next',
+            task.changes
+              ? 'A new candidate must go through Agent Review again.'
+              : 'Submit a fixed candidate for independent review and checks.',
+          ],
+        ],
+        [
+          ['Candidate', candidate],
+          [
+            'Code review',
+            reviewed
+              ? 'No blocking findings · example'
+              : task.changes
+                ? 'Previous review needs rerun'
+                : 'Not run',
+          ],
+          [
+            'Checks',
+            reviewed
+              ? 'Passed for this candidate · example'
+              : task.changes
+                ? 'Previous checks need rerun'
+                : 'Not run',
+          ],
+        ],
+        [
+          ['Candidate', candidate],
+          [
+            'Decision',
+            task.accepted
+              ? 'Task accepted'
+              : task.changes
+                ? 'Changes requested'
+                : reviewed
+                  ? 'Inspect the change and its check results.'
+                  : 'Waiting for Agent Review.',
+          ],
+          [
+            'Next task',
+            'Complete this Task; then continue with the next unfinished Task.',
+          ],
+        ],
+      ];
+      find('stage-detail').replaceChildren();
+      details[state.view].forEach(([label, value]) => {
+        addText(find('stage-detail'), 'dt', label);
+        addText(find('stage-detail'), 'dd', value);
+      });
+      const actionable =
+        state.phase === 1 && state.view === task.stage && !task.accepted;
+      find('actions').hidden = false;
+      find('approve').hidden = !(actionable && task.stage === 3);
+      find('request').hidden = !(actionable && task.stage === 3);
+      find('confirm').hidden = !(actionable && task.stage === 0);
+      find('next').hidden = !(
+        state.phase === 1 &&
+        task.accepted &&
+        phase.tasks.some((item) => !item.accepted)
+      );
+      find('change-form').hidden = true;
+      find('footer').textContent =
+        state.phase === 1
+          ? task.changes
+            ? 'Still in Phase 2 · Development needs revision.'
+            : task.accepted
+              ? 'Phase 2 remains current · another Task is unfinished.'
+              : 'Current phase · Reliable task delivery'
+          : state.phase === 0
+            ? 'Viewing a completed Phase · Phase 2 is still current.'
+            : 'Viewing a planned Phase · Phase 2 is still current.';
+    }
+    find('approve').onclick = () => {
+      const task = selected();
+      if (state.phase !== 1 || task.stage !== 3) return;
+      task.accepted = true;
+      task.stage = 4;
+      render();
+      remember();
+    };
+    find('request').onclick = () => {
+      find('change-form').hidden = false;
+      find('actions').hidden = true;
+      root.querySelector('textarea').focus();
+    };
+    find('keep').onclick = () => {
+      find('change-form').hidden = true;
+      find('actions').hidden = false;
+    };
+    find('change-form').onsubmit = (event) => {
+      event.preventDefault();
+      const reason = root.querySelector('textarea').value.trim();
+      if (!reason) return;
+      const task = selected();
+      task.reason = reason;
+      task.stage = 1;
+      task.accepted = false;
+      task.changes = true;
+      state.view = 1;
+      find('actions').hidden = false;
+      render();
+      remember();
+    };
+    find('confirm').onclick = () => {
+      const task = selected();
+      task.stage = 1;
+      state.view = 1;
+      render();
+      remember();
+    };
+    find('next').onclick = () => {
+      const task = phases[state.phase].tasks.find((item) => !item.accepted);
+      if (!task) return;
+      state.task = task.id;
+      state.view = Math.min(task.stage, 3);
+      render();
+      remember();
+    };
+    restore(window.openai?.widgetState);
+    render();
+    window.addEventListener('openai:set_globals', (event) => {
+      const saved = event.detail?.globals?.widgetState;
+      if (saved) {
+        restore(saved);
+        render();
+      }
+    });
+    if (globalThis.Tweak) {
+      const tweak = new Tweak({ container: root, onChange: render });
+      tweak.addToggle(state, 'compact', { label: 'Compact stage labels' });
+    }
+  })();
+</script>

@@ -101,7 +101,7 @@ test('Timeline omits ordinary streamed prose and groups tool updates into concis
     at,
     ...payload,
   }));
-  const output = screen(events, 'timeline');
+  const output = screen(events, 'timeline', 120);
   for (const detail of [
     'Turn started',
     'Approval · pending',
@@ -115,6 +115,12 @@ test('Timeline omits ordinary streamed prose and groups tool updates into concis
   assert.equal(output.split('Read README').length - 1, 1, output);
   assert.ok(!output.includes('summarize'), output);
   assert.ok(!output.includes('Tool pending · Read README'), output);
+  const narrow = screen(events, 'timeline', 80);
+  assert.ok(narrow.includes('Run interrupted · Adapter connect'), narrow);
+  assert.ok(
+    screen(events, 'live', 80).includes('Adapter connection lost'),
+    'The complete failure reason stays available in Live beside Project',
+  );
   assert.ok(
     screen(events, 'live').includes('summarize'),
     'Full text stays available in Live',

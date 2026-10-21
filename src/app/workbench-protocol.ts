@@ -1,111 +1,24 @@
 import { z } from 'zod';
-import type { AttentionId, AttentionItem } from '../attention/index.js';
-import type {
-  RunEvent,
-  RunId,
-  RunSnapshot,
-  RunState,
+import { attentionItemSchema } from '../attention/index.js';
+import type { AttentionId } from '../attention/index.js';
+import {
+  runIdSchema,
+  runSnapshotSchema,
+  runEventSchema,
+  directoryPathSchema,
 } from '../execution/index.js';
+import { workCommandSchema, workSnapshotSchema } from '../work/index.js';
 
-const runId = z.custom<RunId>(
-  (value) => typeof value === 'string' && /^run-[a-zA-Z0-9-]+$/.test(value),
-);
+const runId = runIdSchema;
 const attentionId = z.custom<AttentionId>(
   (value) => typeof value === 'string' && /^attn-[a-zA-Z0-9-]+$/.test(value),
 );
-const runState: z.ZodType<RunState> = z.union([
-  z.object({
-    kind: z.enum([
-      'starting',
-      'idle',
-      'running',
-      'cancelling',
-      'cancelled',
-      'closed',
-    ]),
-  }),
-  z.object({
-    kind: z.literal('authentication-required'),
-    methods: z.array(z.object({ id: z.string(), label: z.string() })),
-  }),
-  z.object({ kind: z.enum(['failed', 'interrupted']), reason: z.string() }),
-]);
-const capabilities = z.object({
-  protocolVersion: z.number().int(),
-  agent: z.string(),
-  version: z.string(),
-  loadSessionAdvertised: z.boolean(),
-  clientFilesystem: z.literal(false),
-  clientTerminal: z.literal(false),
-  structuredQuestions: z.literal(false),
-  resumeImplemented: z.literal(false),
-});
-const run: z.ZodType<RunSnapshot> = z.object({
-  id: runId,
-  provider: z.enum(['fixture', 'codex', 'claude']),
-  label: z.string(),
-  state: runState,
-  environment: z.object({
-    kind: z.enum(['trusted-fixture-directory', 'local', 'docker', 'ssh']),
-    location: z.string(),
-  }),
-  capabilities: capabilities.nullable(),
-});
-const choice = z.object({
-  id: z.string(),
-  label: z.string(),
-  kind: z.enum(['allow-once', 'allow-always', 'reject-once', 'reject-always']),
-});
-const attentionContent = z.object({
-  id: attentionId,
-  runId,
-  title: z.string(),
-  detail: z.string(),
-  choices: z.array(choice),
-  createdAt: z.string(),
-});
-const item: z.ZodType<AttentionItem> = z.union([
-  attentionContent.extend({ status: z.literal('pending') }),
-  attentionContent.extend({
-    status: z.enum(['accepted', 'delivered']),
-    choiceId: z.string(),
-  }),
-  attentionContent.extend({ status: z.literal('stale'), reason: z.string() }),
-]);
-const eventBase = z.object({
-  sequence: z.number().int().nonnegative(),
-  runId,
-  at: z.string(),
-});
-const event: z.ZodType<RunEvent> = z.discriminatedUnion('type', [
-  eventBase.extend({ type: z.literal('run.state'), state: runState }),
-  eventBase.extend({ type: z.literal('capabilities'), capabilities }),
-  eventBase.extend({ type: z.literal('agent.message'), text: z.string() }),
-  eventBase.extend({
-    type: z.literal('agent.progress'),
-    summary: z.string().min(1).max(2000),
-  }),
-  eventBase.extend({ type: z.literal('turn.start'), text: z.string() }),
-  eventBase.extend({
-    type: z.literal('tool'),
-    id: z.string(),
-    title: z.string(),
-    status: z.string(),
-  }),
-  eventBase.extend({
-    type: z.literal('diff'),
-    path: z.string(),
-    oldText: z.string(),
-    newText: z.string(),
-  }),
-  eventBase.extend({
-    type: z.literal('attention'),
-    id: z.string(),
-    status: z.string(),
-  }),
-  eventBase.extend({ type: z.literal('turn.end'), reason: z.string() }),
-  eventBase.extend({ type: z.literal('diagnostic'), message: z.string() }),
-]);
+const run = runSnapshotSchema;
+const item = attentionItemSchema;
+const event = runEventSchema;
+export const directoryRequestSchema = z
+  .object({ runId, path: directoryPathSchema })
+  .strict();
 
 export const commandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('start') }).strict(),
@@ -132,18 +45,21 @@ export const commandSchema = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('shutdown') }).strict(),
+  ...workCommandSchema.options,
 ]);
 export type WorkbenchCommand = z.infer<typeof commandSchema>;
 export const stateSchema = z.object({
   // Older browser fixture servers omit instanceId. Their bootstrap token identifies the instance.
   instanceId: z.string().optional(),
-  runs: z.array(run).max(20),
+  runs: z.array(run).max(64),
   attention: z.array(item).max(600),
   events: z.array(event).max(2000),
   cursor: z.number().int().nonnegative(),
   reset: z.boolean(),
   source: z.string(),
   configurationId: z.string().optional(),
+  work: workSnapshotSchema.optional(),
+  features: z.object({ directoryTree: z.boolean() }).optional(),
   launch: z
     .object({
       provider: z.enum(['fixture', 'codex', 'claude']),

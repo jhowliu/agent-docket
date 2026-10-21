@@ -65,3 +65,29 @@ test('pending inbox has bounded capacity', () => {
   inbox.invalidate(runId, 'reset');
   assert.doesNotThrow(() => inbox.request(input));
 });
+
+test('closing an inbox revokes unfinished decisions without carrying them to a new inbox', async () => {
+  const inbox = createAttention();
+  const pending = inbox.request(input);
+  const accepted = inbox.request(input);
+  const delivered = inbox.request(input);
+  inbox.answer(accepted.id, 'yes');
+  inbox.answer(delivered.id, 'no');
+  inbox.delivered(delivered.id);
+  inbox.close();
+  inbox.close();
+  assert.deepEqual(await pending.decision, { kind: 'cancelled' });
+  inbox.delivered(accepted.id);
+  assert.equal(
+    inbox.list().find((item) => item.id === accepted.id)?.status,
+    'stale',
+  );
+  assert.equal(
+    inbox.list().find((item) => item.id === delivered.id)?.status,
+    'delivered',
+  );
+  assert.throws(() => inbox.request(input), /closed/);
+  const fresh = createAttention();
+  assert.deepEqual(fresh.list(), []);
+  assert.throws(() => fresh.answer(pending.id, 'yes'), /Unknown attention/);
+});

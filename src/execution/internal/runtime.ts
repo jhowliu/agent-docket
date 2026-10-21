@@ -20,6 +20,7 @@ import type { ManagedProcess } from './worker.js';
 import { createProgressChannel } from './progress.js';
 import type { ProgressChannel } from './progress.js';
 import { progressInstructions } from './progress-protocol.js';
+import { directoryPathSchema, readWorkspaceDirectory } from './directory.js';
 
 const workerFields = {
   image: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,200}$/),
@@ -204,7 +205,10 @@ export function createExecution(options: ExecutionOptions): Execution {
   const journal: RunEvent[] = [];
   let sequence = 0;
   let closing = false;
+  let closed = false;
+  let closeTask: Promise<void> | null = null;
   function emit(slot: Slot, payload: RunEventPayload): void {
+    if (closed) return;
     const event: RunEvent = {
       ...structuredClone(payload),
       sequence: ++sequence,
@@ -249,8 +253,8 @@ export function createExecution(options: ExecutionOptions): Execution {
   async function clean(slot: Slot): Promise<void> {
     if (!slot.cleanup)
       slot.cleanup = (async () => {
-        attention.invalidate(slot.snapshot.id, 'Run environment closed');
         slot.connection?.close();
+        attention.invalidate(slot.snapshot.id, 'Run environment closed');
         const managed =
           slot.managed ?? (await slot.launchTask?.catch(() => null));
         const progress =
@@ -410,7 +414,7 @@ export function createExecution(options: ExecutionOptions): Execution {
       snapshot: {
         id,
         provider: launch.provider,
-        label: launch.label ?? launch.provider,
+        label: safeText(launch.label ?? launch.provider),
         state: { kind: 'starting' },
         environment: {
           kind:
@@ -572,12 +576,12 @@ export function createExecution(options: ExecutionOptions): Execution {
         throw new Error('Adapter negotiated an unsupported protocol version');
       slot.authMethods = (init.authMethods ?? []).map((method) => ({
         id: method.id,
-        label: method.name,
+        label: safeText(method.name),
       }));
       const capabilities = {
         protocolVersion: init.protocolVersion,
-        agent: init.agentInfo?.name ?? launch.provider,
-        version: init.agentInfo?.version ?? 'unknown',
+        agent: safeText(init.agentInfo?.name ?? launch.provider),
+        version: safeText(init.agentInfo?.version ?? 'unknown'),
         loadSessionAdvertised: init.agentCapabilities?.loadSession === true,
         clientFilesystem: false,
         clientTerminal: false,
@@ -594,6 +598,69 @@ export function createExecution(options: ExecutionOptions): Execution {
         setState(slot, { kind: 'failed', reason: errorText(error) });
       await clean(slot);
       throw error;
+    }
+  }
+  function acceptPrompt(id: RunId, text: string) {
+    const slot = get(id);
+    if (
+      slot.snapshot.state.kind !== 'idle' ||
+      !slot.connection ||
+      !slot.sessionId
+    )
+      throw new Error('Run must be idle; live steering is not implemented');
+    if (typeof text !== 'string' || !text.trim() || text.length > 100_000)
+      throw new Error('Prompt must contain 1–100000 characters');
+    setState(slot, { kind: 'running' });
+    slot.tools.clear();
+    emit(slot, { type: 'turn.start', text: safeText(text) });
+    return { slot, epoch: slot.epoch };
+  }
+  async function runPrompt(
+    slot: Slot,
+    text: string,
+    epoch: number,
+    context?: string,
+  ) {
+    const id = slot.snapshot.id;
+    try {
+      await slot.progress?.beginTurn();
+      if (epoch !== slot.epoch) return { stopReason: 'cancelled' };
+      if (!slot.connection || !slot.sessionId)
+        throw new Error('Run connection is unavailable');
+      const task = slot.connection.agent.request(
+        acp.methods.agent.session.prompt,
+        {
+          sessionId: slot.sessionId,
+          prompt: [
+            // Provider slash commands are dispatched from the first block.
+            { type: 'text', text },
+            ...(context ? [{ type: 'text' as const, text: context }] : []),
+            ...(slot.progress
+              ? [{ type: 'text' as const, text: progressInstructions }]
+              : []),
+          ],
+        },
+      );
+      slot.promptTask = task;
+      const result = await deadline(task, 10 * 60_000);
+      await slot.progress?.endTurn();
+      if (epoch !== slot.epoch) return { stopReason: 'cancelled' };
+      attention.invalidate(id, 'Prompt turn ended');
+      emit(slot, { type: 'turn.end', reason: result.stopReason });
+      if (!terminal(slot.snapshot.state)) setState(slot, { kind: 'idle' });
+      return { stopReason: result.stopReason };
+    } catch (error) {
+      if (cancelling(slot)) return { stopReason: 'cancelled' };
+      try {
+        attention.invalidate(id, 'Prompt interrupted');
+        if (!terminal(slot.snapshot.state))
+          setState(slot, { kind: 'interrupted', reason: errorText(error) });
+      } finally {
+        await clean(slot);
+      }
+      throw error;
+    } finally {
+      slot.promptTask = null;
     }
   }
   const execution: Execution = {
@@ -633,53 +700,17 @@ export function createExecution(options: ExecutionOptions): Execution {
       return structuredClone(slot.snapshot);
     },
     async prompt(id, text) {
-      const slot = get(id);
+      const { slot, epoch } = acceptPrompt(id, text);
+      return runPrompt(slot, text, epoch);
+    },
+    submit(id, text, context) {
       if (
-        slot.snapshot.state.kind !== 'idle' ||
-        !slot.connection ||
-        !slot.sessionId
+        context !== undefined &&
+        (typeof context !== 'string' || context.length > 12_000)
       )
-        throw new Error('Run must be idle; live steering is not implemented');
-      if (typeof text !== 'string' || !text.trim() || text.length > 100_000)
-        throw new Error('Prompt must contain 1–100000 characters');
-      setState(slot, { kind: 'running' });
-      slot.tools.clear();
-      emit(slot, { type: 'turn.start', text: safeText(text) });
-      const epoch = slot.epoch;
-      try {
-        await slot.progress?.beginTurn();
-        if (epoch !== slot.epoch) return { stopReason: 'cancelled' };
-        const task = slot.connection.agent.request(
-          acp.methods.agent.session.prompt,
-          {
-            sessionId: slot.sessionId,
-            prompt: [
-              // Provider slash commands are dispatched from the first block.
-              { type: 'text', text },
-              ...(slot.progress
-                ? [{ type: 'text' as const, text: progressInstructions }]
-                : []),
-            ],
-          },
-        );
-        slot.promptTask = task;
-        const result = await deadline(task, 10 * 60_000);
-        await slot.progress?.endTurn();
-        if (epoch !== slot.epoch) return { stopReason: 'cancelled' };
-        attention.invalidate(id, 'Prompt turn ended');
-        emit(slot, { type: 'turn.end', reason: result.stopReason });
-        if (!terminal(slot.snapshot.state)) setState(slot, { kind: 'idle' });
-        return { stopReason: result.stopReason };
-      } catch (error) {
-        if (cancelling(slot)) return { stopReason: 'cancelled' };
-        attention.invalidate(id, 'Prompt interrupted');
-        if (!terminal(slot.snapshot.state))
-          setState(slot, { kind: 'interrupted', reason: errorText(error) });
-        await clean(slot);
-        throw error;
-      } finally {
-        slot.promptTask = null;
-      }
+        throw new Error('Run context must contain at most 12000 characters');
+      const { slot, epoch } = acceptPrompt(id, text);
+      void runPrompt(slot, text, epoch, context).catch(() => {});
     },
     async cancel(id) {
       const slot = get(id);
@@ -724,6 +755,40 @@ export function createExecution(options: ExecutionOptions): Execution {
     list() {
       return [...slots.values()].map((slot) => structuredClone(slot.snapshot));
     },
+    async listDirectory(id, input = '') {
+      const path = directoryPathSchema.parse(input);
+      const slot = get(id);
+      const epoch = slot.epoch;
+      const managed = slot.managed;
+      const unavailable = (reason: string) => ({
+        kind: 'unavailable' as const,
+        runId: id,
+        path,
+        reason,
+      });
+      if (closing || terminal(slot.snapshot.state) || cancelling(slot))
+        return unavailable('This Run workspace is no longer active');
+      if (!managed) return unavailable('Workspace is still starting');
+      if (
+        !['local', 'trusted-fixture-directory'].includes(
+          managed.environment.kind,
+        )
+      )
+        return unavailable(
+          'Folder browsing is unavailable for this environment',
+        );
+      try {
+        const listing = await readWorkspaceDirectory(managed.cwd, id, path);
+        return epoch === slot.epoch &&
+          !closing &&
+          !terminal(slot.snapshot.state) &&
+          !cancelling(slot)
+          ? listing
+          : unavailable('This Run workspace is no longer active');
+      } catch {
+        return unavailable('Cannot read this folder; links are not expanded');
+      }
+    },
     events(after) {
       if (after !== undefined && (!Number.isSafeInteger(after) || after < 0))
         throw new Error('Invalid event cursor');
@@ -741,26 +806,34 @@ export function createExecution(options: ExecutionOptions): Execution {
         listeners.delete(listener);
       };
     },
-    async close() {
+    close() {
+      if (closeTask) return closeTask;
       closing = true;
-      const results = await Promise.allSettled(
-        [...slots.values()].map(async (slot) => {
-          slot.epoch++;
-          attention.invalidate(slot.snapshot.id, 'Execution closed');
-          if (!terminal(slot.snapshot.state))
-            setState(slot, { kind: 'closed' });
-          await clean(slot);
-        }),
-      );
-      unsubscribe();
-      const errors = results.flatMap((result) =>
-        result.status === 'rejected' ? [result.reason] : [],
-      );
-      if (errors.length)
-        throw new AggregateError(
-          errors,
-          'Some managed environments could not be removed',
+      closeTask = (async () => {
+        const results = await Promise.allSettled(
+          [...slots.values()].map(async (slot) => {
+            slot.epoch++;
+            try {
+              attention.invalidate(slot.snapshot.id, 'Execution closed');
+              if (!terminal(slot.snapshot.state))
+                setState(slot, { kind: 'closed' });
+            } finally {
+              await clean(slot);
+            }
+          }),
         );
+        unsubscribe();
+        closed = true;
+        const errors = results.flatMap((result) =>
+          result.status === 'rejected' ? [result.reason] : [],
+        );
+        if (errors.length)
+          throw new AggregateError(
+            errors,
+            'Some managed environments could not be removed',
+          );
+      })();
+      return closeTask;
     },
   };
   return execution;
