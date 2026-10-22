@@ -108,3 +108,11 @@ _Avoid_: 把 agent 的結論或推測直接視為 Evidence
 **Delivery**：
 針對特定 Candidate 組成的交付內容，包括 PR、變更說明、相關證據與 review comments；準備完成與已發佈是不同狀態。
 _Avoid_: 用 agent 回合結束代稱 Delivery 完成
+
+**Agent request**：
+Agent 透過 `request_user` 明確提出、需要使用者在工作台外動手或回答的事項；跨回合保留，Run 結束即失效，標記完成不會通知 agent，也不代表結果已驗證。
+_Avoid_: 從 agent 對話推測需要使用者做事，或把 Agent request 當成權限核准
+
+**Change map**：
+某個 Run 的工作目錄相對其 base 的變更導覽：從使用者操作經公開 Interface 到被修改函式的 flow、Interface 變更與逐函式 diff；flow 由靜態分析推得，可能不完整。
+_Avoid_: 把 Change map 視為 review 結論、驗證通過或 Evidence

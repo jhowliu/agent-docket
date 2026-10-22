@@ -14,7 +14,7 @@ test('progress instructions preserve provider slash-command dispatch', async (t)
   const execution = createExecution({ attention });
   t.after(() => execution.close());
   attention.subscribe((item) => {
-    if (item.status !== 'pending') return;
+    if (item.status !== 'pending' || item.kind !== 'permission') return;
     const reject = item.choices.find((choice) => choice.kind === 'reject-once');
     if (reject) attention.answer(item.id, reject.id);
   });
@@ -24,7 +24,7 @@ test('progress instructions preserve provider slash-command dispatch', async (t)
     .events()
     .flatMap((event) => (event.type === 'agent.message' ? [event.text] : []))
     .join('');
-  assert.equal(reply, 'workbench_progress: report_progress');
+  assert.equal(reply, 'workbench_progress: report_progress, request_user');
   assert.equal(attention.list().length, 0);
   assert.ok(
     !execution.events().some((event) => event.type === 'agent.progress'),

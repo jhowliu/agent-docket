@@ -556,3 +556,10 @@
 #agent-workbench-preview .aw-session-error:empty {
   display: none;
 }
+#agent-workbench-preview.aw-runtime .aw-request-steps {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+#agent-workbench-preview.aw-runtime .aw-request-steps li {
+  overflow-wrap: anywhere;
+}

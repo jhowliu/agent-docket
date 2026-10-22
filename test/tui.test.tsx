@@ -451,6 +451,7 @@ test('Ink frames fit terminal cells with long CJK, diff and all optional control
     attention: [
       {
         id: 'attn-layout',
+        kind: 'permission',
         runId,
         title: '核准長指令'.repeat(25),
         detail: 'command '.repeat(300),

@@ -74,6 +74,8 @@ export function timelineEntries(
   let turnAt: string | undefined;
   let requestRow: number | undefined;
   let ended = false;
+  // Whether the agent wrote any reply this turn; its text stays in Live.
+  let replied = false;
   const row = (
     event: RunEvent,
     label: string,
@@ -105,6 +107,7 @@ export function timelineEntries(
       }
       case 'agent.message':
         // Free-form conversation is available in Live; progress has its own explicit ingress.
+        if (event.text.trim()) replied = true;
         break;
       case 'run.state': {
         const state = event.state;
@@ -113,6 +116,7 @@ export function timelineEntries(
           files.clear();
           turnAt = event.at;
           ended = false;
+          replied = false;
           requestRow = rows.length;
           rows.push(row(event, 'Turn started', '', 'blue'));
         } else if (state.kind === 'idle') {
@@ -151,6 +155,7 @@ export function timelineEntries(
           tools.clear();
           files.clear();
           turnAt = event.at;
+          replied = false;
           rows.push(entry);
         }
         ended = false;
@@ -193,6 +198,30 @@ export function timelineEntries(
       }
       case 'attention': {
         const decision = decisions.get(event.id);
+        if (decision?.kind === 'agent-request') {
+          const labels: Readonly<Record<string, string>> = {
+            pending:
+              decision.request === 'question'
+                ? 'Question for you'
+                : 'Needs you',
+            done: 'Marked done',
+            stale: 'Request expired',
+          };
+          rows.push(
+            row(
+              event,
+              labels[event.status] ?? event.status,
+              preview(decision.title),
+              event.status === 'pending'
+                ? 'yellow'
+                : event.status === 'done'
+                  ? 'green'
+                  : 'gray',
+              event.status === 'pending',
+            ),
+          );
+          break;
+        }
         if (!decision) {
           rows.push(
             row(
@@ -252,6 +281,8 @@ export function timelineEntries(
             `${files.size} file${files.size === 1 ? '' : 's'} changed`,
           );
         if (event.reason !== 'end_turn') details.push('stop: ' + event.reason);
+        if (replied) details.push('replied · 1 Live');
+        replied = false;
         rows.push(
           row(event, 'Turn finished', details.filter(Boolean).join(' · ')),
         );

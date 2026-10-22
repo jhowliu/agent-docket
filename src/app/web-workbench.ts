@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
+  changesRequestSchema,
   commandSchema,
   directoryRequestSchema,
   projectRequestSchema,
@@ -18,7 +19,14 @@ import {
   ProjectInitializationRequired,
   listProjectFolders,
 } from '../execution/index.js';
-import type { Execution, Launch, LocalWorker } from '../execution/index.js';
+import type {
+  Execution,
+  Launch,
+  LocalWorker,
+  RunId,
+} from '../execution/index.js';
+import { describeChange } from '../delivery/index.js';
+import type { ChangeMap } from '../delivery/index.js';
 import { launchFingerprint } from './launch-config.js';
 import { createProjectWorkspaces } from '../work/index.js';
 import { basename, resolve } from 'node:path';
@@ -37,6 +45,15 @@ const assets: Readonly<Record<string, { file: string; type: string }>> = {
   '/runtime-session.js': {
     file: 'runtime-session.js',
     type: 'text/javascript; charset=utf-8',
+  },
+  '/changes': { file: 'change-map.html', type: 'text/html; charset=utf-8' },
+  '/change-map.js': {
+    file: 'change-map.js',
+    type: 'text/javascript; charset=utf-8',
+  },
+  '/change-map.css': {
+    file: 'change-map.css',
+    type: 'text/css; charset=utf-8',
   },
   '/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
   '/services.js': {
@@ -78,6 +95,7 @@ export function createWebWorkbench(
   const directory = previewDirectory();
   const launch = parseLaunch(options.launch ?? { provider: 'fixture' });
   const configurationId = launchFingerprint(launch);
+  const changeTasks = new Map<RunId, Promise<ChangeMap>>();
   if ((options.maxEvents ?? 2000) > 2000)
     throw new Error('Workbench polling supports at most 2000 events');
   const attention = createAttention();
@@ -197,6 +215,7 @@ export function createWebWorkbench(
           newSession: true,
           folderCompletion: true,
           projectInitialization: true,
+          changeMap: true,
         },
         launch: {
           provider: launch.provider,
@@ -281,6 +300,54 @@ export function createWebWorkbench(
         return result;
       } catch {
         return json({ error: 'Run workspace is unavailable' }, 404);
+      }
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/changes') {
+      if (
+        request.headers.get('x-workbench-token') !== token ||
+        (request.headers.has('origin') &&
+          request.headers.get('origin') !== address.origin)
+      )
+        return json({ error: 'Reconnect before opening the Change map' }, 403);
+      const parsed = changesRequestSchema.safeParse({
+        runId: url.searchParams.get('runId'),
+      });
+      if (!parsed.success) return json({ error: 'Invalid Run' }, 400);
+      const id = execution
+        .list()
+        .find((run) => run.id === parsed.data.runId)?.id;
+      if (!id) return json({ error: 'Unknown Run' }, 404);
+      // The checkout comes from execution's own Run record, never from the request.
+      const worktree = execution.snapshot(id).worktree;
+      if (!worktree)
+        return json(
+          { error: 'Change maps need a Run with a local Git worktree' },
+          409,
+        );
+      if (worktree.status.kind === 'removed')
+        return json(
+          {
+            error: `The worktree was removed; its commits stay on ${worktree.branch}`,
+          },
+          409,
+        );
+      // One analysis per Run at a time; repeated opens share it.
+      let task = changeTasks.get(id);
+      if (!task) {
+        task = describeChange({
+          directory: worktree.path,
+          base: worktree.baseRevision,
+        }).finally(() => changeTasks.delete(id));
+        changeTasks.set(id, task);
+      }
+      try {
+        return json(await task);
+      } catch {
+        return json(
+          { error: 'Change map is unavailable; retry after the Run settles' },
+          409,
+        );
       }
     }
 
@@ -422,6 +489,28 @@ export function createWebWorkbench(
             launchPending = false;
           }
         }
+        if (command.kind === 'complete-request') {
+          const item = attention
+            .list()
+            .find((candidate) => candidate.id === command.id);
+          if (!item) return json({ error: 'Unknown attention item' }, 404);
+          if (item.kind !== 'agent-request')
+            return json(
+              { error: 'Only agent requests can be marked done' },
+              409,
+            );
+          const result = attention.complete(item.id);
+          if (result === 'done') return json({ result }, 202);
+          return json(
+            {
+              error:
+                result === 'already-done'
+                  ? 'Already marked done'
+                  : 'This request expired with its Run',
+            },
+            409,
+          );
+        }
         if (command.kind === 'answer') {
           const id = attention
             .list()
@@ -496,7 +585,7 @@ export function createWebWorkbench(
     if (request.method !== 'GET' || !asset)
       return json({ error: 'Not found' }, 404);
     let body = await readFile(new URL(asset.file, directory), 'utf8');
-    if (asset.file === 'runtime.html')
+    if (asset.file === 'runtime.html' || asset.file === 'change-map.html')
       body = body.replace('content="WORKBENCH_TOKEN"', `content="${token}"`);
     return new Response(body, { headers: { 'content-type': asset.type } });
   }

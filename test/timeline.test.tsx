@@ -105,6 +105,7 @@ test('Timeline shows explicit agent progress and tool activity while ordinary co
 test('Timeline names the approval and preserves acceptance versus delivery', () => {
   const attention: AttentionItem = {
     id: 'attn-edit',
+    kind: 'permission',
     runId,
     title: 'Edit static/app.js',
     detail: 'Requested edit',

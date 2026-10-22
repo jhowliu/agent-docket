@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  changesRequestSchema,
   commandSchema,
   replySchema,
   stateSchema,
@@ -257,6 +258,10 @@ export function createWorkbenchClient(
       )
         throw new WorkbenchError('protocol', 'Invalid directory response');
       return listing.data;
+    },
+    /** Browser page for one Run's Change map; the page fetches its own data. */
+    changeMapUrl(runId: RunId): string {
+      return `${origin}/changes?${new URLSearchParams({ run: changesRequestSchema.parse({ runId }).runId })}`;
     },
     poll(): Promise<WorkbenchState> {
       polling ??= (async () => {

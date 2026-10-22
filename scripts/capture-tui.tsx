@@ -135,9 +135,12 @@ try {
     state = await client.poll();
   }
   const decision = state.attention.find(
-    (item) => item.runId === one.runId && item.status === 'pending',
+    (item) =>
+      item.kind === 'permission' &&
+      item.runId === one.runId &&
+      item.status === 'pending',
   );
-  const allow = decision?.choices.find(
+  const allow = (decision?.kind === 'permission' ? decision.choices : []).find(
     (choice) => choice.kind === 'allow-once',
   );
   if (!decision || !allow) throw new Error('Missing fixture decision');

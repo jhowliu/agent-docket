@@ -24,6 +24,7 @@ const event = runEventSchema;
 export const directoryRequestSchema = z
   .object({ runId, path: directoryPathSchema })
   .strict();
+export const changesRequestSchema = z.object({ runId }).strict();
 export const projectRequestSchema = z
   .object({
     path: z
@@ -121,6 +122,8 @@ export const commandSchema = z.discriminatedUnion('kind', [
       choiceId: z.string().min(1).max(200),
     })
     .strict(),
+  // Marks an agent request done; nothing is sent to the agent.
+  z.object({ kind: z.literal('complete-request'), id: attentionId }).strict(),
   z.object({ kind: z.literal('shutdown') }).strict(),
   ...workCommandSchema.options,
 ]);
@@ -145,6 +148,7 @@ export const stateSchema = z.object({
       newSession: z.boolean().optional(),
       folderCompletion: z.boolean().optional(),
       projectInitialization: z.boolean().optional(),
+      changeMap: z.boolean().optional(),
     })
     .optional(),
   launch: z
@@ -158,7 +162,14 @@ export type WorkbenchState = z.infer<typeof stateSchema>;
 export const replySchema = z.union([
   z.object({ runId }),
   z.object({
-    result: z.enum(['accepted', 'cancelled', 'already-answered', 'stale']),
+    result: z.enum([
+      'accepted',
+      'cancelled',
+      'already-answered',
+      'stale',
+      'done',
+      'already-done',
+    ]),
     branch: z.string().optional(),
     workspaceRemoved: z.boolean().optional(),
   }),

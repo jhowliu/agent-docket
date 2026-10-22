@@ -107,6 +107,7 @@ function detailLines(
   view: View,
   width: number,
   attention: readonly AttentionItem[],
+  diffScope?: string,
 ): Line[] {
   const ownEvents = events.filter((event) => event.runId === runId);
   const selected = view === 'live' ? readableEvents(ownEvents) : ownEvents;
@@ -119,6 +120,9 @@ function detailLines(
       lines.push({ text: part, ...(color ? { color } : {}) });
   };
   if (view === 'diff') {
+    // Provider-reported edits miss shell/patch writes; say so where the gap shows.
+    if (diffScope && selected.some((event) => event.type === 'diff'))
+      append(diffScope, 'gray');
     for (const event of selected) {
       if (event.type !== 'diff') continue;
       append('--- ' + event.path);
@@ -361,9 +365,25 @@ export function WorkbenchScreen(props: ScreenProps) {
   const sidebar = mainWidth < columns;
   const sidebarWidth = columns - mainWidth - 1;
   const width = Math.max(1, mainWidth - 4);
+  // The Change map reads the worktree itself, so it also covers edits the agent never reported.
+  const mapReady =
+    state.features?.changeMap === true &&
+    selected?.worktree !== undefined &&
+    selected.worktree.status.kind !== 'removed';
+  const diffScope = mapReady
+    ? 'Edits the agent reported · m Change map shows every worktree change'
+    : undefined;
   const lines = useMemo(
-    () => detailLines(state.events, selectedId, view, width, state.attention),
-    [state.events, state.attention, selectedId, view, width],
+    () =>
+      detailLines(
+        state.events,
+        selectedId,
+        view,
+        width,
+        state.attention,
+        diffScope,
+      ),
+    [state.events, state.attention, selectedId, view, width, diffScope],
   );
   if (columns < 60 || rows < 20) {
     return (
@@ -399,7 +419,12 @@ export function WorkbenchScreen(props: ScreenProps) {
     Math.min(runs.length - rosterRows, selectedIndex - rosterRows + 1),
   );
   const disclosures: string[] = [];
-  const decisionRows = request ? 2 : 0;
+  // An agent request shows its first steps inline; d lists every step.
+  const shownSteps =
+    request?.kind === 'agent-request'
+      ? Math.min(request.steps.length, rows >= 24 ? 3 : 1)
+      : 0;
+  const decisionRows = request ? 2 + shownSteps : 0;
   const inputRows =
     props.mode === 'normal' ? 0 : props.mode === 'new-session' ? 9 : 2;
   const projectOpen =
@@ -439,7 +464,17 @@ export function WorkbenchScreen(props: ScreenProps) {
       12,
   );
   // The input adapter opens one group at a time; decision details also take priority here.
-  if (props.details && request) {
+  if (props.details && request?.kind === 'agent-request') {
+    disclosures.push(
+      ...request.steps.flatMap((step, index) =>
+        wrapAnsi(`${index + 1}. ${terminalText(step)}`, width, {
+          hard: true,
+          trim: false,
+        }).split('\n'),
+      ),
+      'y marks it done · the agent is not told · i reply',
+    );
+  } else if (props.details && request?.kind === 'permission') {
     disclosures.push(
       ...request.choices.map(
         (choice, index) =>
@@ -496,6 +531,7 @@ export function WorkbenchScreen(props: ScreenProps) {
       'o Roadmap · :roadmap title · :track P.T · :direct',
       ':spec requirements · :confirm · :stage development',
       'Stopped worktree: c / :commit message saves all changes',
+      'm / :map open the Run’s Change map in the browser',
     );
   // Bound every optional region to leave a readable timeline at the minimum size.
   const extras = disclosures.filter(Boolean).slice(0, extraCapacity);
@@ -515,7 +551,9 @@ export function WorkbenchScreen(props: ScreenProps) {
   const log = lines.slice(Math.max(0, end - logRows), end);
   const empty = selected
     ? view === 'diff'
-      ? 'No file changes yet'
+      ? mapReady
+        ? 'No edits reported by the agent · m Change map reads the worktree'
+        : 'No file changes yet'
       : view === 'timeline'
         ? 'No milestones yet · 1 Live for full output'
         : fixture
@@ -571,12 +609,14 @@ export function WorkbenchScreen(props: ScreenProps) {
               <Text dimColor>{empty}</Text>
             ) : (
               runs.slice(rosterStart, rosterStart + rosterRows).map((run) => {
-                const count = pending.filter(
-                  (item) => item.runId === run.id,
-                ).length;
+                const own = pending.filter((item) => item.runId === run.id);
+                const count = own.length;
                 const active = run.id === selectedId;
+                // Approvals block the agent; agent requests only wait on the person.
                 const status = count
-                  ? `Awaiting approval (${count})`
+                  ? own.some((item) => item.kind === 'permission')
+                    ? `Awaiting approval (${count})`
+                    : `Needs you (${count})`
                   : workspaceNeedsAction(run)
                     ? run.worktree?.status.kind === 'commit-required'
                       ? 'Commit required'
@@ -712,7 +752,35 @@ export function WorkbenchScreen(props: ScreenProps) {
               <Text dimColor>{empty}</Text>
             )}
           </Box>
-          {request && (
+          {request?.kind === 'agent-request' && (
+            <Box flexDirection="column" height={decisionRows} flexShrink={0}>
+              <Text color="yellow" bold wrap="truncate-end">
+                {request.request === 'question'
+                  ? 'Question for you'
+                  : 'Needs you'}{' '}
+                {ownPending.findIndex((item) => item.id === request.id) + 1}/
+                {ownPending.length} · {terminalText(request.title)}
+              </Text>
+              {request.steps.slice(0, shownSteps).map((step, index) => (
+                <Text key={index} wrap="truncate-end">
+                  {'  '}
+                  {index + 1}. {terminalText(step)}
+                </Text>
+              ))}
+              <Text wrap="truncate-end">
+                {props.armed
+                  ? request.request === 'question'
+                    ? 'i reply · y done'
+                    : 'y done · i reply'
+                  : 'Tab to select another request'}
+                {request.steps.length > shownSteps
+                  ? ` · d all ${request.steps.length} steps`
+                  : ''}{' '}
+                · Tab next
+              </Text>
+            </Box>
+          )}
+          {request?.kind === 'permission' && (
             <Box flexDirection="column" height={2} flexShrink={0}>
               <Text color="yellow" wrap="truncate-end">
                 Approval{' '}

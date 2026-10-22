@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="workbench-token" content="WORKBENCH_TOKEN" />
+    <meta
+      name="description"
+      content="What one Run changed: user actions traced down to the changed code, public Interface changes and per-function diffs."
+    />
+    <title>Change map · Agent Workbench</title>
+    <link rel="stylesheet" href="./change-map.css" />
+    <script src="./change-map.js" type="module"></script>
+  </head>
+  <body>
+    <main class="cm" id="change-map" aria-busy="true">
+      <header class="cm-top">
+        <h1>Change map</h1>
+        <p id="cm-ref">Reading the Run’s worktree…</p>
+      </header>
+      <p class="cm-note" id="cm-note" hidden></p>
+      <div class="cm-layout">
+        <nav class="cm-nav" id="cm-nav" aria-label="Change map sections"></nav>
+        <section class="cm-panel" id="cm-panel" aria-live="polite"></section>
+      </div>
+    </main>
+    <div class="cm-scrim" id="cm-scrim" hidden></div>
+    <aside
+      class="cm-drawer"
+      id="cm-drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cm-d-title"
+      hidden
+    >
+      <header>
+        <div class="cm-d-heading">
+          <b id="cm-d-title"></b>
+          <span id="cm-d-file"></span>
+        </div>
+        <div class="cm-d-actions">
+          <button id="cm-d-whole" type="button">Show whole file</button>
+          <button id="cm-d-close" type="button">Close</button>
+        </div>
+      </header>
+      <div class="cm-code" id="cm-d-code"></div>
+    </aside>
+  </body>
+</html>

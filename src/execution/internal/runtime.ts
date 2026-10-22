@@ -20,7 +20,7 @@ import { launchManaged } from './worker.js';
 import type { ManagedProcess } from './worker.js';
 import { createProgressChannel } from './progress.js';
 import type { ProgressChannel } from './progress.js';
-import { progressInstructions } from './progress-protocol.js';
+import { workbenchInstructions } from './progress-protocol.js';
 import { directoryPathSchema, readWorkspaceDirectory } from './directory.js';
 
 const workerFields = {
@@ -256,7 +256,7 @@ export function createExecution(options: ExecutionOptions): Execution {
     )
       return;
     slot.epoch++;
-    attention.invalidate(slot.snapshot.id, reason);
+    attention.invalidate(slot.snapshot.id, reason, { includeRequests: true });
     setState(slot, { kind: 'interrupted', reason });
     void clean(slot).catch((error: unknown) =>
       emit(slot, {
@@ -289,7 +289,9 @@ export function createExecution(options: ExecutionOptions): Execution {
     if (!slot.cleanup)
       slot.cleanup = (async () => {
         slot.connection?.close();
-        attention.invalidate(slot.snapshot.id, 'Run environment closed');
+        attention.invalidate(slot.snapshot.id, 'Run environment closed', {
+          includeRequests: true,
+        });
         const managed =
           slot.managed ?? (await slot.launchTask?.catch(() => null));
         const progress =
@@ -497,22 +499,39 @@ export function createExecution(options: ExecutionOptions): Execution {
           managed.environment.kind,
         )
       ) {
-        slot.progressTask = createProgressChannel(
-          (summary) => {
+        slot.progressTask = createProgressChannel({
+          report: (summary) => {
             if (slot.snapshot.state.kind === 'running')
               emit(slot, {
                 type: 'agent.progress',
                 summary: safeText(summary),
               });
           },
-          () => {
+          // The agent asked the person to act or answer; attention keeps it past the turn.
+          request: (request) => {
+            if (slot.snapshot.state.kind !== 'running') return;
+            try {
+              attention.ask({
+                runId: slot.snapshot.id,
+                request: request.kind,
+                title: safeText(request.title),
+                steps: request.steps.map(safeText),
+              });
+            } catch (error) {
+              emit(slot, {
+                type: 'diagnostic',
+                message: `Agent request was not recorded: ${errorText(error)}`,
+              });
+            }
+          },
+          failed: () => {
             if (!terminal(slot.snapshot.state) && !cancelling(slot))
               emit(slot, {
                 type: 'diagnostic',
                 message: 'Agent progress reporting became unavailable.',
               });
           },
-        );
+        });
         slot.progress = await slot.progressTask;
         if (closing || terminal(slot.snapshot.state) || cancelling(slot))
           throw new Error('Run startup was cancelled');
@@ -634,7 +653,7 @@ export function createExecution(options: ExecutionOptions): Execution {
       await newSession(slot);
       return structuredClone(slot.snapshot);
     } catch (error) {
-      attention.invalidate(id, 'Run startup failed');
+      attention.invalidate(id, 'Run startup failed', { includeRequests: true });
       if (!terminal(slot.snapshot.state) && !cancelling(slot))
         setState(slot, { kind: 'failed', reason: errorText(error) });
       await clean(slot);
@@ -677,7 +696,7 @@ export function createExecution(options: ExecutionOptions): Execution {
             { type: 'text', text },
             ...(context ? [{ type: 'text' as const, text: context }] : []),
             ...(slot.progress
-              ? [{ type: 'text' as const, text: progressInstructions }]
+              ? [{ type: 'text' as const, text: workbenchInstructions }]
               : []),
           ],
         },
@@ -770,7 +789,7 @@ export function createExecution(options: ExecutionOptions): Execution {
           return;
         }
         slot.epoch++;
-        attention.invalidate(id, 'Run cancelled');
+        attention.invalidate(id, 'Run cancelled', { includeRequests: true });
         setState(slot, { kind: 'cancelling' });
         try {
           if (slot.connection && slot.sessionId) {
@@ -884,7 +903,9 @@ export function createExecution(options: ExecutionOptions): Execution {
           [...slots.values()].map(async (slot) => {
             slot.epoch++;
             try {
-              attention.invalidate(slot.snapshot.id, 'Execution closed');
+              attention.invalidate(slot.snapshot.id, 'Execution closed', {
+                includeRequests: true,
+              });
               if (!terminal(slot.snapshot.state))
                 setState(slot, { kind: 'closed' });
             } finally {

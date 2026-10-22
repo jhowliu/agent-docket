@@ -62,7 +62,8 @@ const app = agent({ name: 'workbench-fixture' })
       text === '/mcp' ||
       text === 'progress' ||
       text.startsWith('progress:') ||
-      text === 'progress-wait'
+      text === 'progress-wait' ||
+      text.startsWith('needs:')
     ) {
       const [{ Client }, { StdioClientTransport }] = await Promise.all([
         import('@modelcontextprotocol/sdk/client/index.js'),
@@ -97,6 +98,22 @@ const app = agent({ name: 'workbench-fixture' })
         const tools = await progress.listTools();
         if (!tools.tools.some((tool) => tool.name === 'report_progress'))
           throw new Error('Fixture could not discover progress reporting');
+        if (text.startsWith('needs:')) {
+          // needs:<JSON request or array of requests>, sent as given.
+          const input = JSON.parse(text.slice(6));
+          const outcomes = [];
+          for (const request of Array.isArray(input) ? input : [input]) {
+            const result = await progress.callTool({
+              name: 'request_user',
+              arguments: request,
+            });
+            outcomes.push(result.isError ? 'rejected' : 'recorded');
+          }
+          await message(
+            `Request ${outcomes.join(', ')}. Restart the panel with --write, then reply here.`,
+          );
+          return { stopReason: 'end_turn' };
+        }
         if (text === '/mcp') {
           await message(
             'workbench_progress: ' +

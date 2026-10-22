@@ -279,8 +279,11 @@ try {
           (event) => event.sequence > after && event.type === 'turn.end',
         ),
     );
-    const request: AttentionItem | undefined = state.attention.find(
-      (item) => item.runId === run.id && item.status === 'pending',
+    const request = state.attention.find(
+      (item): item is Extract<AttentionItem, { kind: 'permission' }> =>
+        item.kind === 'permission' &&
+        item.runId === run.id &&
+        item.status === 'pending',
     );
     assert.ok(request, 'The model must create a genuine permission request');
     const permission = z

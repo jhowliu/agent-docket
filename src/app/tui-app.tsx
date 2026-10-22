@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { useEffect, useRef, useState } from 'react';
 import { useApp, useInput, useWindowSize } from 'ink';
 import type { AttentionId } from '../attention/index.js';
@@ -35,17 +36,36 @@ const message = (error: unknown) =>
       : 'Action failed; check the connection',
   );
 
+/** Hands a loopback URL to the platform's browser opener; the URL is also shown in the footer. */
+function openInBrowser(url: string) {
+  const opener =
+    process.platform === 'darwin'
+      ? 'open'
+      : process.platform === 'win32'
+        ? 'explorer'
+        : 'xdg-open';
+  try {
+    const child = spawn(opener, [url], { detached: true, stdio: 'ignore' });
+    child.on('error', () => {});
+    child.unref();
+  } catch {
+    // The footer still shows the URL to open by hand.
+  }
+}
+
 /** Input/rendering adapter. Server domains remain authoritative for every mutation. */
 export function WorkbenchApp({
   client,
   initial,
   pollInterval = 400,
   projectPath = process.cwd(),
+  openUrl = openInBrowser,
 }: {
   client: WorkbenchClient;
   initial: WorkbenchState;
   pollInterval?: number;
   projectPath?: string;
+  openUrl?: (url: string) => void;
 }) {
   const { exit } = useApp();
   const { columns, rows } = useWindowSize();
@@ -85,8 +105,19 @@ export function WorkbenchApp({
   );
   const [receipt, setReceipt] = useState<AttentionId | null>(null);
   const epoch = useRef(initial.instanceId);
+  const lastTurnEnd = (state: WorkbenchState) =>
+    Math.max(
+      0,
+      ...state.events
+        .filter((event) => event.type === 'turn.end')
+        .map((event) => event.sequence),
+    );
+  // Turns that ended before this TUI saw them are not announced again.
+  const announcedTurn = useRef(lastTurnEnd(initial));
   const runs = visibleRuns(snapshot, filter);
   const selected = runs.find((run) => run.id === selectedId) ?? runs[0];
+  const selectedRef = useRef<RunId | null>(null);
+  selectedRef.current = selected?.id ?? null;
   const state = stateForRun(snapshot, selected?.id ?? null);
   const pending = state.attention.filter(
     (item) => item.status === 'pending' && item.runId === selected?.id,
@@ -126,6 +157,23 @@ export function WorkbenchApp({
       windowCommand.current = false;
       setFilter('active');
       setNote('Server restarted; fresh state loaded');
+      announcedTurn.current = lastTurnEnd(snapshot);
+    }
+    // When the selected Run finishes a turn in a worktree, point at the Change map.
+    const ended = snapshot.events.filter(
+      (event) =>
+        event.type === 'turn.end' && event.sequence > announcedTurn.current,
+    );
+    if (ended.length) {
+      announcedTurn.current = lastTurnEnd(snapshot);
+      const run = snapshot.runs.find((item) => item.id === selectedRef.current);
+      if (
+        snapshot.features?.changeMap &&
+        run?.worktree &&
+        run.worktree.status.kind !== 'removed' &&
+        ended.some((event) => event.runId === run.id)
+      )
+        setNote('Turn finished · m see what changed');
     }
     setState(snapshot);
     connectedRef.current = true;
@@ -205,7 +253,9 @@ export function WorkbenchApp({
       } else if (command.kind === 'answer') {
         setReceipt(command.id);
         setNote('Last response accepted');
-      } else if (command.kind === 'prompt') setNote('Last message accepted');
+      } else if (command.kind === 'complete-request')
+        setNote('Marked done · the agent was not told; i to reply');
+      else if (command.kind === 'prompt') setNote('Last message accepted');
       else if (command.kind === 'authenticate')
         setNote('Sign-in requested · waiting for agent');
       else if (command.kind === 'cancel')
@@ -253,6 +303,10 @@ export function WorkbenchApp({
       setNote('Press Tab to select a pending request first');
       return;
     }
+    if (request.kind !== 'permission') {
+      setNote('a/r answer approvals · y marks this request done');
+      return;
+    }
     const choice =
       index === undefined
         ? request.choices.find((item) => item.kind === kind)
@@ -264,6 +318,20 @@ export function WorkbenchApp({
     // Legacy terminals cannot report key-up. Require deliberate navigation between decisions.
     setNeedsSelection(true);
     void execute({ kind: 'answer', id: request.id, choiceId: choice.id });
+  }
+  /** Marks the visibly selected agent request done; the agent is not told. */
+  function complete() {
+    setFocus('workspace');
+    if (!request || needsSelection) {
+      setNote('Press Tab to select a pending request first');
+      return;
+    }
+    if (request.kind !== 'agent-request') {
+      setNote('y marks agent requests done · a/r answer approvals');
+      return;
+    }
+    setNeedsSelection(true);
+    void execute({ kind: 'complete-request', id: request.id });
   }
   function setTab(tab: View) {
     setFocus('workspace');
@@ -288,6 +356,22 @@ export function WorkbenchApp({
         ? 'Project focused · j/k move · h/l folders · Esc back'
         : 'Workspace focused · j/k Runs · h/l views',
     );
+  }
+  /** The server reads the Run's own worktree; the TUI only names the Run. */
+  function openChangeMap() {
+    const worktree = selected?.worktree;
+    if (!selected) setNote('Select a Run to open its Change map');
+    else if (!snapshot.features?.changeMap)
+      setNote('Change map needs an updated server; restart the daemon');
+    else if (!worktree)
+      setNote('Change map needs a Run with a local Git worktree');
+    else if (worktree.status.kind === 'removed')
+      setNote(`Worktree removed; its commits stay on ${worktree.branch}`);
+    else {
+      const url = client.changeMapUrl(selected.id);
+      openUrl(url);
+      setNote(`Change map: ${url}`);
+    }
   }
   function runCommand(text: string) {
     const [name = '', ...parts] = text.trim().split(/\s+/);
@@ -362,6 +446,10 @@ export function WorkbenchApp({
     }
     if (name === 'prompt' && argument && selected) {
       void execute({ kind: 'prompt', runId: selected.id, text: argument });
+      return;
+    }
+    if (name === 'map' && !argument) {
+      openChangeMap();
       return;
     }
     if (name === 'help' && !argument) {
@@ -481,10 +569,13 @@ export function WorkbenchApp({
       );
       setNeedsSelection(false);
       setReceipt(null);
-    } else if (input === 'a') answer('allow-once');
+    } else if (input === 'y') complete();
+    else if (input === 'a') answer('allow-once');
     else if (input === 'r') answer('reject-once');
     else if (input === 'n') {
       newSession();
+    } else if (input === 'm') {
+      openChangeMap();
     } else if (input === 'x' && selected) {
       setFocus('workspace');
       void execute({ kind: 'cancel', runId: selected.id });

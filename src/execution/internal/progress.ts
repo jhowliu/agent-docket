@@ -4,7 +4,11 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { progressLimit, progressRecord } from './progress-protocol.js';
+import { progressLimit, toolRecord } from './progress-protocol.js';
+import type { z } from 'zod';
+import type { requestInput } from './progress-protocol.js';
+
+export type AgentRequestInput = z.infer<typeof requestInput>;
 
 export type ProgressChannel = Readonly<{
   server: McpServerStdio;
@@ -14,10 +18,12 @@ export type ProgressChannel = Readonly<{
 }>;
 
 /** A local Run's private MCP ingress. Its identity is bound here, never supplied by the agent. */
-export async function createProgressChannel(
-  report: (summary: string) => void,
-  failed: () => void,
-): Promise<ProgressChannel> {
+export async function createProgressChannel(handlers: {
+  report: (summary: string) => void;
+  request: (request: AgentRequestInput) => void;
+  failed: () => void;
+}): Promise<ProgressChannel> {
+  const { report, request, failed } = handlers;
   const directory = await mkdtemp(join(tmpdir(), 'workbench-progress-'));
   const records = join(directory, 'reports.jsonl');
   const active = join(directory, 'turn');
@@ -47,8 +53,10 @@ export async function createProgressChannel(
         for (const line of lines) {
           if (!line) continue;
           const input: unknown = JSON.parse(line);
-          const parsed = progressRecord.parse(input);
-          if (turn && parsed.turn === turn) report(parsed.summary);
+          const parsed = toolRecord.parse(input);
+          if (!turn || parsed.turn !== turn) continue;
+          if ('summary' in parsed) report(parsed.summary);
+          else request(parsed.request);
         }
       } catch {
         unavailable = true;

@@ -1,5 +1,7 @@
 # Agent 工作台開發計畫
 
+2026-10-22 priority change and first `delivery` slice: the user's main pains are losing progress across projects, not knowing what to do next and Diffs that are hard to understand, so a Change map now comes before Candidate-bound evidence. `delivery.describeChange` reads a Run worktree against its base (read-only, bounded) and returns files/declarations, module Interface changes and statically traced flows from a key press over the local HTTP route into the changed module code. TUI `m` / `:map` opens the browser page `/changes?run=…`; the authenticated `GET /api/changes` takes only a Run ID. It is not the M4 React PR viewer and not evidence. Next candidates: per-project progress and next-action ordering, then Candidate-bound evidence and independent Review. See [Change map](change-map.md).
+
 2026-10-22 source setup: New Session now asks before initializing a non-Git folder and creating its first local commit of current non-ignored files. Empty Git repositories can create the first commit as well. `execution` owns source identity/state checks, a per-folder lock, Git initialization/snapshot and failure preservation; app owns explicit No/Yes UI and authenticated transport. Success returns to branch selection without starting a model. Older daemons retain manual setup, and ambiguous mutations are not replayed. See [New Session initialization](session-creation.md#initialize-a-project).
 
 2026-10-19｜M0 runtime／CLI／fixture 瀏覽器測試台，以及 M1 第一個 Ink TUI／本機背景程序切片已實作；兩家真實 provider 與隔離驗收待完成，尚未達到完整 M0／M1 驗收。

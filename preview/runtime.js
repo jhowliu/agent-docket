@@ -177,7 +177,10 @@
     render();
   }
   function status(run) {
-    if (pending(run.id).length) return ['Awaiting approval', 'aw-wait'];
+    const open = pending(run.id);
+    if (open.some((item) => item.kind !== 'agent-request'))
+      return ['Awaiting approval', 'aw-wait'];
+    if (open.length) return ['Needs you', 'aw-wait'];
     if (workspaceNeedsAction(run))
       return [
         run.worktree.status.kind === 'commit-required'
@@ -214,6 +217,29 @@
       /* Plain-text details remain valid. */
     }
     return item.detail;
+  }
+  /** Something the agent asked the person to do or answer; marking it done tells the agent nothing. */
+  function agentRequestHtml(item) {
+    return (
+      '<section class="aw-prompt" aria-label="' +
+      (item.request === 'question' ? 'Question for you' : 'Needs you') +
+      '"><div class="aw-prompt-title"><span>' +
+      (item.request === 'question' ? 'Question for you · ' : 'Needs you · ') +
+      escape(item.title) +
+      '</span></div>' +
+      (item.steps.length
+        ? '<ol class="aw-request-steps">' +
+          item.steps.map((step) => '<li>' + escape(step) + '</li>').join('') +
+          '</ol>'
+        : '') +
+      '<div class="aw-actions"><button type="button" class="aw-button aw-primary" data-complete="' +
+      escape(item.id) +
+      '" data-attention="' +
+      escape(item.id) +
+      '"' +
+      (!state.connected || state.busy ? ' disabled' : '') +
+      '>Mark done</button></div><p class="aw-note">The agent is not told. Reply in the message box if it should continue.</p></section>'
+    );
   }
   function eventText(event) {
     switch (event.type) {
@@ -494,32 +520,33 @@
     html(
       $('[data-decisions]'),
       pending(run.id)
-        .map(
-          (item) =>
-            '<section class="aw-prompt" aria-label="Pending approval"><div class="aw-prompt-title"><span>' +
-            escape(item.title) +
-            '</span></div><div class="aw-actions">' +
-            item.choices
-              .map(
-                (choice) =>
-                  '<button type="button" class="aw-button ' +
-                  (choice.kind.startsWith('allow') ? 'aw-primary' : '') +
-                  '" data-choice="' +
-                  escape(choice.id) +
-                  '" data-attention="' +
-                  escape(item.id) +
-                  '"' +
-                  (!state.connected || state.busy ? ' disabled' : '') +
-                  '>' +
-                  escape(choice.label) +
-                  '</button>',
-              )
-              .join('') +
-            '</div><details class="aw-decision-detail" data-disclosure="' +
-            escape(item.id) +
-            '"><summary>Details</summary><pre class="aw-command">' +
-            escape(permissionDetail(item)) +
-            '</pre></details></section>',
+        .map((item) =>
+          item.kind === 'agent-request'
+            ? agentRequestHtml(item)
+            : '<section class="aw-prompt" aria-label="Pending approval"><div class="aw-prompt-title"><span>' +
+              escape(item.title) +
+              '</span></div><div class="aw-actions">' +
+              item.choices
+                .map(
+                  (choice) =>
+                    '<button type="button" class="aw-button ' +
+                    (choice.kind.startsWith('allow') ? 'aw-primary' : '') +
+                    '" data-choice="' +
+                    escape(choice.id) +
+                    '" data-attention="' +
+                    escape(item.id) +
+                    '"' +
+                    (!state.connected || state.busy ? ' disabled' : '') +
+                    '>' +
+                    escape(choice.label) +
+                    '</button>',
+                )
+                .join('') +
+              '</div><details class="aw-decision-detail" data-disclosure="' +
+              escape(item.id) +
+              '"><summary>Details</summary><pre class="aw-command">' +
+              escape(permissionDetail(item)) +
+              '</pre></details></section>',
         )
         .join('') +
         (workspaceNeedsAction(run)
@@ -543,7 +570,11 @@
       ? {
           accepted: 'Response accepted · sending',
           delivered: 'Response sent · see Live / Timeline for the outcome',
-          stale: 'Approval expired · ' + (latest.reason || 'Run ended'),
+          stale:
+            (latest.kind === 'agent-request'
+              ? 'Request expired · '
+              : 'Approval expired · ') + (latest.reason || 'Run ended'),
+          done: 'Marked done · the agent was not told',
         }[latest.status]
       : '';
     const nextReceiptKey = latest
@@ -739,6 +770,8 @@
       $('#rt-command').focus();
     } else if (button.hasAttribute('data-cancel') && state.selected)
       void command({ kind: 'cancel', runId: state.selected });
+    else if (button.dataset.complete)
+      void command({ kind: 'complete-request', id: button.dataset.complete });
     else if (button.dataset.choice)
       void command({
         kind: 'answer',
@@ -1017,6 +1050,10 @@
     const focusedId = document.activeElement?.dataset?.attention;
     const items = pending(run.id);
     const item = items.find((item) => item.id === focusedId) ?? items[0];
+    if (item?.kind === 'agent-request') {
+      feedback('a/r answer approvals. Use Mark done for this request.');
+      return;
+    }
     const choice = item?.choices.find(
       (choice) =>
         choice.kind === (event.key === 'a' ? 'allow-once' : 'reject-once'),

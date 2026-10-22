@@ -61,10 +61,12 @@ const server = createServer(async (incoming, outgoing) => {
         ? {}
         : { body: Buffer.concat(chunks).toString('utf8') }),
     });
-    // Hashing an initial snapshot or signing it can outlast a metadata lookup.
+    // Hashing an initial snapshot or signing it, or analysing a large worktree
+    // for a Change map, can outlast a metadata lookup.
+    const pathname = new URL(request.url).pathname;
     if (
-      method === 'POST' &&
-      new URL(request.url).pathname === '/api/project/initialize'
+      (method === 'POST' && pathname === '/api/project/initialize') ||
+      (method === 'GET' && pathname === '/api/changes')
     )
       incoming.setTimeout(120_000);
     const response = await workbench.fetch(request);

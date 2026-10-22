@@ -195,11 +195,15 @@ async function shell(initial?: Launch): Promise<void> {
     console.log(
       `[Run ${runNumber(item.runId)} / Item ${itemNumbers.get(item.id)}] ${item.status}: ${JSON.stringify(item.title)}`,
     );
-    if (item.status === 'pending')
+    if (item.status === 'pending' && item.kind === 'permission')
       item.choices.forEach((choice, index) =>
         console.log(
           `  ${index + 1}. ${JSON.stringify(choice.label)} (${choice.kind})`,
         ),
+      );
+    else if (item.status === 'pending')
+      item.steps.forEach((step, index) =>
+        console.log(`  step ${index + 1}. ${JSON.stringify(step)}`),
       );
   });
   const selected = () => {
@@ -317,6 +321,10 @@ async function shell(initial?: Launch): Promise<void> {
             .find((item) => itemNumbers.get(item.id) === number);
           if (!item || !choice || !Number.isInteger(choice))
             throw new Error('Unknown item or choice');
+          if (item.kind !== 'permission')
+            throw new Error(
+              'Agent requests are marked done in the TUI or browser',
+            );
           const option = item.choices[choice - 1];
           if (!option) throw new Error('Unknown choice');
           console.log(attention.answer(item.id, option.id));
