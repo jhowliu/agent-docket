@@ -16,6 +16,7 @@ const permission = base.extend({
   // Daemons before agent requests sent permission items without `kind`.
   kind: z.literal('permission').default('permission'),
   detail: z.string(),
+  subject: z.string().max(500).optional(),
   choices: z
     .array(
       z.object({
@@ -67,5 +68,9 @@ export const attentionItemSchema: z.ZodType<AttentionItem> = z.union([
         !('choiceId' in item) ||
         item.choiceId === undefined ||
         item.choices.some((choice) => choice.id === item.choiceId),
+    )
+    // Older daemons send no subject; an absent field stays absent.
+    .transform(({ subject, ...item }) =>
+      subject === undefined ? item : { ...item, subject },
     ),
 ]);

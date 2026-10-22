@@ -210,6 +210,42 @@ async function deadline<T>(task: Promise<T>, ms: number): Promise<T> {
     if (timer) clearTimeout(timer);
   }
 }
+const shellCommand = z.union([z.string(), z.array(z.string())]);
+const commandInput = z.object({ command: shellCommand });
+/**
+ * What a permission request would act on, for display beside its title: the
+ * command line (adapters may JSON-encode it, or pass `bash -lc <script>`) or
+ * the first file location. Provider shapes stay inside execution.
+ */
+function subjectOf(toolCall: {
+  rawInput?: unknown;
+  locations?: readonly { path: string }[] | null;
+}): { subject?: string } {
+  const input = commandInput.safeParse(toolCall.rawInput);
+  if (input.success) {
+    let command: unknown = input.data.command;
+    if (typeof command === 'string')
+      try {
+        command = JSON.parse(command);
+      } catch {
+        // A plain command line is already readable.
+      }
+    const parsed = shellCommand.safeParse(command);
+    if (parsed.success) {
+      const parts = parsed.data;
+      const text =
+        typeof parts === 'string'
+          ? parts
+          : parts.length === 3 && /^-l?c$/.test(parts[1] ?? '')
+            ? (parts[2] ?? '')
+            : parts.join(' ');
+      if (text.trim()) return { subject: safeText(text).slice(0, 500) };
+    }
+  }
+  const path = toolCall.locations?.[0]?.path;
+  return path ? { subject: safeText(path).slice(0, 500) } : {};
+}
+
 export function createExecution(options: ExecutionOptions): Execution {
   const { attention } = options;
   const maxEvents = options.maxEvents ?? 2000;
@@ -590,6 +626,7 @@ export function createExecution(options: ExecutionOptions): Execution {
                 params.toolCall.title ?? 'Agent needs permission',
               ),
               detail: safeText(JSON.stringify(params.toolCall)),
+              ...subjectOf(params.toolCall),
               choices,
             });
             slot.responses.set(requestId, request.id);

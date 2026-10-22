@@ -181,6 +181,45 @@ const app = agent({ name: 'workbench-fixture' })
       }
       return { stopReason: 'end_turn' };
     }
+    if (text === 'command-permission') {
+      // Shaped like the pinned Codex adapter: a JSON-encoded `bash -lc` command.
+      const allow = `opaque-allow-${randomUUID()}`;
+      const result = await client.request(
+        methods.client.session.requestPermission,
+        {
+          sessionId: params.sessionId,
+          toolCall: {
+            toolCallId: `tool-${++counter}-command`,
+            title: 'Run command',
+            kind: 'execute',
+            status: 'pending',
+            rawInput: {
+              command: JSON.stringify([
+                'bash',
+                '-lc',
+                'npm test -- --watch=false',
+              ]),
+              cwd: session.cwd,
+            },
+          },
+          options: [
+            { optionId: allow, name: 'Yes, proceed', kind: 'allow_once' },
+            {
+              optionId: `opaque-reject-${randomUUID()}`,
+              name: 'No, and tell Codex what to do differently',
+              kind: 'reject_once',
+            },
+          ],
+        },
+      );
+      await message(
+        result.outcome.outcome === 'selected' &&
+          result.outcome.optionId === allow
+          ? 'Command allowed.'
+          : 'Command not run.',
+      );
+      return { stopReason: 'end_turn' };
+    }
     if (text.startsWith('reply:')) {
       await message('Answer received: ' + text.slice(6));
       return { stopReason: 'end_turn' };

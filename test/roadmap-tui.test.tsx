@@ -148,7 +148,7 @@ test('Workflow stays separate from content tabs, fits terminal cells and never i
           output,
         );
         assert.match(output, /1 Live\s+2 Diff\s+3 Timeline/);
-        assert.match(output, /Approval 1\/1/);
+        assert.match(output, /APPROVAL 1\/1/);
         assert.match(output, /q quit/);
         if (columns >= 80 || outline) assert.match(output, /Phase 1\/1/);
         else {

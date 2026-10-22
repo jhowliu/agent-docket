@@ -14,7 +14,13 @@ type Base = Readonly<{
 }>;
 /** A provider permission request; the chosen option is delivered back to the agent. */
 export type PermissionItem = Base &
-  Readonly<{ kind: 'permission'; detail: string; choices: readonly Choice[] }> &
+  Readonly<{
+    kind: 'permission';
+    detail: string;
+    /** What it acts on, for display: a command line or a file path. */
+    subject?: string;
+    choices: readonly Choice[];
+  }> &
   (
     | Readonly<{ status: 'pending' }>
     | Readonly<{ status: 'accepted' | 'delivered'; choiceId: string }>
@@ -40,6 +46,7 @@ export type PermissionRequest = Readonly<{
   runId: RunReference;
   title: string;
   detail: string;
+  subject?: string;
   choices: readonly Choice[];
 }>;
 export type AgentRequest = Readonly<{

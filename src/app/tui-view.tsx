@@ -396,6 +396,143 @@ function WorkflowPanel({
 }
 
 /** Pure terminal projection; it cannot start Runs or answer permissions. */
+/** One key and what it does: the key reads as a control, the action as plain text. */
+function KeyAction({
+  name,
+  action,
+  primary = false,
+}: {
+  name: string;
+  action: string;
+  primary?: boolean;
+}) {
+  return (
+    <>
+      <Text inverse bold {...(primary ? { color: 'cyan' } : {})}>
+        {` ${name} `}
+      </Text>
+      <Text> {terminalText(action)}</Text>
+    </>
+  );
+}
+
+/**
+ * The selected Run's pending decision above the footer: a badge and title, what
+ * it is about (a command, a path or steps), its keys, then secondary keys.
+ */
+function DecisionPanel({
+  request,
+  position,
+  total,
+  armed,
+  height,
+  shownSteps,
+  compact,
+}: {
+  request: AttentionItem;
+  position: number;
+  total: number;
+  armed: boolean;
+  height: number;
+  shownSteps: number;
+  /** Short terminals: the subject joins the title and the keys absorb the help row. */
+  compact: boolean;
+}) {
+  const badge =
+    request.kind === 'permission'
+      ? 'APPROVAL'
+      : request.request === 'question'
+        ? 'QUESTION'
+        : 'NEEDS YOU';
+  const select = <Text dimColor>Tab selects the next request</Text>;
+  let actions: ReactNode = select;
+  let help: string;
+  if (request.kind === 'permission') {
+    const allow = request.choices.find(
+      (choice) => choice.kind === 'allow-once',
+    );
+    const reject = request.choices.find(
+      (choice) => choice.kind === 'reject-once',
+    );
+    const others = request.choices.length - Number(!!allow) - Number(!!reject);
+    if (armed)
+      actions =
+        allow || reject ? (
+          <>
+            {allow && <KeyAction name="a" action={allow.label} primary />}
+            {allow && reject && <Text>{'   '}</Text>}
+            {reject && <KeyAction name="r" action={reject.label} />}
+          </>
+        ) : (
+          <Text>Choose with :answer N · d lists the choices</Text>
+        );
+    help = `d full details${others > 0 ? ' · :answer N for other choices' : ''} · Tab next request`;
+  } else {
+    const reply = <KeyAction name="i" action="Reply" />;
+    const done = (
+      <KeyAction
+        name="y"
+        action="Done"
+        primary={request.request === 'action'}
+      />
+    );
+    if (armed)
+      actions =
+        request.request === 'question' ? (
+          <>
+            {reply}
+            <Text>{'   '}</Text>
+            {done}
+          </>
+        ) : (
+          <>
+            {done}
+            <Text>{'   '}</Text>
+            {reply}
+          </>
+        );
+    const hidden = request.steps.length - shownSteps;
+    help = `${hidden > 0 ? `d all ${request.steps.length} steps · ` : ''}Done does not notify the agent · Tab next`;
+  }
+  const subject =
+    request.kind === 'permission' && request.subject
+      ? terminalText(request.subject)
+      : undefined;
+  return (
+    <Box flexDirection="column" height={height} flexShrink={0}>
+      <Text wrap="truncate-end">
+        <Text inverse bold color="yellow">
+          {` ${badge} ${position}/${total} `}
+        </Text>
+        <Text color="yellow"> {terminalText(request.title)}</Text>
+        {compact && subject && <Text bold> · {subject}</Text>}
+      </Text>
+      {!compact && subject && (
+        <Text bold wrap="truncate-middle">
+          {'  '}
+          {subject}
+        </Text>
+      )}
+      {request.kind === 'agent-request' &&
+        request.steps.slice(0, shownSteps).map((step, index) => (
+          <Text key={index} wrap="truncate-end">
+            {'  '}
+            {index + 1}. {terminalText(step)}
+          </Text>
+        ))}
+      <Text wrap="truncate-end">
+        {actions}
+        {compact && <Text dimColor> · {help}</Text>}
+      </Text>
+      {!compact && (
+        <Text dimColor wrap="truncate-end">
+          {help}
+        </Text>
+      )}
+    </Box>
+  );
+}
+
 export function WorkbenchScreen(props: ScreenProps) {
   const {
     state,
@@ -478,7 +615,15 @@ export function WorkbenchScreen(props: ScreenProps) {
     request?.kind === 'agent-request'
       ? Math.min(request.steps.length, rows >= 24 ? 3 : 1)
       : 0;
-  const decisionRows = request ? 2 + shownSteps : 0;
+  // Below 24 rows the decision keeps its former two-row footprint.
+  const compactDecision = rows < 24;
+  const decisionRows = !request
+    ? 0
+    : request.kind === 'agent-request'
+      ? (compactDecision ? 2 : 3) + shownSteps
+      : compactDecision
+        ? 2
+        : 3 + (request.subject ? 1 : 0);
   const inputRows =
     props.mode === 'normal' ? 0 : props.mode === 'new-session' ? 9 : 2;
   const projectOpen =
@@ -804,58 +949,18 @@ export function WorkbenchScreen(props: ScreenProps) {
               <Text dimColor>{empty}</Text>
             )}
           </Box>
-          {request?.kind === 'agent-request' && (
-            <Box flexDirection="column" height={decisionRows} flexShrink={0}>
-              <Text color="yellow" bold wrap="truncate-end">
-                {request.request === 'question'
-                  ? 'Question for you'
-                  : 'Needs you'}{' '}
-                {ownPending.findIndex((item) => item.id === request.id) + 1}/
-                {ownPending.length} · {terminalText(request.title)}
-              </Text>
-              {request.steps.slice(0, shownSteps).map((step, index) => (
-                <Text key={index} wrap="truncate-end">
-                  {'  '}
-                  {index + 1}. {terminalText(step)}
-                </Text>
-              ))}
-              <Text wrap="truncate-end">
-                {props.armed
-                  ? request.request === 'question'
-                    ? 'i reply · y done'
-                    : 'y done · i reply'
-                  : 'Tab to select another request'}
-                {request.steps.length > shownSteps
-                  ? ` · d all ${request.steps.length} steps`
-                  : ''}{' '}
-                · Tab next
-              </Text>
-            </Box>
-          )}
-          {request?.kind === 'permission' && (
-            <Box flexDirection="column" height={2} flexShrink={0}>
-              <Text color="yellow" wrap="truncate-end">
-                Approval{' '}
-                {ownPending.findIndex((item) => item.id === request.id) + 1}/
-                {ownPending.length} · {terminalText(request.title)}
-              </Text>
-              <Text wrap="truncate-end">
-                {props.armed
-                  ? request.choices
-                      .filter(
-                        (choice) =>
-                          choice.kind === 'allow-once' ||
-                          choice.kind === 'reject-once',
-                      )
-                      .map(
-                        (choice) =>
-                          `${choice.kind === 'allow-once' ? 'a' : 'r'} ${terminalText(choice.label)}`,
-                      )
-                      .join('  ')
-                  : 'Tab to select another request'}{' '}
-                · d details · Tab next
-              </Text>
-            </Box>
+          {request && (
+            <DecisionPanel
+              request={request}
+              position={
+                ownPending.findIndex((item) => item.id === request.id) + 1
+              }
+              total={ownPending.length}
+              armed={props.armed}
+              height={decisionRows}
+              shownSteps={shownSteps}
+              compact={compactDecision}
+            />
           )}
           {extras.map((line, index) => (
             <Box key={index} height={1} flexShrink={0}>

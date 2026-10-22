@@ -280,11 +280,11 @@ test('the TUI shows what the agent needs, marks it done with y and notes replies
     () =>
       !!ui
         .lastFrame()
-        ?.includes('Needs you 1/1 · Restart ro-panel with --write'),
+        ?.includes('NEEDS YOU 1/1  Restart ro-panel with --write'),
   );
   const frame = ui.lastFrame() ?? '';
   assert.ok(frame.includes('1. Quit the panel with q'), frame);
-  assert.ok(frame.includes('y done · i reply'), frame);
+  assert.ok(frame.includes(' y  Done    i  Reply'), frame);
   assert.ok(
     frame.includes('Needs you (1)'),
     'the roster does not call it an approval',
@@ -321,7 +321,7 @@ test('the TUI shows what the agent needs, marks it done with y and notes replies
     async () =>
       agentRequests((await client.poll()).attention)[0]?.status === 'done',
   );
-  await until(() => !ui.lastFrame()?.includes('Needs you 1/1'));
+  await until(() => !ui.lastFrame()?.includes('NEEDS YOU 1/1'));
   const repeated = await complete(request.id);
   assert.equal(repeated.status, 409);
   assert.equal(

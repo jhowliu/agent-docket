@@ -272,7 +272,7 @@ test('Ink approval shortcuts target the focused request; paste and repeats canno
     ui.unmount();
     ui.cleanup();
   });
-  await frameHas(ui, 'Approval 1/2');
+  await frameHas(ui, 'APPROVAL 1/2');
   ui.stdin.write('p');
   await frameHas(ui, 'hjkl · Enter');
   ui.stdin.write(']');
@@ -300,7 +300,7 @@ test('Ink approval shortcuts target the focused request; paste and repeats canno
     (state) =>
       state.attention.filter((item) => item.status === 'pending').length === 2,
   );
-  await frameHas(ui, 'Tab to select');
+  await frameHas(ui, 'Tab selects the next request');
   ui.stdin.write('a');
   await new Promise((done) => setTimeout(done, 50));
   assert.equal(
@@ -324,7 +324,7 @@ test('Ink approval shortcuts target the focused request; paste and repeats canno
     2,
   );
   ui.stdin.write('\t');
-  await frameHas(ui, 'r Reject once');
+  await frameHas(ui, 'r  Reject once');
   ui.stdin.write('r');
   await stateWhen(
     client,

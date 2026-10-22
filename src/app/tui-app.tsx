@@ -1,8 +1,8 @@
 import { spawn } from 'node:child_process';
 import { useEffect, useRef, useState } from 'react';
 import { useApp, useInput, useWindowSize } from 'ink';
-import type { AttentionId } from '../attention/index.js';
-import type { RunId } from '../execution/index.js';
+import type { AttentionId, AttentionItem } from '../attention/index.js';
+import type { RunId, RunSnapshot } from '../execution/index.js';
 import type { WorkbenchClient } from './workbench-client.js';
 import { WorkbenchError } from './workbench-client.js';
 import type { WorkbenchCommand, WorkbenchState } from './workbench-protocol.js';
@@ -36,6 +36,45 @@ const message = (error: unknown) =>
       ? error.message
       : 'Action failed; check the connection',
   );
+
+const NOTE_MS = 8000;
+const AGENT_NAMES = { codex: 'Codex', claude: 'Claude', fixture: 'The agent' };
+/** What the selected Run is doing and the keys that matter now. */
+function stateHint(
+  state: WorkbenchState,
+  run: RunSnapshot | undefined,
+  request: AttentionItem | undefined,
+): string {
+  if (!run) return 'n new Run · ? help · q detach; Runs keep running';
+  // The decision panel above lists the keys; the footer only says who is waiting.
+  // An agent request does not pause the agent, so the Run's own state follows.
+  if (request?.kind === 'permission')
+    return `${AGENT_NAMES[run.provider]} is waiting for your approval`;
+  const changes =
+    state.features?.changeMap &&
+    run.worktree &&
+    run.worktree.status.kind !== 'removed'
+      ? ' · m changes'
+      : '';
+  switch (run.state.kind) {
+    case 'running':
+      return `${AGENT_NAMES[run.provider]} is working · x stop · 1 Live`;
+    case 'starting':
+      return 'Starting the agent…';
+    case 'cancelling':
+      return 'Stopping the agent…';
+    case 'authentication-required':
+      return 'Sign-in required · s actions';
+    case 'idle':
+      return `Idle · i message${changes} · n new Run`;
+    case 'failed':
+    case 'interrupted':
+      return `Run ${run.state.kind}${changes} · n new Run`;
+    case 'cancelled':
+    case 'closed':
+      return `Run ended${changes} · n new Run`;
+  }
+}
 
 /** Hands a loopback URL to the platform's browser opener; the URL is also shown in the footer. */
 function openInBrowser(url: string) {
@@ -101,9 +140,12 @@ export function WorkbenchApp({
   const inFlight = useRef(false);
   const heldAction = useRef<string | null>(null);
   const mounted = useRef(true);
-  const [note, setNote] = useState(
-    'n new Run · i reply · q detach; Runs keep running',
-  );
+  // An action's receipt shows briefly; after that the footer describes the selected Run.
+  const [noted, setNoted] = useState({ text: '', at: 0 });
+  const note = noted.text;
+  function setNote(text: string) {
+    setNoted({ text, at: Date.now() });
+  }
   const [receipt, setReceipt] = useState<AttentionId | null>(null);
   const epoch = useRef(initial.instanceId);
   const lastTurnEnd = (state: WorkbenchState) =>
@@ -137,15 +179,18 @@ export function WorkbenchApp({
     columns >= 80 || project,
   );
   const answered = state.attention.find((item) => item.id === receipt);
+  const fresh = note !== '' && Date.now() - noted.at < NOTE_MS;
   const footer = !connected
     ? note
-    : answered?.status === 'delivered'
-      ? 'Response delivered to agent'
-      : answered?.status === 'stale'
-        ? 'Approval expired · ' + answered.reason
-        : answered?.status === 'accepted'
-          ? 'Response accepted; awaiting delivery to agent'
-          : note;
+    : !fresh
+      ? stateHint(snapshot, selected, request)
+      : answered?.status === 'delivered'
+        ? 'Response delivered to agent'
+        : answered?.status === 'stale'
+          ? 'Approval expired · ' + answered.reason
+          : answered?.status === 'accepted'
+            ? 'Response accepted; awaiting delivery to agent'
+            : note;
 
   function apply(snapshot: WorkbenchState) {
     if (!mounted.current) return;
@@ -262,7 +307,8 @@ export function WorkbenchApp({
         setNote('Last response accepted');
       } else if (command.kind === 'complete-request')
         setNote('Marked done · the agent was not told; i to reply');
-      else if (command.kind === 'prompt') setNote('Last message accepted');
+      else if (command.kind === 'prompt')
+        setNote('Message accepted · watch Timeline');
       else if (command.kind === 'authenticate')
         setNote('Sign-in requested · waiting for agent');
       else if (command.kind === 'cancel')
