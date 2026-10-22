@@ -16,6 +16,7 @@ export type ChangeMap = z.infer<typeof changeMapSchema>;
  * TypeScript checkouts with a root tsconfig.json also get functions, Interface
  * changes and flows; others get files and hunks only (`analysis.kind`).
  * Bounded by the published `limits`; `truncated` names what was cut.
+ * `analysis: false` skips the TypeScript pass for a quick file diff.
  * Throws for an invalid input, a missing checkout or an unknown base.
  * Takes seconds on a large project; callers should not run it per keystroke.
  */

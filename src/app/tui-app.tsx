@@ -21,6 +21,7 @@ import {
   projectForRun,
 } from './workbench-work.js';
 import { useProjectTree } from './tui-project.js';
+import { useWorktreeDiff } from './tui-diff.js';
 import { NewSession } from './tui-session.js';
 
 type Mode =
@@ -123,6 +124,12 @@ export function WorkbenchApp({
     (item) => item.status === 'pending' && item.runId === selected?.id,
   );
   const request = pending.find((item) => item.id === focusedId) ?? pending[0];
+  const worktreeDiff = useWorktreeDiff(
+    client,
+    state,
+    selected?.id ?? null,
+    view === 'diff',
+  );
   const projectTree = useProjectTree(
     client,
     state,
@@ -744,6 +751,7 @@ export function WorkbenchApp({
       <WorkbenchScreen
         state={state}
         selectedId={selected?.id ?? null}
+        worktreeDiff={worktreeDiff}
         filter={filter}
         view={view}
         offset={offset}

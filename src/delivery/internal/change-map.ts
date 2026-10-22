@@ -15,19 +15,35 @@ const inputSchema = z
     base: z
       .string()
       .regex(/^[0-9a-f]{7,40}$/, 'Change map base must be a commit hash'),
+    /** false: files and hunks only, without the TypeScript pass. */
+    analysis: z.boolean().optional(),
   })
   .strict();
+
+const skipped = () => ({
+  analysis: {
+    kind: 'files-only' as const,
+    reason: 'Analysis was not requested',
+  },
+  symbols: new Map<string, never[]>(),
+  interfaces: [],
+  flows: [],
+  otherChanges: [],
+  truncated: false,
+});
 
 export async function describeChange(input: {
   directory: string;
   base: string;
+  analysis?: boolean;
 }): Promise<ChangeMap> {
-  const { directory, base: requested } = inputSchema.parse(input);
+  const { directory, base: requested, ...options } = inputSchema.parse(input);
   const { root, base } = await resolveCheckout(directory, requested);
   const diff = await readDiff(root, base);
-  const analysis = await analyze(root, diff.files, (path) =>
-    readAtBase(root, base, path),
-  );
+  const analysis =
+    options.analysis === false
+      ? skipped()
+      : await analyze(root, diff.files, (path) => readAtBase(root, base, path));
   const truncated = new Set<'files' | 'diff' | 'analysis'>(diff.truncated);
   if (analysis.truncated) truncated.add('analysis');
   return changeMapSchema.parse({

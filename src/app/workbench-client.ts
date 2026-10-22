@@ -22,6 +22,8 @@ import type {
   ProjectInitialization,
 } from '../execution/index.js';
 import type { RunId, DirectoryListing } from '../execution/index.js';
+import { changeMapSchema } from '../delivery/index.js';
+import type { ChangeMap } from '../delivery/index.js';
 import type {
   WorkbenchCommand,
   WorkbenchReply,
@@ -258,6 +260,43 @@ export function createWorkbenchClient(
       )
         throw new WorkbenchError('protocol', 'Invalid directory response');
       return listing.data;
+    },
+    /** The Run's worktree against its base; `filesOnly` skips the slower flow analysis. */
+    async changes(runId: RunId, filesOnly = false): Promise<ChangeMap> {
+      const query = changesRequestSchema.parse({
+        runId,
+        ...(filesOnly ? { files: 'only' } : {}),
+      });
+      if (!token)
+        throw new WorkbenchError(
+          'unavailable',
+          'Reconnect before reading changes',
+        );
+      const response = await send(
+        '/api/changes?' +
+          new URLSearchParams({
+            runId: query.runId,
+            ...(query.files ? { files: query.files } : {}),
+          }),
+        {
+          headers: { 'x-workbench-token': token, origin },
+        },
+      );
+      if (!response.ok) {
+        const error = z
+          .object({ error: z.string() })
+          .safeParse(await response.json().catch(() => null));
+        throw new WorkbenchError(
+          'rejected',
+          error.success
+            ? error.data.error
+            : 'Changes are unavailable for this Run',
+        );
+      }
+      const map = changeMapSchema.safeParse(await response.json());
+      if (!map.success)
+        throw new WorkbenchError('protocol', 'Invalid changes response');
+      return map.data;
     },
     /** Browser page for one Run's Change map; the page fetches its own data. */
     changeMapUrl(runId: RunId): string {

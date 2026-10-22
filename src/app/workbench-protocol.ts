@@ -24,7 +24,13 @@ const event = runEventSchema;
 export const directoryRequestSchema = z
   .object({ runId, path: directoryPathSchema })
   .strict();
-export const changesRequestSchema = z.object({ runId }).strict();
+export const changesRequestSchema = z
+  .object({
+    runId,
+    /** `only`: files and hunks without the TypeScript pass (the Diff tab). */
+    files: z.literal('only').optional(),
+  })
+  .strict();
 export const projectRequestSchema = z
   .object({
     path: z

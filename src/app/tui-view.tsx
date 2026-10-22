@@ -3,6 +3,9 @@ import type { ReactNode } from 'react';
 import { Box, Text } from 'ink';
 import wrapAnsi from 'wrap-ansi';
 import type { AttentionItem } from '../attention/index.js';
+import type { ChangeMap } from '../delivery/index.js';
+import { NO_WORKTREE } from './tui-diff.js';
+import type { WorktreeDiff } from './tui-diff.js';
 import type {
   RunEvent,
   RunId,
@@ -101,13 +104,65 @@ function eventColor(event: RunEvent): string | undefined {
       ? 'red'
       : undefined;
 }
+const DIFF_LINES = 4000;
+/** The real worktree diff: every changed file, whether or not the agent reported it. */
+function worktreeLines(
+  map: ChangeMap,
+  append: (text: string, color?: string) => void,
+) {
+  append(
+    `Worktree vs ${map.base.slice(0, 7)} · ${map.totals.files} file${map.totals.files === 1 ? '' : 's'} · +${map.totals.plus} −${map.totals.minus} · m Change map`,
+    'gray',
+  );
+  if (map.truncated.length)
+    append(
+      `Some changes left out (${map.truncated.join(', ')}) · m Change map lists every file`,
+      'gray',
+    );
+  if (!map.files.length) append('No changes in the worktree yet');
+  let shown = 0;
+  for (const file of map.files) {
+    if (shown >= DIFF_LINES) {
+      append(`… more files · m Change map shows the rest`, 'gray');
+      return;
+    }
+    const name = file.previousPath
+      ? `${file.previousPath} → ${file.path}`
+      : file.path;
+    append('');
+    append(
+      `${file.status === 'modified' ? '' : file.status + ' '}${name} · +${file.plus} −${file.minus}`,
+      'white',
+    );
+    if (file.binary) append('Binary file', 'gray');
+    else if (file.diff === null)
+      append(
+        'Diff left out: larger than the size limit · m Change map',
+        'gray',
+      );
+    else
+      for (const row of file.diff.replace(/\n$/, '').split('\n')) {
+        if (++shown > DIFF_LINES) break;
+        append(
+          row,
+          row.startsWith('@@')
+            ? 'cyan'
+            : row.startsWith('+')
+              ? 'green'
+              : row.startsWith('-')
+                ? 'red'
+                : undefined,
+        );
+      }
+  }
+}
 function detailLines(
   events: readonly RunEvent[],
   runId: RunId | null,
   view: View,
   width: number,
   attention: readonly AttentionItem[],
-  diffScope?: string,
+  worktree: WorktreeDiff = NO_WORKTREE,
 ): Line[] {
   const ownEvents = events.filter((event) => event.runId === runId);
   const selected = view === 'live' ? readableEvents(ownEvents) : ownEvents;
@@ -119,10 +174,14 @@ function detailLines(
     }).split('\n'))
       lines.push({ text: part, ...(color ? { color } : {}) });
   };
-  if (view === 'diff') {
-    // Provider-reported edits miss shell/patch writes; say so where the gap shows.
-    if (diffScope && selected.some((event) => event.type === 'diff'))
-      append(diffScope, 'gray');
+  if (view === 'diff' && worktree.kind === 'ready') {
+    worktreeLines(worktree.map, append);
+  } else if (view === 'diff' && worktree.kind === 'loading') {
+    append('Reading worktree changes…', 'gray');
+  } else if (view === 'diff') {
+    // Without a readable worktree, only edits the agent reported are known.
+    if (worktree.kind === 'unavailable')
+      append(`Worktree diff unavailable · ${worktree.reason}`, 'gray');
     for (const event of selected) {
       if (event.type !== 'diff') continue;
       append('--- ' + event.path);
@@ -208,6 +267,8 @@ export type ScreenProps = {
   columns: number;
   rows: number;
   input?: ReactNode;
+  /** The selected Run's worktree diff for the Diff tab; reported edits when absent. */
+  worktreeDiff?: WorktreeDiff;
 };
 
 /** Keep the composer and the terminal viewport on the same column boundary. */
@@ -365,14 +426,7 @@ export function WorkbenchScreen(props: ScreenProps) {
   const sidebar = mainWidth < columns;
   const sidebarWidth = columns - mainWidth - 1;
   const width = Math.max(1, mainWidth - 4);
-  // The Change map reads the worktree itself, so it also covers edits the agent never reported.
-  const mapReady =
-    state.features?.changeMap === true &&
-    selected?.worktree !== undefined &&
-    selected.worktree.status.kind !== 'removed';
-  const diffScope = mapReady
-    ? 'Edits the agent reported · m Change map shows every worktree change'
-    : undefined;
+  const worktreeDiff = props.worktreeDiff ?? NO_WORKTREE;
   const lines = useMemo(
     () =>
       detailLines(
@@ -381,9 +435,9 @@ export function WorkbenchScreen(props: ScreenProps) {
         view,
         width,
         state.attention,
-        diffScope,
+        worktreeDiff,
       ),
-    [state.events, state.attention, selectedId, view, width, diffScope],
+    [state.events, state.attention, selectedId, view, width, worktreeDiff],
   );
   if (columns < 60 || rows < 20) {
     return (
@@ -551,9 +605,7 @@ export function WorkbenchScreen(props: ScreenProps) {
   const log = lines.slice(Math.max(0, end - logRows), end);
   const empty = selected
     ? view === 'diff'
-      ? mapReady
-        ? 'No edits reported by the agent · m Change map reads the worktree'
-        : 'No file changes yet'
+      ? 'No file changes yet'
       : view === 'timeline'
         ? 'No milestones yet · 1 Live for full output'
         : fixture

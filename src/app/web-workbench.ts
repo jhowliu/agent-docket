@@ -19,12 +19,7 @@ import {
   ProjectInitializationRequired,
   listProjectFolders,
 } from '../execution/index.js';
-import type {
-  Execution,
-  Launch,
-  LocalWorker,
-  RunId,
-} from '../execution/index.js';
+import type { Execution, Launch, LocalWorker } from '../execution/index.js';
 import { describeChange } from '../delivery/index.js';
 import type { ChangeMap } from '../delivery/index.js';
 import { launchFingerprint } from './launch-config.js';
@@ -95,7 +90,7 @@ export function createWebWorkbench(
   const directory = previewDirectory();
   const launch = parseLaunch(options.launch ?? { provider: 'fixture' });
   const configurationId = launchFingerprint(launch);
-  const changeTasks = new Map<RunId, Promise<ChangeMap>>();
+  const changeTasks = new Map<string, Promise<ChangeMap>>();
   if ((options.maxEvents ?? 2000) > 2000)
     throw new Error('Workbench polling supports at most 2000 events');
   const attention = createAttention();
@@ -312,6 +307,9 @@ export function createWebWorkbench(
         return json({ error: 'Reconnect before opening the Change map' }, 403);
       const parsed = changesRequestSchema.safeParse({
         runId: url.searchParams.get('runId'),
+        ...(url.searchParams.has('files')
+          ? { files: url.searchParams.get('files') }
+          : {}),
       });
       if (!parsed.success) return json({ error: 'Invalid Run' }, 400);
       const id = execution
@@ -332,14 +330,17 @@ export function createWebWorkbench(
           },
           409,
         );
-      // One analysis per Run at a time; repeated opens share it.
-      let task = changeTasks.get(id);
+      // One analysis per Run and mode at a time; repeated opens share it.
+      const filesOnly = parsed.data.files === 'only';
+      const key = `${id}:${filesOnly ? 'files' : 'map'}`;
+      let task = changeTasks.get(key);
       if (!task) {
         task = describeChange({
           directory: worktree.path,
           base: worktree.baseRevision,
-        }).finally(() => changeTasks.delete(id));
-        changeTasks.set(id, task);
+          ...(filesOnly ? { analysis: false } : {}),
+        }).finally(() => changeTasks.delete(key));
+        changeTasks.set(key, task);
       }
       try {
         return json(await task);

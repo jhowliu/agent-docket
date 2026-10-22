@@ -363,10 +363,28 @@ test('the service serves a Run’s Change map from its own worktree and the TUI 
   await until(
     () => !!ui?.lastFrame()?.includes('Turn finished · m see what changed'),
   );
+  // The Diff tab reads the worktree itself: none of these edits were reported by the agent.
   ui.stdin.write('2');
   await until(
-    () => !!ui?.lastFrame()?.includes('No edits reported by the agent'),
+    () => !!ui?.lastFrame()?.includes('+  return name.trim().toLowerCase();'),
   );
+  ui.stdin.write('g');
+  await until(() => !!ui?.lastFrame()?.includes('Worktree vs'));
+  assert.ok(ui.lastFrame()?.includes('README.md · +2 −0'), ui.lastFrame());
+
+  const quick = await changes(`runId=${run.id}&files=only`);
+  assert.equal(quick.status, 200);
+  const files = changeMapSchema.parse(await quick.json());
+  assert.deepEqual(files.analysis, {
+    kind: 'files-only',
+    reason: 'Analysis was not requested',
+  });
+  assert.deepEqual(
+    [files.flows, files.files.flatMap((file) => file.symbols)],
+    [[], []],
+  );
+  assert.equal(files.files.length, map.files.length);
+  assert.equal((await changes(`runId=${run.id}&files=all`)).status, 400);
 
   // Once the worktree is committed and collected, the map points to the branch instead.
   await client.command({ kind: 'cancel', runId: run.id });
@@ -425,4 +443,78 @@ test('a Run without a local worktree has no Change map', async (t) => {
   ui.stdin.write('m');
   await until(() => !!ui.lastFrame()?.includes('local Git worktree'));
   assert.deepEqual(opened, []);
+});
+
+test('the Diff tab follows the selected Run and drops a late reply for the previous one', async (t) => {
+  const { root } = await repository(project);
+  const runs = await mkdtemp(join(tmpdir(), 'workbench-change-map-runs-'));
+  const launch = {
+    provider: 'codex',
+    source: { kind: 'directory', path: root },
+    worker: {
+      transport: 'local',
+      workspaceRoot: runs,
+      adapter: {
+        file: process.execPath,
+        args: [resolve('fixtures/local-agent.mjs')],
+      },
+    },
+  } satisfies Launch;
+  const origin = 'http://127.0.0.1:4174';
+  const app = createWebWorkbench(origin, { launch });
+  // Hold the first Run's diff reply until the selection has moved on.
+  let held: string | undefined;
+  let release = () => {};
+  const client = createWorkbenchClient(origin, async (request) => {
+    const url = new URL(request.url);
+    if (
+      url.pathname === '/api/changes' &&
+      url.searchParams.get('runId') === held
+    )
+      await new Promise<void>((done) => {
+        release = done;
+      });
+    return app.fetch(request);
+  });
+  let ui: ReturnType<typeof render> | undefined;
+  t.after(async () => {
+    release();
+    ui?.unmount();
+    ui?.cleanup();
+    await app.close();
+    await rm(root, { recursive: true, force: true });
+    await rm(runs, { recursive: true, force: true });
+  });
+  await client.connect();
+  await client.command({ kind: 'start' });
+  await client.command({ kind: 'start' });
+  let state = await client.poll();
+  await until(async () => {
+    state = await client.poll();
+    return (
+      state.runs.length === 2 &&
+      state.runs.every((run) => run.state.kind === 'idle')
+    );
+  });
+  const [first, second] = state.runs;
+  assert.ok(first?.worktree && second?.worktree);
+  await write(first.worktree.path, { 'only-first.txt': 'first\n' });
+  await write(second.worktree.path, { 'only-second.txt': 'second\n' });
+  held = first.id;
+  ui = render(
+    <WorkbenchApp client={client} initial={state} pollInterval={25} />,
+  );
+  await until(() => !!ui?.lastFrame()?.includes('Run 2'));
+  ui.stdin.write('2');
+  await until(() => !!ui?.lastFrame()?.includes('Reading worktree changes'));
+  ui.stdin.write('j');
+  await until(() => !!ui?.lastFrame()?.includes('only-second.txt'));
+  release();
+  await new Promise((done) => setTimeout(done, 300));
+  const frame = ui.lastFrame() ?? '';
+  assert.ok(frame.includes('only-second.txt'), frame);
+  assert.ok(
+    !frame.includes('only-first.txt'),
+    'a late reply for the previous Run never replaces the current one',
+  );
 });
