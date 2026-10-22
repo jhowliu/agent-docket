@@ -14,6 +14,7 @@ import type {
   RunSnapshot,
   RunState,
   Worker,
+  WorktreeSnapshot,
 } from '../index.js';
 import { launchManaged } from './worker.js';
 import type { ManagedProcess } from './worker.js';
@@ -71,6 +72,18 @@ const sourceSchema = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('directory'),
       path: z.string().min(1).refine(isAbsolute, 'Use an absolute source path'),
+      base: z
+        .object({
+          branch: z
+            .string()
+            .min(1)
+            .max(255)
+            .refine((value) => !value.includes('\0'))
+            .optional(),
+          revision: z.string().regex(/^[a-f0-9]{40,64}$/),
+        })
+        .strict()
+        .optional(),
     })
     .strict(),
   z
@@ -163,12 +176,14 @@ type Slot = {
   cleanup: Promise<void> | null;
   progress: ProgressChannel | null;
   progressTask: Promise<ProgressChannel> | null;
+  stopped: boolean;
 };
 const terminal = (state: RunState) =>
   ['cancelled', 'closed', 'failed', 'interrupted'].includes(state.kind);
 const cancelling = (slot: Slot) =>
   ['cancelling', 'cancelled'].includes(slot.snapshot.state.kind);
 const isClosed = (slot: Slot) => slot.snapshot.state.kind === 'closed';
+const isStopping = (slot: Slot) => slot.snapshot.state.kind === 'cancelling';
 function safeText(text: string): string {
   return text
     .slice(0, 8000)
@@ -250,6 +265,26 @@ export function createExecution(options: ExecutionOptions): Execution {
       }),
     );
   }
+  function recordWorktree(slot: Slot, worktree: WorktreeSnapshot): void {
+    if (JSON.stringify(slot.snapshot.worktree) === JSON.stringify(worktree))
+      return;
+    const status =
+      worktree.status.kind === 'retained'
+        ? { ...worktree.status, reason: safeText(worktree.status.reason) }
+        : worktree.status;
+    slot.snapshot = { ...slot.snapshot, worktree: { ...worktree, status } };
+    emit(slot, {
+      type: 'diagnostic',
+      message:
+        status.kind === 'removed'
+          ? `Worktree removed. Local branch kept: ${worktree.branch}`
+          : status.kind === 'commit-required'
+            ? `Commit required: ${status.changes} changed paths. Commit all changes to ${worktree.branch} with :commit <message>, then remove the worktree. No remote push.`
+            : status.kind === 'retained'
+              ? `Worktree retained: ${status.reason}`
+              : `Local worktree branch: ${worktree.branch}`,
+    });
+  }
   async function clean(slot: Slot): Promise<void> {
     if (!slot.cleanup)
       slot.cleanup = (async () => {
@@ -261,6 +296,7 @@ export function createExecution(options: ExecutionOptions): Execution {
           slot.progress ?? (await slot.progressTask?.catch(() => null));
         try {
           await managed?.stop();
+          slot.stopped = true;
         } finally {
           await progress?.close();
         }
@@ -268,7 +304,9 @@ export function createExecution(options: ExecutionOptions): Execution {
         slot.cleanup = null;
         throw error;
       });
-    return slot.cleanup;
+    await slot.cleanup;
+    if (slot.managed?.worktree)
+      recordWorktree(slot, await slot.managed.worktree.collect());
   }
   function streamFor(slot: Slot, managed: ManagedProcess): acp.Stream {
     const base = acp.ndJsonStream(
@@ -438,6 +476,7 @@ export function createExecution(options: ExecutionOptions): Execution {
       cleanup: null,
       progress: null,
       progressTask: null,
+      stopped: false,
     };
     slots.set(id, slot);
     emit(slot, { type: 'run.state', state: { kind: 'starting' } });
@@ -450,6 +489,7 @@ export function createExecution(options: ExecutionOptions): Execution {
       const managed = await slot.launchTask;
       slot.managed = managed;
       slot.snapshot = { ...slot.snapshot, environment: managed.environment };
+      if (managed.worktree) recordWorktree(slot, managed.worktree.snapshot());
       if (closing || terminal(slot.snapshot.state) || cancelling(slot))
         throw new Error('Run startup was cancelled');
       if (
@@ -480,8 +520,9 @@ export function createExecution(options: ExecutionOptions): Execution {
       if (managed.environment.kind === 'local')
         emit(slot, {
           type: 'diagnostic',
-          message:
-            'Local process: no OS isolation. The code copy is retained when this Run stops.',
+          message: managed.worktree
+            ? 'Local Git worktree: no OS isolation. Closing collects clean files; commit changes to keep them on the local branch.'
+            : 'Local process: no OS isolation. The code copy is retained when this Run stops.',
         });
       managed.child.on('error', () => {
         interrupt(slot, 'Adapter process failed');
@@ -719,8 +760,15 @@ export function createExecution(options: ExecutionOptions): Execution {
         if (
           slot.snapshot.state.kind === 'closed' ||
           slot.snapshot.state.kind === 'cancelled'
-        )
+        ) {
+          slot.epoch++;
+          try {
+            await clean(slot);
+          } finally {
+            slot.cancelTask = null;
+          }
           return;
+        }
         slot.epoch++;
         attention.invalidate(id, 'Run cancelled');
         setState(slot, { kind: 'cancelling' });
@@ -749,6 +797,18 @@ export function createExecution(options: ExecutionOptions): Execution {
       });
       return slot.cancelTask;
     },
+    async commitWorkspace(id, message) {
+      const slot = get(id);
+      if (closing) throw new Error('Execution is closing');
+      if (slot.cancelTask) await slot.cancelTask;
+      if (!terminal(slot.snapshot.state) || !slot.stopped)
+        throw new Error('Close this Run before committing its worktree');
+      const worktree = slot.managed?.worktree;
+      if (!worktree) throw new Error('This Run has no managed Git worktree');
+      slot.epoch++;
+      recordWorktree(slot, await worktree.commit(message));
+      return structuredClone(slot.snapshot);
+    },
     snapshot(id) {
       return structuredClone(get(id).snapshot);
     },
@@ -766,7 +826,16 @@ export function createExecution(options: ExecutionOptions): Execution {
         path,
         reason,
       });
-      if (closing || terminal(slot.snapshot.state) || cancelling(slot))
+      const retained =
+        slot.snapshot.worktree &&
+        ['commit-required', 'retained'].includes(
+          slot.snapshot.worktree.status.kind,
+        );
+      if (
+        closing ||
+        (terminal(slot.snapshot.state) && !retained) ||
+        isStopping(slot)
+      )
         return unavailable('This Run workspace is no longer active');
       if (!managed) return unavailable('Workspace is still starting');
       if (
@@ -781,8 +850,9 @@ export function createExecution(options: ExecutionOptions): Execution {
         const listing = await readWorkspaceDirectory(managed.cwd, id, path);
         return epoch === slot.epoch &&
           !closing &&
-          !terminal(slot.snapshot.state) &&
-          !cancelling(slot)
+          (!terminal(slot.snapshot.state) || retained) &&
+          !isStopping(slot) &&
+          slot.snapshot.worktree?.status.kind !== 'removed'
           ? listing
           : unavailable('This Run workspace is no longer active');
       } catch {
@@ -830,7 +900,7 @@ export function createExecution(options: ExecutionOptions): Execution {
         if (errors.length)
           throw new AggregateError(
             errors,
-            'Some managed environments could not be removed',
+            `Some managed environments could not be removed: ${errors.map(errorText).join('; ')}`,
           );
       })();
       return closeTask;

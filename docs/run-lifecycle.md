@@ -10,7 +10,7 @@
 - `npm run daemon:stop` explicitly stops the daemon and attempts to cancel and clean up its managed Runs. This affects active work. Use the same `WORKBENCH_PORT` as the running service.
 - Starting a new daemon after a stop, crash or computer restart begins with empty Run, event and approval state. Old Sessions and permission callbacks are not restored. The client clears old request focus and never automatically replays an ambiguous mutation.
 
-Crash-time OS processes and local code copies are not automatically reconciled or reaped. Empty workbench state does not prove those resources were cleaned up. Local code copies remain after confirmed cancellation/shutdown; see [local execution](local-execution.md).
+Crash-time OS processes and workspaces are not automatically reconciled or reaped. Empty workbench state does not prove those resources were cleaned up. Local Git directory-source worktrees are collected after confirmed stop when clean; unsaved changes remain actionable until committed. Branches survive worktree removal. Legacy fixture/HTTPS copies keep their previous retention behavior; see [worktrees](worktrees.md) and [local execution](local-execution.md).
 
 ## Interfaces and limits
 
@@ -18,7 +18,7 @@ Crash-time OS processes and local code copies are not automatically reconciled o
 
 `execution.submit()` confirms acceptance into the current process, not durable storage or provider delivery. There is no `historyFile`, `historyDirectory`, archive flag, Run paging or history API. `:history`, `:older`, `:latest` and `:older-runs` are removed. `PgUp/PgDn` and `g/G` scroll only retained events.
 
-The app allows four active Runs and 64 newly created Runs per daemon process. Terminal snapshots remain in that bounded process-local roster for lifecycle checks, without a past-Run browsing mode. The live event window is at most 2,000 events; approval receipts retain at most 500 in memory. Reaching an expired event cursor requires a fresh snapshot, not a disk replay.
+The app allows four active Runs and 64 newly created Runs per daemon process. Stopped Runs with a commit-required/retained worktree remain actionable in the current roster until collection succeeds. Terminal snapshots remain in that bounded process-local roster for lifecycle checks, without a past-Run browsing mode. The live event window is at most 2,000 events; approval receipts retain at most 500 in memory. Reaching an expired event cursor requires a fresh snapshot, not a disk replay.
 
 Existing `.workbench/history/` files are left untouched and are no longer used. `WORKBENCH_HISTORY_DIRECTORY` has no effect. Existing running daemons keep their already-loaded code; restarting the TUI alone does not upgrade a daemon. No running user daemon is automatically stopped or replaced.
 

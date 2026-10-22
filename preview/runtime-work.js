@@ -139,7 +139,9 @@ export function createRoadmapView({
   const currentRun = () =>
     read().runs.find((run) => run.id === read().selected);
   function currentTask(runId = read().selected) {
-    const work = read().work;
+    const work =
+      read().projects?.find((project) => project.runIds.includes(runId))
+        ?.work ?? read().work;
     if (work?.kind !== 'ready' || !work.plan) return null;
     const id = work.bindings.find((binding) => binding.runId === runId)?.taskId;
     for (const phase of work.plan.phases) {

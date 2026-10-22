@@ -1,5 +1,5 @@
 import { writeFile, readFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { join } from 'node:path';
 
 // Trusted native-launch acceptance peer. No model calls or real login material.
@@ -11,6 +11,22 @@ const observation = {
   injectedHostSetting: process.env.WORKBENCH_TEST_HOST_SETTING ?? null,
   mode: process.env.INITIAL_AGENT_MODE,
 };
+if (process.argv.includes('--git-root-probe')) {
+  const gitRoot = () => {
+    try {
+      return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim();
+    } catch {
+      return null;
+    }
+  };
+  observation.gitRootBefore = gitRoot();
+  if (!observation.gitRootBefore)
+    execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'init', '--quiet']);
+  observation.gitRootAfter = gitRoot();
+}
 try {
   const auth = join(process.env.CODEX_HOME, 'auth.json');
   observation.auth = JSON.parse(await readFile(auth, 'utf8'));

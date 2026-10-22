@@ -4,9 +4,18 @@ import type { directoryListingSchema } from './internal/directory.js';
 export type DirectoryListing = z.infer<typeof directoryListingSchema>;
 export type RunId = `run-${string}`;
 export type Provider = 'fixture' | 'codex' | 'claude';
+export type WorktreeSnapshot = Readonly<{
+  path: string;
+  branch: string;
+  baseRevision: string;
+  status:
+    | Readonly<{ kind: 'active' | 'removed' }>
+    | Readonly<{ kind: 'commit-required'; changes: number }>
+    | Readonly<{ kind: 'retained'; reason: string }>;
+}>;
 export type LocalWorker = Readonly<{
   transport: 'local';
-  /** Local mode is explicitly unsandboxed. Workspaces survive Run cancellation. */
+  /** Local mode is explicitly unsandboxed. Owns per-Run worktree directories. */
   workspaceRoot: string;
   /** Optional auth.json to copy into a private Codex home; never shared writable. */
   authFile?: string;
@@ -24,7 +33,14 @@ export type Worker =
     >;
 export type Source =
   | Readonly<{ kind: 'fixture' }>
-  | Readonly<{ kind: 'directory'; path: string }>
+  | Readonly<{
+      kind: 'directory';
+      path: string;
+      /** Start from a displayed local branch/HEAD commit; fail if it changed. */
+      base?:
+        | Readonly<{ branch?: string | undefined; revision: string }>
+        | undefined;
+    }>
   | Readonly<{ kind: 'git'; url: string; revision: string }>;
 export type Launch =
   | Readonly<{ provider: 'fixture'; label?: string }>
@@ -69,6 +85,7 @@ export type RunSnapshot = Readonly<{
     location: string;
   };
   capabilities: Capabilities | null;
+  worktree?: WorktreeSnapshot | undefined;
 }>;
 export type RunEventPayload =
   | { type: 'run.state'; state: RunState }
@@ -96,8 +113,13 @@ export interface Execution {
   prompt(id: RunId, text: string): Promise<{ stopReason: string }>;
   /** Accepts input into the current process. Turn outcomes arrive as events. */
   submit(id: RunId, text: string, context?: string): void;
-  /** Invalidates decisions and stops managed work. Local code copies are retained. */
+  /** Stops managed work, then collects clean local Git worktrees. Dirty ones remain actionable. */
   cancel(id: RunId): Promise<void>;
+  /** A stopped Run only: commit all non-ignored changes to its owned local branch,
+   * then collect the clean worktree. Does not push or delete the branch.
+   * Failure preserves files; duplicate calls after collection have no side effect.
+   */
+  commitWorkspace(id: RunId, message: string): Promise<RunSnapshot>;
   snapshot(id: RunId): RunSnapshot;
   list(): readonly RunSnapshot[];
   /** Read-only, at most 200 entries per relative directory; fixture/local only.
@@ -124,3 +146,19 @@ export {
   directoryPathSchema,
   directoryListingSchema,
 } from './internal/directory.js';
+export {
+  inspectLocalProject,
+  localProjectSchema,
+  initializeLocalProject,
+  projectInitializationSchema,
+  ProjectInitializationRequired,
+} from './internal/worktree.js';
+export type {
+  LocalProject,
+  ProjectInitialization,
+} from './internal/worktree.js';
+export {
+  listProjectFolders,
+  projectFoldersSchema,
+} from './internal/project-folders.js';
+export type { ProjectFolders } from './internal/project-folders.js';

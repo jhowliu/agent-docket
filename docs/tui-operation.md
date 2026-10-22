@@ -1,8 +1,8 @@
 # Ink TUI：M1 第一個切片
 
-2026-10-20。這是可執行的 React + Ink 終端介面，連接 M0 runtime。依使用者決定移除 History，Run／事件／核准只保留於本次程序的有界記憶體。完整 M1 的兩家 provider、多專案、崩潰環境對帳、遠端 worker 與 Services 尚未完成。
+2026-10-20。這是可執行的 React + Ink 終端介面，連接 M0 runtime。依使用者決定移除 History，Run／事件／核准只保留於本次程序的有界記憶體。同一 daemon 現已支援多個本機 Git 專案；完整 M1 的兩家 provider、崩潰環境對帳、遠端 worker 與 Services 尚未完成。
 
-Update: [Local Codex mode](local-execution.md) adds trusted server-side launch configuration through `WORKBENCH_LAUNCH`, a `LOCAL / no OS isolation` status and `:auth <method-id>` for advertised authentication methods. Default startup remains the fixture. Local code copies survive cancellation/shutdown; local home/tmp are cleaned after confirmed stop. Actual provider account/inference acceptance remains outstanding.
+Update: [Local Codex mode](local-execution.md) adds trusted server-side launch configuration through `WORKBENCH_LAUNCH`, a `LOCAL / no OS isolation` status and `:auth <method-id>` for advertised authentication methods. New Session now offers a compact project/starting-branch form with explicit Codex local or Fixture selection. Project selection needs no launch file; see [New Session](session-creation.md). Local Git directory sources use [worktrees](worktrees.md): clean close collects the worktree, unsaved changes remain as `Commit required`, and `c` / `:commit <message>` saves to the local branch before collection. Home/tmp are cleaned after confirmed stop. Scoped real-provider acceptance is recorded in `codex-live-acceptance.md`.
 
 ## 啟動與離開
 
@@ -34,7 +34,7 @@ Choose a port supported by HTTP Fetch, such as 4177, 4180 or 4182, and available
 1. `n` 建立 Run，`i` 輸入 `fix`，Enter 送出。這會啟動真實的 deterministic ACP fixture 程序。
 2. 收到核准時，顯示聚焦請求的標題與實際一次性選項。`a` 允許一次，`r` 拒絕；`Tab` 換另一筆，`w` 換另一個等待的 Run。一次回答後，須明確選定下一筆，避免長按誤答。
 3. `1` 看完整回覆與工具活動，`2` 看實際 before／after 文字，`3` 回 timeline。`PgUp/PgDn` 捲動；`g/G` 頂端／末端。Timeline 只列操作事件摘要；Live 與 Diff 可讀取換行內容。
-4. 右上方 Project tree 顯示目前 Run 的實際資料夾與檔案；`p` 聚焦後用 `j/k` 移動、`h/l` 收合／展開或回父層／進入子項、`R` 重新整理，Esc 回工作區。`Ctrl+w h/l` 切換工作區／Project 焦點並保留展開狀態；`[`／`]` 與 Enter 仍可操作。Run 工作目錄顯示於底部狀態列，切換 Run 時一起更新。`x` 或 `:cancel` 取消整個 Run，舊核准失效，Run 從操作名單移除。
+4. 右上方 Project tree 顯示目前 Run 的實際資料夾與檔案；`p` 聚焦後用 `j/k` 移動、`h/l` 收合／展開或回父層／進入子項、`R` 重新整理，Esc 回工作區。`Ctrl+w h/l` 切換工作區／Project 焦點並保留展開狀態；`[`／`]` 與 Enter 仍可操作。Run 工作目錄與 worktree 分支顯示於底部。`x` 或 `:cancel` 停止 Run 並讓核准失效；乾淨 worktree 回收後從名單移除，有修改則保留 `Commit required`，用 `c`／`:commit <message>` 保存至本機分支後回收。
 5. `q` 離開後重開 `npm run tui`，等待中的請求仍在。
 
 `:active` 顯示進行中的 Run，`:inbox` 顯示待核准的 Run。`PgUp/PgDn`、`g/G` 只捲動目前保留的事件視窗；沒有過去 Run 名單、歷史分頁或自動存檔。
@@ -86,4 +86,4 @@ Daemon 同時最多 4 個活躍 Run，每次程序最多新建 64 個 Run，live
 
 `npm run qa:tui` 用自有暫存 fixture 產出 `.impeccable/review/tui/` 的 120×36、80×24、60×20 Ink frame。PNG 是保留 cell 位置的 review wrapper 截圖，**不是 OS terminal 截圖**。輸入測試使用 Ink 模擬串流；真實 terminal 的 IME、kitty 協定、色盤與 screen reader 仍需人工試用。
 
-History 的 SQLite、封存與分頁測試已隨功能移除；目前以公開 Interface 驗證重新連線保留活躍請求、程序重啟清空狀態且不能回答舊核准，以及沒有歷史入口。兩個 daemon listener 測試仍需允許綁定的環境。尚無真實模型／登入完整驗收、worker image／container 驗收、崩潰環境對帳、Services 或 Dev→Review→Verify→PR 的獨立階段。可信 fixture 的暫存副本不是 OS sandbox，不可據此承諾真實 agent 隔離。
+History 的 SQLite、封存與分頁測試已隨功能移除；目前以公開 Interface 驗證重新連線保留活躍請求、程序重啟清空狀態且不能回答舊核准，以及沒有歷史入口。兩個 daemon listener 測試仍需允許綁定的環境。真實 Codex 的限定檔案登入／改檔／核准／取消／commit 流程已通過；其他登入方式、physical terminal、worker image／container 驗收、崩潰環境對帳、Services 與獨立階段仍未完成。可信 fixture 的暫存副本不是 OS sandbox，不可據此承諾真實 agent 隔離。

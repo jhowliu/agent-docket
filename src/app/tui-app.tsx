@@ -10,15 +10,23 @@ import {
   WorkbenchScreen,
   visibleRuns,
   workbenchMainWidth,
+  workspaceNeedsAction,
 } from './tui-view.js';
 import type { Filter, PaneFocus, View } from './tui-view.js';
-import { roadmapCommand, trackedWork } from './workbench-work.js';
+import {
+  roadmapCommand,
+  trackedWork,
+  stateForRun,
+  projectForRun,
+} from './workbench-work.js';
 import { useProjectTree } from './tui-project.js';
+import { NewSession } from './tui-session.js';
 
 type Mode =
   | { kind: 'normal' }
   | { kind: 'reply'; runId: RunId }
-  | { kind: 'command' };
+  | { kind: 'command' }
+  | { kind: 'new-session' };
 const views: readonly View[] = ['live', 'diff', 'timeline'];
 const message = (error: unknown) =>
   terminalText(
@@ -32,15 +40,17 @@ export function WorkbenchApp({
   client,
   initial,
   pollInterval = 400,
+  projectPath = process.cwd(),
 }: {
   client: WorkbenchClient;
   initial: WorkbenchState;
   pollInterval?: number;
+  projectPath?: string;
 }) {
   const { exit } = useApp();
   const { columns, rows } = useWindowSize();
   const tooSmall = columns < 60 || rows < 20;
-  const [state, setState] = useState(initial);
+  const [snapshot, setState] = useState(initial);
   const [selectedId, setSelectedId] = useState<RunId | null>(
     initial.runs[0]?.id ?? null,
   );
@@ -66,6 +76,7 @@ export function WorkbenchApp({
   const [connected, setConnected] = useState(true);
   const connectedRef = useRef(true);
   const [busy, setBusy] = useState(false);
+  const [actionFailed, setActionFailed] = useState(false);
   const inFlight = useRef(false);
   const heldAction = useRef<string | null>(null);
   const mounted = useRef(true);
@@ -74,8 +85,9 @@ export function WorkbenchApp({
   );
   const [receipt, setReceipt] = useState<AttentionId | null>(null);
   const epoch = useRef(initial.instanceId);
-  const runs = visibleRuns(state, filter);
+  const runs = visibleRuns(snapshot, filter);
   const selected = runs.find((run) => run.id === selectedId) ?? runs[0];
+  const state = stateForRun(snapshot, selected?.id ?? null);
   const pending = state.attention.filter(
     (item) => item.status === 'pending' && item.runId === selected?.id,
   );
@@ -169,18 +181,26 @@ export function WorkbenchApp({
     }
     if (inFlight.current) return false;
     inFlight.current = true;
+    setActionFailed(false);
     setBusy(true);
     setReceipt(null);
     try {
-      const result = await client.command(command);
+      const project = projectForRun(snapshot, selected?.id ?? null);
+      const scoped =
+        'expectedRevision' in command && project
+          ? { kind: 'project-work' as const, projectId: project.id, command }
+          : command;
+      const result = await client.command(scoped);
       if (!mounted.current) return true;
       if ('runId' in result) {
         setFilter('active');
         select(result.runId);
         setNote(
-          state.launch?.provider && state.launch.provider !== 'fixture'
-            ? 'Run requested · i prompt when idle · s actions'
-            : 'Run started · i prompt · s scenarios',
+          command.kind === 'new-session'
+            ? 'Session requested · i prompt when idle · s actions'
+            : state.launch?.provider && state.launch.provider !== 'fixture'
+              ? 'Run requested · i prompt when idle · s actions'
+              : 'Run started · i prompt · s scenarios',
         );
       } else if (command.kind === 'answer') {
         setReceipt(command.id);
@@ -189,7 +209,17 @@ export function WorkbenchApp({
       else if (command.kind === 'authenticate')
         setNote('Sign-in requested · waiting for agent');
       else if (command.kind === 'cancel')
-        setNote('Run cancelled · n starts a new Run');
+        setNote(
+          result.branch && result.workspaceRemoved
+            ? `Run closed · branch kept: ${result.branch}`
+            : 'Run cancelled · n starts a new Run',
+        );
+      else if (command.kind === 'commit-workspace')
+        setNote(
+          result.branch
+            ? `Saved ${result.branch} · worktree ${result.workspaceRemoved ? 'removed' : 'retained'}`
+            : 'Changes saved to local branch · worktree cleanup checked',
+        );
       else if ('expectedRevision' in command)
         setNote(
           command.kind === 'work.detach'
@@ -204,6 +234,7 @@ export function WorkbenchApp({
       return true;
     } catch (error: unknown) {
       if (mounted.current) {
+        setActionFailed(true);
         setNote(message(error));
         if (error instanceof WorkbenchError && error.kind === 'unavailable') {
           connectedRef.current = false;
@@ -280,7 +311,7 @@ export function WorkbenchApp({
       return;
     }
     if (name === 'new' && !argument) {
-      void execute({ kind: 'start' });
+      newSession();
       return;
     }
     if ((name === 'active' || name === 'inbox') && !argument) {
@@ -302,6 +333,19 @@ export function WorkbenchApp({
     }
     if (name === 'cancel' && !argument && selected) {
       void execute({ kind: 'cancel', runId: selected.id });
+      return;
+    }
+    if (name === 'commit' && selected) {
+      if (!argument)
+        setNote(
+          'Use :commit <message> to commit all changes to the local branch and remove the worktree',
+        );
+      else
+        void execute({
+          kind: 'commit-workspace',
+          runId: selected.id,
+          message: argument,
+        });
       return;
     }
     if (name === 'auth' && argument && selected) {
@@ -334,213 +378,224 @@ export function WorkbenchApp({
     }
     setNote('Unknown command · :new / :use 2 / :inbox / :prompt fix / :cancel');
   }
-  useInput(
-    (input, key) => {
-      if (key.eventType === 'release') {
-        if (heldAction.current === input) heldAction.current = null;
-        return;
-      }
-      if (key.ctrl || key.meta || key.super || key.hyper) {
-        windowCommand.current =
-          key.ctrl &&
-          !key.meta &&
-          !key.super &&
-          !key.hyper &&
-          input === 'w' &&
-          !tooSmall;
-        if (windowCommand.current) {
-          heldAction.current = null;
-          setReceipt(null);
-          setNote('Focus · h workspace · l Project · w switch · Esc cancel');
-        }
-        return;
-      }
-      if (input === 'q') {
-        exit();
-        return;
-      }
-      if (columns < 60 || rows < 20) return;
-      if (input.length > 1) return;
+  function newSession() {
+    if (state.features?.newSession && state.sessionOptions) {
+      setFocus('workspace');
+      setReceipt(null);
+      setMode({ kind: 'new-session' });
+    } else void execute({ kind: 'start' });
+  }
+  useInput((input, key) => {
+    // Keep the workspace listener/raw-mode subscription mounted across composer
+    // transitions. A render can reach the terminal before passive effects run.
+    if (mode.kind !== 'normal' && !tooSmall) return;
+    if (key.eventType === 'release') {
+      if (heldAction.current === input) heldAction.current = null;
+      return;
+    }
+    if (key.ctrl || key.meta || key.super || key.hyper) {
+      windowCommand.current =
+        key.ctrl &&
+        !key.meta &&
+        !key.super &&
+        !key.hyper &&
+        input === 'w' &&
+        !tooSmall;
       if (windowCommand.current) {
-        windowCommand.current = false;
-        if (input === 'h' || key.leftArrow) focusPane('workspace');
-        else if (input === 'l' || key.rightArrow) focusPane('project');
-        else if (input === 'w')
-          focusPane(focus === 'project' ? 'workspace' : 'project');
-        else setNote('Focus unchanged · Ctrl+W h/l switches panes');
+        heldAction.current = null;
+        setReceipt(null);
+        setNote('Focus · h workspace · l Project · w switch · Esc cancel');
+      }
+      return;
+    }
+    if (input === 'q') {
+      exit();
+      return;
+    }
+    if (columns < 60 || rows < 20) return;
+    if (input.length > 1) return;
+    if (windowCommand.current) {
+      windowCommand.current = false;
+      if (input === 'h' || key.leftArrow) focusPane('workspace');
+      else if (input === 'l' || key.rightArrow) focusPane('project');
+      else if (input === 'w')
+        focusPane(focus === 'project' ? 'workspace' : 'project');
+      else setNote('Focus unchanged · Ctrl+W h/l switches panes');
+      return;
+    }
+    const action = ['n', 'a', 'r', 'x'].includes(input);
+    if (action) {
+      if (
+        key.eventType === 'repeat' ||
+        heldAction.current === input ||
+        inFlight.current
+      )
         return;
-      }
-      const action = ['n', 'a', 'r', 'x'].includes(input);
-      if (action) {
-        if (
-          key.eventType === 'repeat' ||
-          heldAction.current === input ||
-          inFlight.current
-        )
-          return;
-        heldAction.current = input;
-      } else heldAction.current = null;
-      if (focus === 'project' && project) {
-        let navigated = true;
-        if (input === 'j' || key.downArrow || input === ']')
-          projectTree.move(1);
-        else if (input === 'k' || key.upArrow || input === '[')
-          projectTree.move(-1);
-        else if (input === 'h' || key.leftArrow) projectTree.left();
-        else if (input === 'l' || key.rightArrow) projectTree.right();
-        else if (input === 'g' || key.home) projectTree.first();
-        else if (input === 'G' || key.end) projectTree.last();
-        else if (key.pageUp || key.pageDown)
-          projectTree.move(
-            (key.pageUp ? -1 : 1) * Math.max(1, Math.floor(rows / 2)),
-          );
-        else if (key.return || input === ' ') projectTree.toggle();
-        else if (input === 'R') projectTree.refresh();
-        else navigated = false;
-        if (navigated) return;
-      }
-      if (input === 'j' || key.downArrow || input === 'k' || key.upArrow) {
-        const index = runs.findIndex((run) => run.id === selected?.id);
-        const direction = input === 'j' || key.downArrow ? 1 : -1;
-        select(
-          runs[Math.max(0, Math.min(runs.length - 1, index + direction))]?.id ??
-            null,
+      heldAction.current = input;
+    } else heldAction.current = null;
+    if (focus === 'project' && project) {
+      let navigated = true;
+      if (input === 'j' || key.downArrow || input === ']') projectTree.move(1);
+      else if (input === 'k' || key.upArrow || input === '[')
+        projectTree.move(-1);
+      else if (input === 'h' || key.leftArrow) projectTree.left();
+      else if (input === 'l' || key.rightArrow) projectTree.right();
+      else if (input === 'g' || key.home) projectTree.first();
+      else if (input === 'G' || key.end) projectTree.last();
+      else if (key.pageUp || key.pageDown)
+        projectTree.move(
+          (key.pageUp ? -1 : 1) * Math.max(1, Math.floor(rows / 2)),
         );
-      } else if (input === 'w') {
-        const waiting = runs.filter((run) =>
-          state.attention.some(
-            (item) => item.status === 'pending' && item.runId === run.id,
+      else if (key.return || input === ' ') projectTree.toggle();
+      else if (input === 'R') projectTree.refresh();
+      else navigated = false;
+      if (navigated) return;
+    }
+    if (input === 'j' || key.downArrow || input === 'k' || key.upArrow) {
+      const index = runs.findIndex((run) => run.id === selected?.id);
+      const direction = input === 'j' || key.downArrow ? 1 : -1;
+      select(
+        runs[Math.max(0, Math.min(runs.length - 1, index + direction))]?.id ??
+          null,
+      );
+    } else if (input === 'w') {
+      const waiting = runs.filter((run) =>
+        state.attention.some(
+          (item) => item.status === 'pending' && item.runId === run.id,
+        ),
+      );
+      select(
+        waiting[
+          (waiting.findIndex((run) => run.id === selected?.id) + 1) %
+            waiting.length
+        ]?.id ??
+          selected?.id ??
+          null,
+      );
+    } else if (key.tab) {
+      setFocus('workspace');
+      const index = pending.findIndex((item) => item.id === request?.id);
+      setFocusedId(
+        pending[(index + (key.shift ? pending.length - 1 : 1)) % pending.length]
+          ?.id ?? null,
+      );
+      setNeedsSelection(false);
+      setReceipt(null);
+    } else if (input === 'a') answer('allow-once');
+    else if (input === 'r') answer('reject-once');
+    else if (input === 'n') {
+      newSession();
+    } else if (input === 'x' && selected) {
+      setFocus('workspace');
+      void execute({ kind: 'cancel', runId: selected.id });
+    } else if (input === 'c' && workspaceNeedsAction(selected)) {
+      setFocus('workspace');
+      setReceipt(null);
+      setCommandText('commit ');
+      setMode({ kind: 'command' });
+      setNote(
+        'Commit all non-ignored changes to the local branch, then remove the worktree',
+      );
+    } else if (input === 'i' && selected) {
+      setFocus('workspace');
+      setReceipt(null);
+      if (selected.state.kind === 'idle')
+        setMode({ kind: 'reply', runId: selected.id });
+      else setNote('Run is busy; a/r answers approval, x cancels');
+    } else if (input === ':') {
+      setMode({ kind: 'command' });
+      setReceipt(null);
+    } else if (input === 'o') {
+      if (!state.work || state.work.kind === 'unavailable')
+        setNote(state.work?.reason ?? 'This server does not support Roadmaps');
+      else if (!state.work.plan)
+        setNote('Optional Roadmap · :roadmap <title> starts tracking');
+      else {
+        const current = trackedWork(state, selected?.id ?? null);
+        setOutlinePhase(
+          Math.max(
+            0,
+            state.work.plan.phases.findIndex(
+              (phase) =>
+                phase.id ===
+                (current?.phase.id ?? state.work?.plan?.activePhaseId),
+            ),
           ),
         );
-        select(
-          waiting[
-            (waiting.findIndex((run) => run.id === selected?.id) + 1) %
-              waiting.length
-          ]?.id ??
-            selected?.id ??
-            null,
+        setOutline(!outline);
+        setOutlineOffset(
+          Math.max(
+            0,
+            current?.phase.tasks.findIndex(
+              (task) => task.id === current.task.id,
+            ) ?? 0,
+          ),
         );
-      } else if (key.tab) {
-        setFocus('workspace');
-        const index = pending.findIndex((item) => item.id === request?.id);
-        setFocusedId(
-          pending[
-            (index + (key.shift ? pending.length - 1 : 1)) % pending.length
-          ]?.id ?? null,
-        );
-        setNeedsSelection(false);
-        setReceipt(null);
-      } else if (input === 'a') answer('allow-once');
-      else if (input === 'r') answer('reject-once');
-      else if (input === 'n') {
-        void execute({ kind: 'start' });
-      } else if (input === 'x' && selected) {
-        setFocus('workspace');
-        void execute({ kind: 'cancel', runId: selected.id });
-      } else if (input === 'i' && selected) {
-        setFocus('workspace');
-        setReceipt(null);
-        if (selected.state.kind === 'idle')
-          setMode({ kind: 'reply', runId: selected.id });
-        else setNote('Run is busy; a/r answers approval, x cancels');
-      } else if (input === ':') {
-        setMode({ kind: 'command' });
-        setReceipt(null);
-      } else if (input === 'o') {
-        if (!state.work || state.work.kind === 'unavailable')
-          setNote(
-            state.work?.reason ?? 'This server does not support Roadmaps',
-          );
-        else if (!state.work.plan)
-          setNote('Optional Roadmap · :roadmap <title> starts tracking');
-        else {
-          const current = trackedWork(state, selected?.id ?? null);
-          setOutlinePhase(
-            Math.max(
-              0,
-              state.work.plan.phases.findIndex(
-                (phase) =>
-                  phase.id ===
-                  (current?.phase.id ?? state.work?.plan?.activePhaseId),
-              ),
-            ),
-          );
-          setOutline(!outline);
-          setOutlineOffset(
-            Math.max(
-              0,
-              current?.phase.tasks.findIndex(
-                (task) => task.id === current.task.id,
-              ) ?? 0,
-            ),
-          );
-          setProject(false);
-          setFocus('workspace');
-          setOptions(false);
-          setHelp(false);
-          setDetails(false);
-        }
-      } else if (outline && (input === '[' || input === ']')) {
-        const count = state.work?.plan?.phases.length ?? 0;
-        setOutlinePhase((value) =>
-          Math.max(0, Math.min(count - 1, value + (input === ']' ? 1 : -1))),
-        );
-        setOutlineOffset(0);
-      } else if (outline && (input === '{' || input === '}')) {
-        const count = state.work?.plan?.phases[outlinePhase]?.tasks.length ?? 0;
-        setOutlineOffset((value) =>
-          Math.max(0, Math.min(count - 1, value + (input === '}' ? 1 : -1))),
-        );
-      } else if (
-        input === 'p' ||
-        input === 's' ||
-        input === '?' ||
-        input === 'd'
-      ) {
-        if (input === 'p' && (!project || focus !== 'project'))
-          focusPane('project');
-        else {
-          setProject(false);
-          focusPane('workspace');
-        }
-        setOptions(input === 's' ? !options : false);
-        setHelp(input === '?' ? !help : false);
-        setDetails(input === 'd' ? !details : false);
-        setOutline(false);
-      } else if (/^[1-3]$/.test(input))
-        setTab(views[Number(input) - 1] ?? 'timeline');
-      else if (
-        input === 'h' ||
-        key.leftArrow ||
-        input === 'l' ||
-        key.rightArrow
-      ) {
-        setTab(
-          views[
-            (views.indexOf(view) + (input === 'h' || key.leftArrow ? 2 : 1)) % 3
-          ] ?? 'timeline',
-        );
-      } else if (key.pageUp)
-        setOffset((value) =>
-          Math.min(1_000_000, value + Math.max(1, Math.floor(rows / 2))),
-        );
-      else if (key.pageDown)
-        setOffset((value) =>
-          Math.max(0, value - Math.max(1, Math.floor(rows / 2))),
-        );
-      else if (input === 'g' || key.home) setOffset(1_000_000);
-      else if (input === 'G' || key.end) setOffset(0);
-      else if (key.escape) {
-        if (focus === 'project') focusPane('workspace');
         setProject(false);
+        setFocus('workspace');
         setOptions(false);
         setHelp(false);
         setDetails(false);
-        setOutline(false);
       }
-    },
-    { isActive: mode.kind === 'normal' || tooSmall },
-  );
+    } else if (outline && (input === '[' || input === ']')) {
+      const count = state.work?.plan?.phases.length ?? 0;
+      setOutlinePhase((value) =>
+        Math.max(0, Math.min(count - 1, value + (input === ']' ? 1 : -1))),
+      );
+      setOutlineOffset(0);
+    } else if (outline && (input === '{' || input === '}')) {
+      const count = state.work?.plan?.phases[outlinePhase]?.tasks.length ?? 0;
+      setOutlineOffset((value) =>
+        Math.max(0, Math.min(count - 1, value + (input === '}' ? 1 : -1))),
+      );
+    } else if (
+      input === 'p' ||
+      input === 's' ||
+      input === '?' ||
+      input === 'd'
+    ) {
+      if (input === 'p' && (!project || focus !== 'project'))
+        focusPane('project');
+      else {
+        setProject(false);
+        focusPane('workspace');
+      }
+      setOptions(input === 's' ? !options : false);
+      setHelp(input === '?' ? !help : false);
+      setDetails(input === 'd' ? !details : false);
+      setOutline(false);
+    } else if (/^[1-3]$/.test(input))
+      setTab(views[Number(input) - 1] ?? 'timeline');
+    else if (
+      input === 'h' ||
+      key.leftArrow ||
+      input === 'l' ||
+      key.rightArrow
+    ) {
+      setTab(
+        views[
+          (views.indexOf(view) + (input === 'h' || key.leftArrow ? 2 : 1)) % 3
+        ] ?? 'timeline',
+      );
+    } else if (key.pageUp)
+      setOffset((value) =>
+        Math.min(1_000_000, value + Math.max(1, Math.floor(rows / 2))),
+      );
+    else if (key.pageDown)
+      setOffset((value) =>
+        Math.max(0, value - Math.max(1, Math.floor(rows / 2))),
+      );
+    else if (input === 'g' || key.home) setOffset(1_000_000);
+    else if (input === 'G' || key.end) setOffset(0);
+    else if (key.escape) {
+      if (focus === 'project') focusPane('workspace');
+      setProject(false);
+      setOptions(false);
+      setHelp(false);
+      setDetails(false);
+      setOutline(false);
+    }
+  });
 
   const value =
     mode.kind === 'command'
@@ -551,7 +606,7 @@ export function WorkbenchApp({
   const input = (
     <PromptInput
       id={mode.kind === 'reply' ? mode.runId : mode.kind}
-      active={mode.kind !== 'normal' && !tooSmall}
+      active={(mode.kind === 'command' || mode.kind === 'reply') && !tooSmall}
       value={value}
       width={Math.max(1, workbenchMainWidth(columns) - 3)}
       onChange={(next) => {
@@ -605,6 +660,7 @@ export function WorkbenchApp({
         armed={!needsSelection}
         connected={connected}
         busy={busy}
+        actionFailed={actionFailed}
         note={footer}
         project={project}
         focus={focus}
@@ -616,9 +672,30 @@ export function WorkbenchApp({
         outlinePhase={outlinePhase}
         outlineOffset={outlineOffset}
         mode={tooSmall ? 'normal' : mode.kind}
+        composer={
+          mode.kind === 'new-session' && !tooSmall && state.sessionOptions ? (
+            <NewSession
+              client={client}
+              options={state.sessionOptions}
+              initialPath={projectPath}
+              width={workbenchMainWidth(columns)}
+              enabled={connected && !tooSmall}
+              folderCompletion={state.features?.folderCompletion === true}
+              onCreate={execute}
+              onClose={() => {
+                setMode({ kind: 'normal' });
+                heldAction.current = null;
+              }}
+            />
+          ) : undefined
+        }
         columns={columns}
         rows={rows}
-        input={mode.kind === 'normal' || tooSmall ? undefined : input}
+        input={
+          mode.kind === 'normal' || mode.kind === 'new-session' || tooSmall
+            ? undefined
+            : input
+        }
       />
       {/* Remain mounted in navigation so pasted shortcut text is consumed, never executed. */}
       {(mode.kind === 'normal' || tooSmall) && input}

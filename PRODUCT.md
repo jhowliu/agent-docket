@@ -62,3 +62,7 @@ The user requested an English-only interface. TUI, CLI, browser demo, sample pro
 - Task、Run、Session 與完成／通過狀態清楚區分。
 - Review 與 Verify 的證據綁定候選版本。
 - 依 domain 設計 deep Modules，讓介面與業務規則分離。
+
+## New Session and project selection — 2026-10-21
+
+`n` opens a small agent/project/starting-branch form within the existing workspace. A standard server offers explicit Codex local and Fixture presets; no project environment variable or launch JSON is required. Each local Run gets a new branch/worktree at the selected local revision. Multiple local Git projects share one daemon while keeping separate Roadmaps and Task context; the tree, footer and workflow follow the selected Run. Saved branches continue committed code in fresh Sessions, without restoring old conversations or adding History. Trusted adapter/login/storage settings remain outside normal form input. See `docs/session-creation.md`. Independent Review/check evidence, Human Review acceptance, Services and crash reconciliation remain later work.

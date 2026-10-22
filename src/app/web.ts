@@ -3,6 +3,8 @@ import { createWebWorkbench } from './web-workbench.js';
 import { workbenchOrigin } from './workbench-protocol.js';
 import { loadLaunchConfig } from './launch-config.js';
 import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { existsSync } from 'node:fs';
 
 const origin = workbenchOrigin();
 const port = Number(new URL(origin).port);
@@ -13,6 +15,14 @@ const workbench = createWebWorkbench(origin, {
     process.env['WORKBENCH_PLAN_DIRECTORY'] ?? '.workbench/plans',
   ),
   ...(configured ? { launch: configured.launch } : {}),
+  defaultProjectPath: process.cwd(),
+  localWorker: {
+    transport: 'local',
+    workspaceRoot: resolve('.workbench/local-runs'),
+    ...(existsSync(resolve(homedir(), '.codex/auth.json'))
+      ? { authFile: resolve(homedir(), '.codex/auth.json') }
+      : {}),
+  },
   onShutdown: () => {
     void stop();
   },
@@ -51,6 +61,12 @@ const server = createServer(async (incoming, outgoing) => {
         ? {}
         : { body: Buffer.concat(chunks).toString('utf8') }),
     });
+    // Hashing an initial snapshot or signing it can outlast a metadata lookup.
+    if (
+      method === 'POST' &&
+      new URL(request.url).pathname === '/api/project/initialize'
+    )
+      incoming.setTimeout(120_000);
     const response = await workbench.fetch(request);
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
     outgoing.end(Buffer.from(await response.arrayBuffer()));
@@ -90,7 +106,13 @@ server.listen(port, '127.0.0.1', () => {
   console.log(
     configured?.launch.provider !== undefined &&
       configured.launch.provider !== 'fixture'
-      ? `${configured.launch.provider} · ${configured.launch.worker.transport} mode. Local mode has no OS isolation; code copies are retained on shutdown.`
-      : 'Trusted fixture only; no model connections. Ctrl+C cleans up its Runs.',
+      ? `${configured.launch.provider} · ${configured.launch.worker.transport} mode. ${
+          configured.launch.worker.transport === 'local'
+            ? configured.launch.source.kind === 'directory'
+              ? 'No OS isolation. Clean Git worktrees are collected on shutdown; unsaved changes are retained.'
+              : 'No OS isolation. Sample/HTTPS code copies are retained on shutdown.'
+            : 'Managed worker environment.'
+        }`
+      : 'New Session: choose a Git project for local Codex, or Fixture for a demo. No OS isolation. Ctrl+C stops managed Runs.',
   );
 });

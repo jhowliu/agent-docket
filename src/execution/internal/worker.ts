@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { Launch, RunId, Worker } from '../index.js';
 import { launchLocal } from './local.js';
+import type { ManagedWorktree } from './worktree.js';
 
 const execFileAsync = promisify(execFile);
 export interface ManagedProcess {
@@ -18,6 +19,7 @@ export interface ManagedProcess {
     location: string;
   };
   stop(): Promise<void>;
+  worktree?: ManagedWorktree;
 }
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 function command(

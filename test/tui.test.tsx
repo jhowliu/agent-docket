@@ -29,7 +29,13 @@ async function frameHas(
   text: string,
   present = true,
 ) {
-  await until(() => Boolean(ui.lastFrame()?.includes(text)) === present);
+  await until(() => Boolean(ui.lastFrame()?.includes(text)) === present).catch(
+    () => {
+      throw new Error(
+        `Expected ${present ? '' : 'no '}${text}\n${ui.lastFrame()}`,
+      );
+    },
+  );
 }
 async function stateWhen(
   client: WorkbenchClient,
@@ -120,6 +126,12 @@ test('Ink controls configured local startup, advertised sign-in and prompts in p
   await frameHas(ui, 'LOCAL / no OS isolation');
   assert.ok(!ui.lastFrame()?.includes('FIXTURE / no model'));
   ui.stdin.write('n');
+  await frameHas(ui, 'New Session');
+  ui.stdin.write('\u001b[Z');
+  await frameHas(ui, 'Agent >');
+  ui.stdin.write('\u001b[C');
+  await frameHas(ui, 'Configured project');
+  ui.stdin.write('\r');
   await stateWhen(
     client,
     (state) => state.runs[0]?.state.kind === 'authentication-required',
@@ -166,17 +178,31 @@ test('Ink navigation preserves independent drafts and never interprets typed tex
   });
   await frameHas(ui, 'n new');
   ui.stdin.write('n');
+  await frameHas(ui, 'New Session');
+  ui.stdin.write('\r');
   await stateWhen(client, (state) => state.runs.length === 1);
   await frameHas(ui, 'Run 1');
-  await frameHas(ui, 'Run started');
-  ui.stdin.write('n'); // A held/repeated mutation key cannot create another Run.
-  await new Promise((done) => setTimeout(done, 50));
-  assert.equal((await client.poll()).runs.length, 1);
+  await frameHas(ui, 'Session requested');
+  await frameHas(ui, 'New Session', false);
+  await frameHas(ui, 'Sending', false);
   ui.stdin.write('j');
   await new Promise((done) => setTimeout(done, 25));
   ui.stdin.write('n');
+  await frameHas(ui, 'New Session');
+  ui.stdin.write('n'); // An action key inside the form cannot create another Run.
+  await new Promise((done) => setTimeout(done, 50));
+  assert.equal((await client.poll()).runs.length, 1);
+  ui.stdin.write('\u001b');
+  await frameHas(ui, 'New Session', false);
+  ui.stdin.write('j');
+  await new Promise((done) => setTimeout(done, 25));
+  ui.stdin.write('n');
+  await frameHas(ui, 'New Session');
+  ui.stdin.write('\r');
   await stateWhen(client, (state) => state.runs.length === 2);
   await frameHas(ui, '> Run 2');
+  await frameHas(ui, 'New Session', false);
+  await frameHas(ui, 'Sending', false);
   ui.stdin.write('k');
   await frameHas(ui, '> Run 1');
   ui.stdin.write('i');

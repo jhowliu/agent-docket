@@ -1,8 +1,10 @@
 # Agent 工作台開發計畫
 
+2026-10-22 source setup: New Session now asks before initializing a non-Git folder and creating its first local commit of current non-ignored files. Empty Git repositories can create the first commit as well. `execution` owns source identity/state checks, a per-folder lock, Git initialization/snapshot and failure preservation; app owns explicit No/Yes UI and authenticated transport. Success returns to branch selection without starting a model. Older daemons retain manual setup, and ambiguous mutations are not replayed. See [New Session initialization](session-creation.md#initialize-a-project).
+
 2026-10-19｜M0 runtime／CLI／fixture 瀏覽器測試台，以及 M1 第一個 Ink TUI／本機背景程序切片已實作；兩家真實 provider 與隔離驗收待完成，尚未達到完整 M0／M1 驗收。
 
-Current decision: implement [explicit local Codex execution](local-execution.md) first, as requested on 2026-10-19. Each Run gets its own code/home copy; this is not OS security isolation. [Container isolation and actual results](isolation-results-plan.md) retains the proposed ownership/network/reconciliation design for later. No container provisioning or isolation acceptance has started.
+Current decision: implement [explicit local Codex execution](local-execution.md) first, as requested on 2026-10-19. Local Git directory sources now use per-Run worktrees and private CLI homes; this is not OS security isolation. [Container isolation and actual results](isolation-results-plan.md) retains the proposed ownership/network/reconciliation design for later. No container provisioning or isolation acceptance has started.
 
 2026-10-19 follow-up: the user chose [agent-authored progress reports](agent-progress.md), at most 50 words, rather than a rule-based semantic summary of chat/tool text. Local/fixture Sessions now receive a Run-specific MCP reporting tool; Timeline wraps its explicit reports and leaves ordinary conversation in Live. Real model compliance and quality remain unverified.
 
@@ -16,6 +18,14 @@ Current decision: implement [explicit local Codex execution](local-execution.md)
 
 2026-10-20 implementation: the first `work` slice now supports explicit Roadmap opt-in, Phase/Task planning, versioned requirements confirmation, current-stage tracking, Run attachment/Direct mode, project-plan files and Task context on subsequent prompts. TUI/browser use the approved compact presentation. Planning state survives restart; Runs, permissions and associations do not. Review/check execution, Candidate evidence, Task/Phase acceptance, automatic handoffs and the proposal tool remain next slices. See [Roadmap operation, Interface and module map](roadmap-operation.md).
 
+2026-10-21 local Codex acceptance: the same project-reading probe failed with restricted connectivity and passed with approved network access. Real Codex then confirmed sample Task requirements, edited code with a Diff, passed independent checks, completed genuine once-only allow/reject decisions, and stopped an observed active command on cancellation. Added opt-in `npm run qa:codex` and fixed upward Git discovery from Run copies. Build and 84 source tests passed. Physical-terminal acceptance, Claude and isolation remain open; next implementation target is Candidate-bound command/exit-code/log evidence before independent Review and Human Review acceptance. See [scoped live results](codex-live-acceptance.md).
+
+2026-10-21 workspace follow-up: user requested Git worktrees before Pods, with clean close/GC and an explicit commit reminder for changed worktrees. Implemented local directory-source worktree/branch creation, staged/unstaged/untracked checks after process shutdown, a stopped `Commit required` action, explicit local-branch commit followed by collection, and retryable retention on commit/ownership/lock failures. No new worktree-count setting/limit or remote push. New Session project selection and crash reconciliation remain separate work. See [worktree operation and Interface](worktrees.md).
+
+2026-10-21 New Session implementation: `n` now opens a compact agent/project/starting-branch form. Normal project choice no longer needs launch JSON or an environment variable; the standard server offers explicit local Codex and Fixture presets. Saved local branches seed fresh worktrees without restoring conversations. Execution owns Git discovery and pinned-base validation; work owns separate project plans, Run associations and Task-context routing. TUI/browser project context follows selection. Old daemons retain their original controls. The real Codex form/edit/approval/cancel/commit workflow passed on disposable source; independent Candidate-bound check evidence and Review/Human Review remain the next development target. See [New Session](session-creation.md).
+
+2026-10-21 path-selection follow-up: implemented TUI Tab folder completion with a compact three-row, width-adaptive `ls`-style grid and native semantic colors/text markers, plus an independently focusable Agent field. The selected candidate uses inverse video; arrows navigate cells/pages, Tab advances, and shortened names still fill their full paths. Execution owns authenticated, bounded one-level source-folder discovery before Git validation; editing/focus/close invalidates pending UI reads. This does not enable ACP filesystem callbacks or read file contents. The grid refinement changes app presentation and input routing only, with no domain/transport change or daemon restart. See [New Session operation](session-creation.md).
+
 **目標與選型**
 
 使用者在同一個 terminal 工作台管理多個專案的 Codex／Claude：提出需求、查看串流與工具紀錄、回答問題、核准操作、追蹤 Dev → Review → Verify → PR，並透過有程式碼與驗證依據的互動報告理解交付。
@@ -24,14 +34,14 @@ Current decision: implement [explicit local Codex execution](local-execution.md)
 
 介面以使用者指定的 [Noopher-AI/oat-agents](https://github.com/Noopher-AI/oat-agents) 為參考：緊湊的 agent roster、細框線與選取 Run 的詳情分頁。核准與回覆仍在本工作台處理。`preview/index.html` 是獨立 HTML + CSS + JavaScript 原型，直接開啟即可試用；`output/agent-workbench-preview.html` 是先前的對話內預覽。兩者均使用示例資料，不能視為 ACP 或真實執行已完成。
 
-| 部分       | 建議                                     | 用途                                      |
-| ---------- | ---------------------------------------- | ----------------------------------------- |
-| 常駐程序   | TypeScript、受支援的 Node.js LTS         | 管理 sessions、核准、排程、事件與恢復     |
-| TUI        | TypeScript、React、Ink                   | 集中 inbox、任務切換、對話與 diff         |
-| Agent 通訊 | ACP v1、`@agentclientprotocol/sdk`       | 統一 Codex／Claude 的結構化資料與雙向互動 |
+| 部分       | 建議                                           | 用途                                              |
+| ---------- | ---------------------------------------------- | ------------------------------------------------- |
+| 常駐程序   | TypeScript、受支援的 Node.js LTS               | 管理 sessions、核准、排程、事件與恢復             |
+| TUI        | TypeScript、React、Ink                         | 集中 inbox、任務切換、對話與 diff                 |
+| Agent 通訊 | ACP v1、`@agentclientprotocol/sdk`             | 統一 Codex／Claude 的結構化資料與雙向互動         |
 | 儲存       | 有界記憶體；後續 Task／artifact 儲存待切片設計 | 當前 Run／timeline 不落盤；後續保存規格與驗證產物 |
-| 隔離執行   | Linux worker 上的獨立 containers／clones | 執行各階段的 agent、工具、測試與瀏覽器    |
-| PR 報告    | TypeScript、React                        | 顯示互動流程圖、diff、驗證與 PR comments  |
+| 隔離執行   | Linux worker 上的獨立 containers／clones       | 執行各階段的 agent、工具、測試與瀏覽器            |
+| PR 報告    | TypeScript、React                              | 顯示互動流程圖、diff、驗證與 PR comments          |
 
 ACP 提供 [TypeScript client SDK](https://agentclientprotocol.com/libraries/typescript)；[Ink](https://github.com/vadimdemedes/ink) 提供 React 的 terminal renderer。M0 確認 adapter capabilities 與 Node LTS 的相容性，釘選正式發布且互相相容的版本。Provider adapters 與各家 CLI 在隔離環境中保留必要 runtime。
 
@@ -180,13 +190,13 @@ Role 與技術 profile 分開：例如「Review + Python + Claude」或「Dev + 
 
 **五個里程碑**
 
-| 里程碑               | 可交付結果                                       | 驗收條件                                                                                                                                                                                                               |
-| -------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M0：整合驗證         | 最小 TypeScript ACP client + 隔離 fixture repo   | 從 `execution` 與 `attention` 的切片開始；兩家各實跑文字、工具、diff、允許／拒絕核准、提問回覆、取消；確認登入方式、版本與能力差異；本機原 repo 不變；留下公開 Interface、能力矩陣與操作指引                           |
-| M1：集中工作台       | TUI、daemon、inbox、timeline、Services   | 兩個專案混用兩家 agent；左側專案／來源位置、Run 隔離路徑；原地回答／核准／下指令；各 Environment 可啟停前後端／DB、查看健康與 logs，故障進 inbox；關 TUI 後任務存活，重開連回同一 daemon；新 daemon 從空白開始且不能操作舊核准 |
-| M2：完整任務流程     | 手動建 task 後跑 Dev → Review → Verify → PR 準備 | 各階段獨立 context／環境；真實案例完成全部階段；故意修改 candidate 後，舊證據失效；可產出完整 PR 草稿                                                                                                                  |
-| M3：PM 與 profiles   | 對話拆 task、依賴與並行排程                      | PM 產出的 task spec 經 schema 驗證，範圍定案後交 runner；並發／重試有界；可切換 provider 與 Python／TypeScript profile                                                                                                 |
-| M4：可理解的 PR 交付 | 互動報告、draft PR 與 comments                   | Before／after 圖節點可定位到 code／diff／證據；分開顯示已驗證與推論；PR comments 綁定 SHA；建立 PR 前後對帳避免重試造成重複                                                                                            |
+| 里程碑               | 可交付結果                                       | 驗收條件                                                                                                                                                                                                                       |
+| -------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| M0：整合驗證         | 最小 TypeScript ACP client + 隔離 fixture repo   | 從 `execution` 與 `attention` 的切片開始；兩家各實跑文字、工具、diff、允許／拒絕核准、提問回覆、取消；確認登入方式、版本與能力差異；本機原 repo 不變；留下公開 Interface、能力矩陣與操作指引                                   |
+| M1：集中工作台       | TUI、daemon、inbox、timeline、Services           | 兩個專案混用兩家 agent；左側專案／來源位置、Run 隔離路徑；原地回答／核准／下指令；各 Environment 可啟停前後端／DB、查看健康與 logs，故障進 inbox；關 TUI 後任務存活，重開連回同一 daemon；新 daemon 從空白開始且不能操作舊核准 |
+| M2：完整任務流程     | 手動建 task 後跑 Dev → Review → Verify → PR 準備 | 各階段獨立 context／環境；真實案例完成全部階段；故意修改 candidate 後，舊證據失效；可產出完整 PR 草稿                                                                                                                          |
+| M3：PM 與 profiles   | 對話拆 task、依賴與並行排程                      | PM 產出的 task spec 經 schema 驗證，範圍定案後交 runner；並發／重試有界；可切換 provider 與 Python／TypeScript profile                                                                                                         |
+| M4：可理解的 PR 交付 | 互動報告、draft PR 與 comments                   | Before／after 圖節點可定位到 code／diff／證據；分開顯示已驗證與推論；PR comments 綁定 SHA；建立 PR 前後對帳避免重試造成重複                                                                                                    |
 
 M0、M1 是第一個可日常使用的版本；M2–M4 完成原本提出的開發與交付流程。每一階段都保留可獨立運行的成果，依實測調整後續範圍。工期在 M0 確認整合與登入限制後再估。
 

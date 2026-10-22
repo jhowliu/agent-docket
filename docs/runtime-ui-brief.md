@@ -11,3 +11,5 @@ Mode: Operate. The user asked to prioritize an interface so the current implemen
 THESIS: Make the real M0 control loop observable and operable from one screen.
 
 FINISH: inspect desktop/mobile screenshots in bounded passes, run the mechanical detector once, obtain a fresh finish review, and compare against the incumbent DESIGN.md without changing its tokens.
+
+2026-10-21 refinement: New opens a small inline form above the roster for trusted agent preset, local Git folder and starting branch. Opening/inspecting is read-only; Create Session explicitly starts a provider and worktree. Keep the existing flat controls and disclose the form only while creating. Default browser folder comes from the server; TUI defaults to its own launch folder. Different selected Runs select their own source/Roadmap context. Saved code branches continue in fresh worktrees; no Run history is introduced. The standard server offers Codex local and Fixture; choosing local explicitly shows the existing OS-isolation limitation.

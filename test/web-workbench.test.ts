@@ -75,7 +75,7 @@ async function setup() {
 test('browser transport allows only its own fixture controls and allowlisted assets', async (t) => {
   const ui = await setup();
   t.after(() => ui.app.close());
-  assert.match(ui.html, /Fixture Demo/);
+  assert.match(ui.html, /<title>Agent Workbench<\/title>/);
   assert.doesNotMatch(ui.html, /content="WORKBENCH_TOKEN"/);
   assert.doesNotMatch(ui.html, /data-filter="history"|data-history-count/);
   for (const path of ['/api/runs', '/api/runs/run-old/history']) {

@@ -5,12 +5,31 @@ import type {
   stageSchema,
   workCommandSchema,
   workSnapshotSchema,
+  projectWorkSchema,
 } from './internal/contract.js';
 
 export type Stage = z.infer<typeof stageSchema>;
 export type WorkPlan = z.infer<typeof planSchema>;
 export type WorkCommand = z.infer<typeof workCommandSchema>;
 export type WorkSnapshot = z.infer<typeof workSnapshotSchema>;
+export type ProjectWork = z.infer<typeof projectWorkSchema>;
+
+export interface ProjectWorkspaces {
+  /** Registers a stable project identity once; no Run or conversation is restored. */
+  register(projectKey: string, source: string): string;
+  /** A Run belongs to exactly one registered project for this process. */
+  associate(
+    projectId: string,
+    runId: import('../execution/index.js').RunId,
+  ): void;
+  snapshot(): Promise<readonly ProjectWork[]>;
+  apply(projectId: string, command: WorkCommand): Promise<void>;
+  submit(
+    runId: import('../execution/index.js').RunId,
+    text: string,
+  ): Promise<void>;
+  close(): Promise<void>;
+}
 
 export interface Work {
   /** Project plan only; Run associations are process-local and are never restored. */
@@ -43,5 +62,7 @@ export {
   stageSchema,
   workCommandSchema,
   workSnapshotSchema,
+  projectWorkSchema,
 } from './internal/contract.js';
 export { createWork } from './internal/work.js';
+export { createProjectWorkspaces } from './internal/projects.js';

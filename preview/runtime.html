@@ -7,9 +7,9 @@
     <meta name="workbench-token" content="WORKBENCH_TOKEN" />
     <meta
       name="description"
-      content="Agent Workbench fixture demo. Use npm run tui for the terminal interface."
+      content="Local agent workspace. Choose a project and starting branch; use npm run tui for the terminal interface."
     />
-    <title>Agent Workbench · Fixture Demo</title>
+    <title>Agent Workbench</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./runtime.css" />
     <script src="./runtime.js" type="module"></script>
@@ -19,7 +19,7 @@
       <div
         id="agent-workbench-preview"
         class="aw-runtime"
-        aria-label="Agent Workbench fixture demo"
+        aria-label="Agent Workbench"
       >
         <div class="aw-window">
           <header class="aw-chrome">
@@ -57,6 +57,84 @@
             </button>
             <button type="button" class="aw-button" data-theme>Light</button>
           </header>
+          <section
+            class="aw-session"
+            data-session
+            hidden
+            aria-label="New Session"
+          >
+            <form data-session-form>
+              <div class="aw-work-heading">
+                <strong>New Session</strong
+                ><button type="button" class="aw-button" data-session-close>
+                  Close <kbd>Esc</kbd>
+                </button>
+              </div>
+              <div class="aw-session-fields">
+                <label
+                  >Agent<select
+                    class="aw-input"
+                    name="preset"
+                    data-session-preset
+                  ></select
+                ></label>
+                <label data-session-project
+                  >Project folder<input
+                    class="aw-input"
+                    name="path"
+                    maxlength="4096"
+                    placeholder="/absolute/path/to/project"
+                    autocomplete="off"
+                    data-session-path
+                /></label>
+                <button type="button" class="aw-button" data-session-inspect>
+                  Load branches
+                </button>
+                <label data-session-base
+                  >Start from<select
+                    class="aw-input"
+                    name="branch"
+                    data-session-branch
+                  ></select
+                ></label>
+                <button
+                  type="submit"
+                  class="aw-button aw-primary"
+                  data-session-create
+                >
+                  Create Session
+                </button>
+              </div>
+              <div data-session-initialize hidden>
+                <p class="aw-note" data-session-init-question></p>
+                <p class="aw-note">
+                  Commits current files locally and respects the existing
+                  .gitignore.
+                </p>
+                <div class="aw-session-fields">
+                  <button type="button" class="aw-button" data-session-init-no>
+                    No, choose folder
+                  </button>
+                  <button
+                    type="button"
+                    class="aw-button aw-primary"
+                    data-session-init-yes
+                  >
+                    Yes, initialize
+                  </button>
+                </div>
+              </div>
+              <p class="aw-note" data-session-note>
+                New branch and worktree · local process, no OS isolation.
+              </p>
+              <p
+                class="aw-note aw-session-error"
+                data-session-error
+                role="status"
+                aria-live="polite"
+              ></p>
+            </form>
+          </section>
           <div class="aw-toolbar">
             <strong>agents</strong>
             <div class="aw-switcher" aria-label="Run filters">
@@ -152,7 +230,7 @@
                 <div class="aw-detail-meta" data-meta></div>
                 <div class="aw-scenarios" data-work-options hidden></div>
                 <div class="aw-environment">
-                  <span>Run copy</span><code data-environment></code>
+                  <span>Working folder</span><code data-environment></code>
                 </div>
                 <div
                   class="aw-scenarios"
@@ -281,8 +359,8 @@
                 id="rt-command"
                 class="aw-input"
                 autocomplete="off"
-                placeholder="new · use 2 · fix · inbox · cancel · help"
-                maxlength="100"
+                placeholder="new · use 2 · fix · cancel · commit message"
+                maxlength="1007"
               />
             </div>
             <button type="submit" class="aw-button">Run</button>

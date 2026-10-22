@@ -5,7 +5,7 @@
 ## Language
 
 **Project**：
-一個被開發的專案及其驗收約定；可同時存在多個互不相依的 Project。
+一個被開發的專案及其驗收約定；可同時存在多個互不相依的 Project，同一 Git repository 的 linked worktrees 共用專案計畫的身分。
 _Avoid_: 用工作台本身代稱所有被開發專案
 
 **Roadmap**：
@@ -61,8 +61,20 @@ _Avoid_: 把每次模型回覆當成一個 StageRun
 _Avoid_: 用 Task 或完成狀態代稱 Session
 
 **Environment**：
-某個 Run 專用的執行空間，包含程式副本、CLI home、工具、程序與網路；來源 repo 路徑與 Environment 中的工作路徑不同。
+某個 Run 專用的執行空間，包含程式工作目錄、CLI home、工具、程序與網路；工作目錄可由 Git worktree 提供，來源 repo 的工作路徑與 Environment 中的工作路徑不同。
 _Avoid_: 把使用者本機的來源 repo 直接視為 agent 可寫環境
+
+**Worktree**：
+同一個 Git repository 的獨立工作目錄，擁有自己的檔案、index 與 HEAD，並共用 Git 物件與部分設定、refs；可在移除工作目錄後保留分支與 commit。
+_Avoid_: 把 Worktree 視為 OS 安全隔離、Session 對話存檔或獨立 repository clone
+
+**Agent preset**：
+由工作台可信設定提供的 provider 與執行方式；新建 Session 可選 preset 的 ID，但不藉此改寫 executable、登入或儲存設定。
+_Avoid_: 把 Agent preset 與 Role、Task 或專案位置當成同義詞
+
+**Starting branch**：
+新 Run 建立工作分支與 worktree 時採用的本機分支及其已選 commit；可來自先前保存的工作分支。
+_Avoid_: 把選起始分支視為恢復舊 Session 對話，或直接切換來源 checkout
 
 **Service definition**：
 專案的開發服務設定，包括命令、工作目錄、依賴、健康檢查與環境內 port；可套用到不同 Environment。

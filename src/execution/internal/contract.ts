@@ -1,5 +1,26 @@
 import { z } from 'zod';
-import type { RunEvent, RunId, RunSnapshot, RunState } from '../index.js';
+import type {
+  RunEvent,
+  RunId,
+  RunSnapshot,
+  RunState,
+  WorktreeSnapshot,
+} from '../index.js';
+
+const worktree: z.ZodType<WorktreeSnapshot> = z.object({
+  path: z.string(),
+  branch: z.string(),
+  baseRevision: z.string().regex(/^[a-f0-9]{40,64}$/),
+  status: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('active') }),
+    z.object({ kind: z.literal('removed') }),
+    z.object({
+      kind: z.literal('commit-required'),
+      changes: z.number().int().positive(),
+    }),
+    z.object({ kind: z.literal('retained'), reason: z.string() }),
+  ]),
+});
 
 export const runIdSchema = z.custom<RunId>(
   (value) => typeof value === 'string' && /^run-[a-zA-Z0-9-]+$/.test(value),
@@ -41,6 +62,7 @@ export const runSnapshotSchema: z.ZodType<RunSnapshot> = z.object({
     location: z.string(),
   }),
   capabilities: capabilities.nullable(),
+  worktree: worktree.optional(),
 });
 const base = z.object({
   sequence: z.number().int().positive(),

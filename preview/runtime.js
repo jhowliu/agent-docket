@@ -31,12 +31,46 @@
     launch: { provider: 'fixture', kind: 'trusted-fixture-directory' },
     drafts: {},
     work: undefined,
+    defaultWork: undefined,
+    defaultSource: 'fixtures/project',
+    projects: [],
+    defaultProjectId: null,
+    sessionOptions: null,
+    instanceId: null,
   };
+  let sessionView = null;
+  async function updateSessionOptions(snapshot) {
+    state.projectInitialization =
+      snapshot.features?.projectInitialization === true;
+    state.sessionOptions = snapshot.features?.newSession
+      ? snapshot.sessionOptions
+      : null;
+    if (state.sessionOptions && !sessionView) {
+      const module = await import('./runtime-session.js');
+      sessionView = module.createSessionView({
+        root,
+        token,
+        read: () => state,
+        command,
+      });
+    }
+  }
+  const projectForRun = (id) =>
+    state.projects.find((project) => project.runIds.includes(id)) ??
+    state.projects.find((project) => project.id === state.defaultProjectId);
+  function selectProject() {
+    const project = projectForRun(state.selected);
+    state.work = project?.work ?? state.defaultWork;
+    state.source = project?.source ?? state.defaultSource;
+  }
   let roadmap = null;
   let roadmapModule = null;
-  async function updateRoadmap(input) {
+  async function updateRoadmap(input, projects, defaultProjectId) {
     if (input === undefined) {
       state.work = undefined;
+      state.defaultWork = undefined;
+      state.projects = [];
+      state.defaultProjectId = null;
       return;
     }
     try {
@@ -44,7 +78,26 @@
       // Keep their ordinary Run controls working without requesting unsupported assets.
       roadmapModule ??= import('./runtime-work.js');
       const module = await roadmapModule;
-      state.work = module.parseWorkSnapshot(input);
+      state.defaultWork = module.parseWorkSnapshot(input);
+      state.defaultProjectId = defaultProjectId;
+      state.projects =
+        Array.isArray(projects) && projects.length <= 65
+          ? projects
+              .filter(
+                (project) =>
+                  project &&
+                  /^[a-f0-9]{64}$/.test(project.id) &&
+                  typeof project.source === 'string' &&
+                  Array.isArray(project.runIds) &&
+                  project.runIds.length <= 64 &&
+                  project.runIds.every((id) => /^run-[a-zA-Z0-9-]+$/.test(id)),
+              )
+              .map((project) => ({
+                ...project,
+                work: module.parseWorkSnapshot(project.work),
+              }))
+          : [];
+      selectProject();
       roadmap ??= module.createRoadmapView({
         root,
         read: () => state,
@@ -107,13 +160,15 @@
     new Date(at).toLocaleTimeString('en-GB', { hour12: false });
   const terminal = (run) =>
     ['cancelled', 'closed', 'failed', 'interrupted'].includes(run.state.kind);
+  const workspaceNeedsAction = (run) =>
+    ['commit-required', 'retained'].includes(run?.worktree?.status.kind);
   const runLabel = (run) =>
     'Run ' + (state.runs.findIndex((item) => item.id === run.id) + 1);
   const visibleRuns = () =>
     state.runs.filter((run) =>
       state.filter === 'attention'
         ? pending(run.id).length > 0
-        : !terminal(run),
+        : !terminal(run) || workspaceNeedsAction(run),
     );
   function changeFilter(filter) {
     state.filter = filter;
@@ -123,6 +178,13 @@
   }
   function status(run) {
     if (pending(run.id).length) return ['Awaiting approval', 'aw-wait'];
+    if (workspaceNeedsAction(run))
+      return [
+        run.worktree.status.kind === 'commit-required'
+          ? 'Commit required'
+          : 'Worktree retained',
+        'aw-wait',
+      ];
     const statuses = {
       starting: ['Starting', 'aw-wait'],
       idle: ['Idle', 'aw-muted'],
@@ -191,7 +253,7 @@
         ? '<p class="aw-note">' +
           (run.provider === 'fixture'
             ? 'Actual fixture file content, showing the full before and after text.'
-            : 'Provider-reported changes. Use the Run path to inspect the retained code copy.') +
+            : 'Provider-reported changes. Use the Run path to inspect the workspace.') +
           '</p>' +
           diffs
             .map(
@@ -274,13 +336,19 @@
     else if (changedView) panel.scrollTop = 0;
   }
   function render() {
+    selectProject();
     roadmap?.render();
+    sessionView?.render();
+    const current = selectedRun();
+    const launch = current
+      ? { provider: current.provider, kind: current.environment.kind }
+      : state.launch;
     statusText(
       $('[data-connection]'),
       state.connected
-        ? state.launch.provider === 'fixture'
+        ? launch.provider === 'fixture'
           ? 'DEMO · connected · no model'
-          : state.launch.kind === 'local'
+          : launch.kind === 'local'
             ? 'LOCAL · no OS isolation'
             : 'CONTAINER · connected'
         : offlineMessage,
@@ -288,27 +356,29 @@
     $('[data-connection]').classList.toggle('aw-running', state.connected);
     $('[data-offline]').hidden = state.connected || polling;
     $('[data-run-count]').textContent =
-      (state.launch.provider === 'fixture'
-        ? '1 sample project'
-        : '1 configured project') +
+      (state.projects.length
+        ? state.projects.filter((project) => project.runIds.length).length +
+          ' projects'
+        : '1 project') +
       ' · ' +
       state.runs.length +
       ' Runs';
     $('[data-project-name]').textContent =
-      state.launch.provider === 'fixture'
+      launch.provider === 'fixture'
         ? 'Built-in fixture project'
-        : state.launch.provider + ' project';
+        : state.source.split('/').filter(Boolean).at(-1) ||
+          launch.provider + ' project';
     $('[data-project-description]').textContent =
-      state.launch.provider === 'fixture'
+      launch.provider === 'fixture'
         ? 'Deterministic fixture; no model connection.'
-        : state.launch.kind === 'local'
-          ? 'Local process; no OS isolation. Code copies are retained.'
+        : launch.kind === 'local'
+          ? 'Local process; no OS isolation. Clean worktrees are collected when closed.'
           : 'Configured worker environment.';
     $('[data-reconnect]').textContent = needsReload
       ? 'Reload page'
       : 'Reconnect';
     $('[data-total]').textContent = state.runs.filter(
-      (run) => !terminal(run),
+      (run) => !terminal(run) || workspaceNeedsAction(run),
     ).length;
     $('[data-pending]').textContent = pending().length;
     $('[data-source]').textContent = state.source;
@@ -389,7 +459,9 @@
         (run.provider === 'fixture'
           ? 'Built-in fixture · a separate copy for each Run'
           : run.environment.kind === 'local'
-            ? 'Local process · code copy retained after cancellation'
+            ? run.worktree
+              ? 'Local worktree · branch ' + escape(run.worktree.branch)
+              : 'Local process · code copy retained after cancellation'
             : 'Configured worker environment') +
         '</span>',
     );
@@ -407,8 +479,11 @@
     $('[data-cancel]').disabled =
       !state.connected ||
       state.busy ||
-      terminal(run) ||
+      (terminal(run) && !workspaceNeedsAction(run)) ||
       run.state.kind === 'cancelling';
+    $('[data-cancel]').textContent = workspaceNeedsAction(run)
+      ? 'Recheck worktree'
+      : 'Cancel Run';
     $('[data-compose-note]').textContent = !state.connected
       ? 'Disconnected. Draft kept; reconnect before sending.'
       : terminal(run)
@@ -446,7 +521,20 @@
             escape(permissionDetail(item)) +
             '</pre></details></section>',
         )
-        .join(''),
+        .join('') +
+        (workspaceNeedsAction(run)
+          ? '<section class="aw-prompt" aria-label="Worktree cleanup"><div class="aw-prompt-title">' +
+            (run.worktree.status.kind === 'commit-required'
+              ? 'Commit required'
+              : 'Worktree retained') +
+            '</div><p class="aw-note">' +
+            (run.worktree.status.kind === 'commit-required'
+              ? 'The agent has stopped. Commit all non-ignored changes to the local branch, then remove this worktree. No remote push.'
+              : escape(run.worktree.status.reason)) +
+            '</p><button type="button" class="aw-button aw-primary" data-worktree-commit' +
+            (!state.connected || state.busy ? ' disabled' : '') +
+            '>Commit and close</button></section>'
+          : ''),
     );
     const latest = state.attention
       .filter((item) => item.runId === run.id && item.status !== 'pending')
@@ -489,18 +577,41 @@
         !Number.isSafeInteger(snapshot.cursor)
       )
         throw new Error('Unexpected snapshot');
+      if (
+        state.instanceId &&
+        snapshot.instanceId &&
+        state.instanceId !== snapshot.instanceId
+      ) {
+        state.runs = [];
+        state.attention = [];
+        state.events = [];
+        state.projects = [];
+        state.defaultWork = undefined;
+        state.sessionOptions = null;
+        state.connected = false;
+        needsReload = true;
+        offlineMessage = 'Server restarted · reload the page';
+        sessionView?.reset();
+        return;
+      }
+      state.instanceId = snapshot.instanceId ?? state.instanceId;
       state.runs = snapshot.runs;
       state.attention = snapshot.attention;
       state.events = (
         snapshot.reset ? snapshot.events : [...state.events, ...snapshot.events]
       ).slice(-2000);
       state.cursor = snapshot.cursor;
-      state.source = snapshot.source;
+      state.defaultSource = snapshot.source;
       state.launch = snapshot.launch ?? {
         provider: 'fixture',
         kind: 'trusted-fixture-directory',
       };
-      await updateRoadmap(snapshot.work);
+      await updateRoadmap(
+        snapshot.work,
+        snapshot.projects,
+        snapshot.defaultProjectId,
+      );
+      await updateSessionOptions(snapshot);
       if (!visibleRuns().some((run) => run.id === state.selected))
         selectRun(visibleRuns()[0]?.id ?? null, false);
       if (!state.connected) feedback('Connected · press n for a new Run');
@@ -516,6 +627,9 @@
   }
   async function command(input) {
     if (!state.connected || state.busy) return false;
+    const project = projectForRun(input.runId ?? state.selected);
+    if (input.kind.startsWith('work.') && project)
+      input = { kind: 'project-work', projectId: project.id, command: input };
     state.busy = true;
     render();
     try {
@@ -550,15 +664,25 @@
       const label = target ? runLabel(target) : '';
       feedback(
         (label ? label + ' · ' : '') +
-          (input.kind === 'start'
-            ? 'Run created · choose a scenario'
+          (input.kind === 'start' || input.kind === 'new-session'
+            ? 'Session created · i prompt when idle'
             : input.kind === 'answer'
               ? 'Response accepted · awaiting transport delivery'
               : input.kind === 'cancel'
-                ? 'Run cancelled · old approvals expired'
-                : input.kind.startsWith('work.')
-                  ? 'Roadmap updated'
-                  : 'Last message accepted'),
+                ? result.branch && result.workspaceRemoved
+                  ? 'Run closed · branch kept: ' + result.branch
+                  : 'Run cancelled · old approvals expired'
+                : input.kind === 'commit-workspace'
+                  ? result.branch
+                    ? 'Saved ' +
+                      result.branch +
+                      ' · worktree ' +
+                      (result.workspaceRemoved ? 'removed' : 'retained')
+                    : 'Changes saved to local branch · worktree cleanup checked'
+                  : input.kind.startsWith('work.') ||
+                      input.kind === 'project-work'
+                    ? 'Roadmap updated'
+                    : 'Last message accepted'),
       );
       return true;
     } catch (error) {
@@ -583,10 +707,15 @@
       render();
     }
   }
+  function newSession() {
+    if (!state.connected || state.busy) return;
+    if (state.sessionOptions && sessionView?.open(state.sessionOptions)) return;
+    void command({ kind: 'start' });
+  }
   root.addEventListener('click', (event) => {
     const button = event.target.closest('button');
     if (!button || button.disabled) return;
-    if (button.hasAttribute('data-start')) void command({ kind: 'start' });
+    if (button.hasAttribute('data-start')) newSession();
     else if (button.hasAttribute('data-compose-toggle')) {
       state.composing = !state.composing;
       render();
@@ -604,7 +733,11 @@
         runId: state.selected,
         text: button.dataset.scenario,
       });
-    else if (button.hasAttribute('data-cancel') && state.selected)
+    else if (button.hasAttribute('data-worktree-commit') && state.selected) {
+      $('[data-command-form]').hidden = false;
+      $('#rt-command').value = 'commit ';
+      $('#rt-command').focus();
+    } else if (button.hasAttribute('data-cancel') && state.selected)
       void command({ kind: 'cancel', runId: state.selected });
     else if (button.dataset.choice)
       void command({
@@ -637,7 +770,7 @@
     const sent = await command({
       kind: 'prompt',
       runId: run.id,
-      text: 'reply:' + text,
+      text: run.provider === 'fixture' ? 'reply:' + text : text,
     });
     if (sent) {
       if (state.drafts[run.id] === draft) state.drafts[run.id] = '';
@@ -671,7 +804,7 @@
   });
   function closeCommand() {
     $('[data-command-form]').hidden = true;
-    focusNavigation();
+    if ($('[data-session]').hidden) focusNavigation();
   }
   function focusNavigation() {
     const button =
@@ -688,7 +821,10 @@
     const parts = text.trim().replace(/^:/, '').split(/\s+/);
     const name = parts[0];
     if (!name) return true;
-    if (name === 'new') return command({ kind: 'start' });
+    if (name === 'new') {
+      newSession();
+      return true;
+    }
     if (['live', 'diff', 'timeline'].includes(name)) {
       selectTab(name);
       return true;
@@ -703,13 +839,23 @@
     }
     if (name === 'use' && /^\d+$/.test(parts[1] ?? '')) {
       const run = state.runs[Number(parts[1]) - 1];
-      if (run && !terminal(run)) {
+      if (run && (!terminal(run) || workspaceNeedsAction(run))) {
         selectRun(run.id);
         return true;
       }
     }
     const run = selectedRun();
-    if (name === 'cancel' && run && !terminal(run))
+    if (name === 'commit' && run && parts.slice(1).join(' ').trim())
+      return command({
+        kind: 'commit-workspace',
+        runId: run.id,
+        message: parts.slice(1).join(' '),
+      });
+    if (
+      name === 'cancel' &&
+      run &&
+      (!terminal(run) || workspaceNeedsAction(run))
+    )
       return command({ kind: 'cancel', runId: run.id });
     if (
       ['fix', 'question', 'wait', 'crash', 'permissions'].includes(name) &&

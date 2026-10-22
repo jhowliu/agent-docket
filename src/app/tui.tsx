@@ -9,7 +9,7 @@ async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--help')) {
     console.log(
-      'npm run tui                 Connect or start the fixture server\nnpm run tui -- --connect     Connect only; do not start a server\nnpm run daemon:stop         Stop the server and clean up its Runs\nWORKBENCH_LAUNCH=/absolute/config.json WORKBENCH_PORT=4180 npm run tui\n  Use a configured provider; explicit local mode has no OS isolation.',
+      'npm run tui                 Connect or start the local workbench\n  Press n to choose a Git project and starting branch, or Fixture for a demo.\nnpm run tui -- --connect     Connect only; do not start a server\nnpm run daemon:stop         Stop the server and clean up its Runs\nWORKBENCH_LAUNCH=/absolute/config.json WORKBENCH_PORT=4180 npm run tui\n  Optional trusted provider settings; local mode has no OS isolation.',
     );
     return;
   }
@@ -30,14 +30,21 @@ async function main() {
   const { client, initial } = await connectWorkbench(origin, {
     autostart: !args.includes('--connect'),
   });
-  const app = render(<WorkbenchApp client={client} initial={initial} />, {
-    alternateScreen: process.env['INK_SCREEN_READER'] !== 'true',
-    maxFps: 20,
-    kittyKeyboard: {
-      mode: 'auto',
-      flags: ['disambiguateEscapeCodes', 'reportEventTypes'],
+  const app = render(
+    <WorkbenchApp
+      client={client}
+      initial={initial}
+      projectPath={process.cwd()}
+    />,
+    {
+      alternateScreen: process.env['INK_SCREEN_READER'] !== 'true',
+      maxFps: 20,
+      kittyKeyboard: {
+        mode: 'auto',
+        flags: ['disambiguateEscapeCodes', 'reportEventTypes'],
+      },
     },
-  });
+  );
   await app.waitUntilExit();
   console.log(
     `Detached; Runs remain at ${origin}. Run npm run tui to reconnect.`,

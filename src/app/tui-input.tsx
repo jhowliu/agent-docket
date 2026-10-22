@@ -18,6 +18,8 @@ export function PromptInput(props: {
   active: boolean;
   value: string;
   width: number;
+  maxLength?: number;
+  onHorizontalArrow?: (direction: 'left' | 'right') => void;
   onChange: (value: string) => void;
   onSubmit: () => void;
   onEscape: () => void;
@@ -37,7 +39,7 @@ export function PromptInput(props: {
       ...added,
       ...chars.slice(cursor),
     ].join('');
-    if (next.length > 1000) return;
+    if (next.length > (props.maxLength ?? 1000)) return;
     onChange(next);
     move(cursor + added.length);
   }
@@ -75,9 +77,17 @@ export function PromptInput(props: {
         key.pageDown
       )
         return;
-      if (key.leftArrow) move(Math.max(0, cursor - 1));
-      else if (key.rightArrow) move(Math.min(chars.length, cursor + 1));
-      else if (key.home) move(0);
+      if (key.leftArrow || key.rightArrow) {
+        if (props.onHorizontalArrow)
+          props.onHorizontalArrow(key.leftArrow ? 'left' : 'right');
+        else
+          move(
+            Math.max(
+              0,
+              Math.min(chars.length, cursor + (key.leftArrow ? -1 : 1)),
+            ),
+          );
+      } else if (key.home) move(0);
       else if (key.end) move(chars.length);
       else if (key.backspace && cursor > 0) {
         onChange(

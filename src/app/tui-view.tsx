@@ -51,6 +51,9 @@ const ended = new Set<RunState['kind']>([
   'failed',
   'interrupted',
 ]);
+export const workspaceNeedsAction = (run: RunSnapshot | undefined) =>
+  run?.worktree?.status.kind === 'commit-required' ||
+  run?.worktree?.status.kind === 'retained';
 export function visibleRuns(
   state: WorkbenchState,
   filter: Filter,
@@ -60,7 +63,7 @@ export function visibleRuns(
       ? state.attention.some(
           (item) => item.runId === run.id && item.status === 'pending',
         )
-      : !ended.has(run.state.kind),
+      : !ended.has(run.state.kind) || workspaceNeedsAction(run),
   );
 }
 function eventSummary(event: RunEvent): string {
@@ -185,6 +188,7 @@ export type ScreenProps = {
   armed: boolean;
   connected: boolean;
   busy: boolean;
+  actionFailed?: boolean;
   note: string;
   project: boolean;
   focus?: PaneFocus;
@@ -195,7 +199,8 @@ export type ScreenProps = {
   outline?: boolean;
   outlinePhase?: number;
   outlineOffset?: number;
-  mode: 'normal' | 'reply' | 'command';
+  mode: 'normal' | 'reply' | 'command' | 'new-session';
+  composer?: ReactNode;
   columns: number;
   rows: number;
   input?: ReactNode;
@@ -341,6 +346,7 @@ export function WorkbenchScreen(props: ScreenProps) {
   } = props;
   const runs = visibleRuns(state, filter);
   const selected = state.runs.find((run) => run.id === selectedId);
+  const workspaceAction = workspaceNeedsAction(selected);
   const provider = selected?.provider ?? state.launch?.provider ?? 'fixture';
   const environment =
     selected?.environment.kind ??
@@ -394,7 +400,8 @@ export function WorkbenchScreen(props: ScreenProps) {
   );
   const disclosures: string[] = [];
   const decisionRows = request ? 2 : 0;
-  const inputRows = props.mode === 'normal' ? 0 : 2;
+  const inputRows =
+    props.mode === 'normal' ? 0 : props.mode === 'new-session' ? 9 : 2;
   const projectOpen =
     props.project && !props.outline && !(props.details && request);
   const focus = props.focus ?? (projectOpen ? 'project' : 'workspace');
@@ -471,7 +478,9 @@ export function WorkbenchScreen(props: ScreenProps) {
         : [
             'i new prompt · a/r approval · x cancel',
             environment === 'local'
-              ? 'Local code copies are retained · p paths'
+              ? selected?.worktree
+                ? 'x close/recheck · :commit message saves all changes'
+                : 'Local code copies are retained · p paths'
               : 'p environment paths · x cancel Run',
           ]),
     );
@@ -486,6 +495,7 @@ export function WorkbenchScreen(props: ScreenProps) {
       ':active all agents · :inbox pending approvals',
       'o Roadmap · :roadmap title · :track P.T · :direct',
       ':spec requirements · :confirm · :stage development',
+      'Stopped worktree: c / :commit message saves all changes',
     );
   // Bound every optional region to leave a readable timeline at the minimum size.
   const extras = disclosures.filter(Boolean).slice(0, extraCapacity);
@@ -567,7 +577,11 @@ export function WorkbenchScreen(props: ScreenProps) {
                 const active = run.id === selectedId;
                 const status = count
                   ? `Awaiting approval (${count})`
-                  : states[run.state.kind];
+                  : workspaceNeedsAction(run)
+                    ? run.worktree?.status.kind === 'commit-required'
+                      ? 'Commit required'
+                      : 'Worktree retained'
+                    : states[run.state.kind];
                 return (
                   <Box key={run.id} height={1} flexShrink={0} columnGap={1}>
                     <Box flexGrow={1} flexBasis={0} minWidth={0}>
@@ -587,7 +601,7 @@ export function WorkbenchScreen(props: ScreenProps) {
                     <Box width={status.length} flexShrink={0}>
                       <Text
                         {...tone(
-                          count
+                          count || workspaceNeedsAction(run)
                             ? 'yellow'
                             : ['failed', 'interrupted'].includes(run.state.kind)
                               ? 'red'
@@ -730,7 +744,8 @@ export function WorkbenchScreen(props: ScreenProps) {
               </Text>
             </Box>
           ))}
-          {props.mode !== 'normal' && (
+          {props.composer}
+          {props.mode !== 'normal' && props.mode !== 'new-session' && (
             <Box flexDirection="column" height={2} flexShrink={0}>
               <Text color="cyan">
                 {props.mode === 'reply'
@@ -772,7 +787,16 @@ export function WorkbenchScreen(props: ScreenProps) {
       </Box>
       <Box height={1} flexShrink={0}>
         <Text {...tone(!connected ? 'yellow' : undefined)} wrap="truncate-end">
-          {terminalText(note)}
+          {terminalText(
+            workspaceAction &&
+              props.mode === 'normal' &&
+              connected &&
+              !props.actionFailed
+              ? selected?.worktree?.status.kind === 'commit-required'
+                ? 'Commit required · c commit all changes · x recheck'
+                : 'Worktree retained · x recheck · 1 Live for details'
+              : note,
+          )}
         </Text>
       </Box>
       <Box height={1} flexShrink={0} columnGap={1}>
@@ -783,6 +807,13 @@ export function WorkbenchScreen(props: ScreenProps) {
               : 'workbench'}
           </Text>
         </Box>
+        {selected?.worktree && (
+          <Box width={Math.floor(columns / 4)} flexShrink={0}>
+            <Text color="cyan" wrap="truncate-middle">
+              {terminalText(selected.worktree.branch)}
+            </Text>
+          </Box>
+        )}
         <Box flexGrow={1} flexBasis={0} minWidth={0}>
           <Text color="cyan" wrap="truncate-middle">
             {selected

@@ -174,3 +174,12 @@ export const workSnapshotSchema = z.discriminatedUnion('kind', [
     })
     .strict(),
 ]);
+
+export const projectWorkSchema = z
+  .object({
+    id: z.string().regex(/^[a-f0-9]{64}$/),
+    source: z.string().min(1).max(4096),
+    runIds: z.array(runIdSchema).max(64),
+    work: workSnapshotSchema,
+  })
+  .strict();

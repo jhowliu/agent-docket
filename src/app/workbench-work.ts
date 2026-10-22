@@ -3,6 +3,25 @@ import type { WorkCommand } from '../work/index.js';
 import { stageSchema } from '../work/index.js';
 import type { WorkbenchState } from './workbench-protocol.js';
 
+/** Selected-Run projection; project ownership is authoritative in work. */
+export function projectForRun(state: WorkbenchState, runId: RunId | null) {
+  return (
+    state.projects?.find(
+      (project) => runId !== null && project.runIds.includes(runId),
+    ) ??
+    state.projects?.find((project) => project.id === state.defaultProjectId)
+  );
+}
+export function stateForRun(
+  state: WorkbenchState,
+  runId: RunId | null,
+): WorkbenchState {
+  const project = projectForRun(state, runId);
+  return project
+    ? { ...state, source: project.source, work: project.work }
+    : state;
+}
+
 export const stageLabels = {
   clarification: 'Clarify',
   development: 'Develop',
@@ -11,7 +30,7 @@ export const stageLabels = {
 } as const;
 
 export function trackedWork(state: WorkbenchState, runId: RunId | null) {
-  const work = state.work;
+  const work = stateForRun(state, runId).work;
   if (work?.kind !== 'ready' || !work.plan) return null;
   const taskId = work.bindings.find(
     (binding) => binding.runId === runId,
@@ -44,7 +63,7 @@ export function roadmapCommand(
     ].includes(name)
   )
     return null;
-  const work = state.work;
+  const work = stateForRun(state, runId).work;
   if (!work)
     throw new Error(
       'This server does not support Roadmaps; use a new server on another port',

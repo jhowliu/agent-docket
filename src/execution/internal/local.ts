@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { LocalWorker, RunId, Source } from '../index.js';
 import type { ManagedProcess } from './worker.js';
+import { createLocalWorktree } from './worktree.js';
+import type { ManagedWorktree } from './worktree.js';
 
 const execFileAsync = promisify(execFile);
 const excluded = new Set([
@@ -54,14 +56,24 @@ function groupExists(pid: number): boolean {
     return true;
   } catch (error) {
     if (code(error) === 'ESRCH') return false;
-    throw error;
+    // EPERM is not proof that the group is gone. Keep polling within the stop
+    // deadline; transient permission checks can fail while a group exits.
+    if (code(error) === 'EPERM') return true;
+    throw new Error(
+      `Cannot inspect local process group ${pid}: ${error instanceof Error ? error.message : 'signal check failed'}`,
+      { cause: error },
+    );
   }
 }
 function signalGroup(pid: number, signal: NodeJS.Signals): void {
   try {
     process.kill(-pid, signal);
   } catch (error) {
-    if (code(error) !== 'ESRCH') throw error;
+    if (code(error) !== 'ESRCH')
+      throw new Error(
+        `Cannot send ${signal} to local process group ${pid}: ${error instanceof Error ? error.message : 'signal failed'}`,
+        { cause: error },
+      );
   }
 }
 async function stopGroup(child: ChildProcessWithoutNullStreams): Promise<void> {
@@ -78,7 +90,7 @@ async function stopGroup(child: ChildProcessWithoutNullStreams): Promise<void> {
     throw new Error('Local process group cleanup could not be confirmed');
 }
 
-/** Explicit native mode. A directory copy and process group are not a security sandbox. */
+/** Explicit native mode. A worktree and process group are not a security sandbox. */
 export async function launchLocal(
   worker: LocalWorker,
   source: Source,
@@ -96,6 +108,7 @@ export async function launchLocal(
   const codexHome = join(home, '.codex');
   const scratch = join(temporary, 'tmp');
   let child: ChildProcessWithoutNullStreams | undefined;
+  let worktree: ManagedWorktree | undefined;
   try {
     await mkdir(codexHome, { recursive: true, mode: 0o700 });
     await writeFile(
@@ -121,6 +134,8 @@ export async function launchLocal(
       CODEX_CONFIG: JSON.stringify({ cli_auth_credentials_store: 'file' }),
       GIT_CONFIG_NOSYSTEM: '1',
       GIT_CONFIG_GLOBAL: '/dev/null',
+      // Directory copies have no .git; never discover the workbench's parent repo.
+      GIT_CEILING_DIRECTORIES: base,
       GIT_TERMINAL_PROMPT: '0',
     });
     if (source.kind === 'git') {
@@ -151,10 +166,10 @@ export async function launchLocal(
         ],
         gitOptions,
       );
+    } else if (source.kind === 'directory') {
+      worktree = await createLocalWorktree(source.path, cwd, id, source.base);
     } else {
-      const path = await realpath(
-        source.kind === 'fixture' ? fixture : source.path,
-      );
+      const path = await realpath(fixture);
       if (!(await lstat(path)).isDirectory())
         throw new Error('Local source must be a directory');
       const omitted: string[] = [];
@@ -227,6 +242,7 @@ export async function launchLocal(
       child,
       cwd,
       environment: { kind: 'local', location: cwd },
+      ...(worktree ? { worktree } : {}),
       stop() {
         cleanup ??= (async () => {
           await stopGroup(managedChild);
@@ -241,6 +257,7 @@ export async function launchLocal(
   } catch (error) {
     if (child) await stopGroup(child);
     await rm(temporary, { recursive: true, force: true });
+    await worktree?.collect();
     // Preserve code and copy metadata on startup failure as well as cancellation.
     throw error;
   }
