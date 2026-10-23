@@ -37,6 +37,45 @@ const preview = (text: string) =>
     .trim()
     .slice(0, 240);
 
+/**
+ * What a finished check did, from its exit alone. Whether it still applies to
+ * the Run's code is the evidence assessment, shown separately.
+ */
+export function checkEnded(
+  event: Extract<RunEvent, { type: 'check.end' }>,
+): Readonly<{ label: string; detail: string; color: string }> {
+  const seconds = Math.round(event.durationMs / 1000);
+  const time =
+    seconds < 60
+      ? `${seconds}s`
+      : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const sha = event.candidate.slice(0, 7);
+  switch (event.outcome) {
+    case 'exited':
+      return event.exitCode === 0
+        ? { label: 'Checks passed', detail: `${sha} · ${time}`, color: 'green' }
+        : {
+            label: 'Checks failed',
+            detail: `${event.exitCode === null ? 'signal' : `exit ${event.exitCode}`} · ${sha} · ${time} · 1 Live`,
+            color: 'red',
+          };
+    case 'timed-out':
+      return {
+        label: 'Checks timed out',
+        detail: `${sha} · 1 Live`,
+        color: 'red',
+      };
+    case 'cancelled':
+      return { label: 'Checks cancelled', detail: sha, color: 'gray' };
+    case 'failed-to-start':
+      return {
+        label: 'Checks could not start',
+        detail: event.output.split('\n')[0] ?? '',
+        color: 'yellow',
+      };
+  }
+}
+
 /** Concatenate adjacent deltas for reading without changing raw events or cursors. */
 export function readableEvents(events: readonly RunEvent[]): RunEvent[] {
   const result: RunEvent[] = [];
@@ -288,6 +327,21 @@ export function timelineEntries(
         );
         ended = true;
         requestRow = undefined;
+        break;
+      }
+      case 'check.start':
+        rows.push(
+          row(
+            event,
+            'Checks started',
+            `${event.command} · ${event.candidate.slice(0, 7)}`,
+            'cyan',
+          ),
+        );
+        break;
+      case 'check.end': {
+        const ended = checkEnded(event);
+        rows.push(row(event, ended.label, ended.detail, ended.color));
         break;
       }
       case 'diagnostic':

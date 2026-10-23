@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type { Attention } from '../attention/index.js';
+import type { Evidence } from '../evidence/index.js';
 import type {
   Execution,
   Launch,
@@ -9,7 +10,9 @@ import type {
 import type {
   nextActionSchema,
   planSchema,
+  projectCheckSchema,
   projectOverviewSchema,
+  runVerificationSchema,
   stageSchema,
   workCommandSchema,
   workSnapshotSchema,
@@ -23,6 +26,8 @@ export type WorkSnapshot = z.infer<typeof workSnapshotSchema>;
 export type ProjectWork = z.infer<typeof projectWorkSchema>;
 export type NextAction = z.infer<typeof nextActionSchema>;
 export type ProjectOverview = z.infer<typeof projectOverviewSchema>;
+export type RunVerification = z.infer<typeof runVerificationSchema>;
+export type ProjectCheck = z.infer<typeof projectCheckSchema>;
 
 export interface ProjectWorkspaces {
   /** Registers a stable project identity once; no Run or conversation is restored. */
@@ -52,6 +57,24 @@ export interface ProjectWorkspaces {
    * passes a review or finishes a Task.
    */
   overview(): readonly ProjectOverview[];
+  /** Each project's check command; persisted beside plans when configured. */
+  checks(): readonly ProjectCheck[];
+  /**
+   * One line of 1–1000 characters, run by the operator's shell as the
+   * operator: trusted input, never accepted from an agent.
+   */
+  setCheck(projectId: string, command: string): Promise<void>;
+  /**
+   * Checks the Run's current code with its project's command, bound to the
+   * Task spec revision the Run tracks (none in Direct mode). Resolves once the
+   * check has started. Without a command, rejects with CheckRequired.
+   */
+  verify(runId: RunId): Promise<void>;
+  /**
+   * Latest verification per Run against its current code and spec, using the
+   * plans from the last snapshot(). Never passes a review or finishes a Task.
+   */
+  verifications(): readonly RunVerification[];
   apply(projectId: string, command: WorkCommand): Promise<void>;
   submit(runId: RunId, text: string): Promise<void>;
   close(): Promise<void>;
@@ -88,12 +111,15 @@ export type ProjectWorkspacesOptions = Readonly<{
     'snapshot' | 'submit' | 'list' | 'start' | 'launch'
   >;
   attention: Pick<Attention, 'list'>;
+  evidence: Evidence;
 }>;
 
 export {
   nextActionSchema,
   planSchema,
+  projectCheckSchema,
   projectOverviewSchema,
+  runVerificationSchema,
   stageSchema,
   workCommandSchema,
   workSnapshotSchema,
@@ -101,3 +127,4 @@ export {
 } from './internal/contract.js';
 export { createWork } from './internal/work.js';
 export { createProjectWorkspaces } from './internal/projects.js';
+export { CheckRequired } from './internal/checks.js';

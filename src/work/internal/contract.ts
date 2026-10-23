@@ -206,3 +206,19 @@ export const projectOverviewSchema = z
     runs: z.array(runNextSchema).max(64),
   })
   .strict();
+
+export const runVerificationSchema = z
+  .object({
+    runId: runIdSchema,
+    command: z.string().min(1).max(1000),
+    candidate: z.string().regex(/^[a-f0-9]{40,64}$/),
+    status: z.enum(['running', 'passed', 'failed', 'stale', 'unconfirmed']),
+    reason: z.string().max(400),
+  })
+  .strict();
+export const projectCheckSchema = z
+  .object({
+    projectId: projectWorkSchema.shape.id,
+    command: z.string().min(1).max(1000),
+  })
+  .strict();

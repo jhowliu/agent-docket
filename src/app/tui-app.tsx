@@ -6,6 +6,7 @@ import type { RunId, RunSnapshot } from '../execution/index.js';
 import type { WorkbenchClient } from './workbench-client.js';
 import { WorkbenchError } from './workbench-client.js';
 import type { WorkbenchCommand, WorkbenchState } from './workbench-protocol.js';
+import type { RunVerification } from '../work/index.js';
 import { PromptInput, terminalText } from './tui-input.js';
 import {
   WorkbenchScreen,
@@ -56,6 +57,10 @@ function stateHint(
     run.worktree.status.kind !== 'removed'
       ? ' · m changes'
       : '';
+  const checks = verificationHint(
+    state.verifications?.find((item) => item.runId === run.id),
+  );
+  if (checks && run.state.kind !== 'running') return checks;
   switch (run.state.kind) {
     case 'running':
       return `${AGENT_NAMES[run.provider]} is working · x stop · 1 Live`;
@@ -73,6 +78,24 @@ function stateHint(
     case 'cancelled':
     case 'closed':
       return `Run ended${changes} · n new Run`;
+  }
+}
+
+/** The selected Run's latest check, judged by evidence against its current code. */
+function verificationHint(item: RunVerification | undefined): string {
+  if (!item) return '';
+  const sha = item.candidate.slice(0, 7);
+  switch (item.status) {
+    case 'running':
+      return `Checking ${sha} · ${item.command}`;
+    case 'passed':
+      return `Checks passed on ${sha} · v re-run · ${item.command}`;
+    case 'failed':
+      return `Checks failed on ${sha} (${item.reason}) · 1 Live output · v re-run`;
+    case 'stale':
+      return `Checks stale: ${item.reason} · v re-run`;
+    case 'unconfirmed':
+      return `Checks unconfirmed: ${item.reason} · v re-run`;
   }
 }
 
@@ -310,6 +333,10 @@ export function WorkbenchApp({
         setNote('Marked done · the agent was not told; i to reply');
       else if (command.kind === 'prompt')
         setNote('Message accepted · watch Timeline');
+      else if (command.kind === 'verify')
+        setNote('Checks started on a frozen copy · watch Timeline');
+      else if (command.kind === 'set-check')
+        setNote('Check saved for this project · v verifies the selected Run');
       else if (command.kind === 'authenticate')
         setNote('Sign-in requested · waiting for agent');
       else if (command.kind === 'cancel')
@@ -337,6 +364,20 @@ export function WorkbenchApp({
       await refresh();
       return true;
     } catch (error: unknown) {
+      if (
+        mounted.current &&
+        command.kind === 'verify' &&
+        error instanceof WorkbenchError &&
+        error.suggestion
+      ) {
+        // Offer the suggested check for confirmation; nothing runs until v.
+        setCommandText(`check ${error.suggestion}`);
+        setMode({ kind: 'command' });
+        setNote(
+          'No check yet · Enter saves this one, then v · Esc keeps it as a draft',
+        );
+        return false;
+      }
       if (mounted.current) {
         setActionFailed(true);
         setNote(message(error));
@@ -427,6 +468,32 @@ export function WorkbenchApp({
       setNote(`Change map: ${url}`);
     }
   }
+  function verify() {
+    setFocus('workspace');
+    if (!selected) setNote('Select a Run to verify');
+    else if (!snapshot.features?.verify)
+      setNote('Verify needs an updated server; start a new daemon');
+    else if (!selected.worktree)
+      setNote('Checks need a Run with a local Git worktree');
+    else void execute({ kind: 'verify', runId: selected.id });
+  }
+  function setCheck(command: string) {
+    const project = projectForRun(snapshot, selected?.id ?? null);
+    const current = snapshot.checks?.find(
+      (item) => item.projectId === project?.id,
+    );
+    if (!snapshot.features?.verify)
+      setNote('Checks need an updated server; start a new daemon');
+    else if (!project) setNote('Select a Run to set its project check');
+    else if (command)
+      void execute({ kind: 'set-check', projectId: project.id, command });
+    else
+      setNote(
+        current
+          ? `Check: ${current.command} · v verifies`
+          : 'No check yet · :check <command>, e.g. npm ci && npm test',
+      );
+  }
   function runCommand(text: string) {
     const [name = '', ...parts] = text.trim().split(/\s+/);
     const argument = parts.join(' ');
@@ -506,6 +573,15 @@ export function WorkbenchApp({
       openChangeMap();
       return;
     }
+    if (name === 'check') {
+      // The shell command as typed, spacing and quotes included.
+      setCheck(text.trim().slice(name.length).trim());
+      return;
+    }
+    if (name === 'verify' && !argument) {
+      verify();
+      return;
+    }
     if (name === 'help' && !argument) {
       setFocus('workspace');
       setProject(false);
@@ -566,7 +642,8 @@ export function WorkbenchApp({
       else setNote('Focus unchanged · Ctrl+W h/l switches panes');
       return;
     }
-    const action = ['n', 'a', 'r', 'x'].includes(input);
+    // Keys with outside effects; v runs the project's check command.
+    const action = ['n', 'a', 'r', 'x', 'v'].includes(input);
     if (action) {
       if (
         key.eventType === 'repeat' ||
@@ -631,6 +708,8 @@ export function WorkbenchApp({
       newSession();
     } else if (input === 'm') {
       openChangeMap();
+    } else if (input === 'v') {
+      verify();
     } else if (input === 'x' && selected) {
       setFocus('workspace');
       void execute({ kind: 'cancel', runId: selected.id });

@@ -34,6 +34,8 @@ export class WorkbenchError extends Error {
   constructor(
     readonly kind: 'unavailable' | 'protocol' | 'rejected',
     message: string,
+    /** A server-proposed command line, e.g. a check for an unset project. */
+    readonly suggestion?: string,
   ) {
     super(message);
   }
@@ -341,12 +343,18 @@ export function createWorkbenchClient(
         // Never replay a mutation after reconnect: its first delivery may already have succeeded.
         if (response.status === 403) token = null;
         const body: unknown = await response.json().catch(() => null);
-        const error = z.object({ error: z.string() }).safeParse(body);
+        const error = z
+          .object({
+            error: z.string(),
+            suggestion: z.string().max(1000).optional(),
+          })
+          .safeParse(body);
         throw new WorkbenchError(
           'rejected',
           error.success
             ? error.data.error
             : 'Action not accepted; check the current state',
+          error.data?.suggestion,
         );
       }
       try {

@@ -8,6 +8,12 @@ export type WorktreeSnapshot = Readonly<{
   path: string;
   branch: string;
   baseRevision: string;
+  /**
+   * Content identity of every non-ignored file, measured when a turn ends, a
+   * Candidate is taken or the Run stops. Absent while a turn may be changing
+   * files. Edits made outside a turn are only seen at the next measurement.
+   */
+  tree?: string | undefined;
   status:
     | Readonly<{ kind: 'active' | 'removed' }>
     | Readonly<{ kind: 'commit-required'; changes: number }>
@@ -87,6 +93,28 @@ export type RunSnapshot = Readonly<{
   capabilities: Capabilities | null;
   worktree?: WorktreeSnapshot | undefined;
 }>;
+/** A Run's code frozen for checking; equal `tree`s mean equal code. */
+export type Candidate = Readonly<{
+  runId: RunId;
+  /** Commit under refs/workbench/candidates/<run>; never on the Run branch. */
+  sha: string;
+  tree: string;
+  /** The Run worktree's HEAD it was taken on. */
+  parent: string;
+  createdAt: string;
+}>;
+export type CheckResult = Readonly<{
+  command: string;
+  candidate: string;
+  /** `exited` covers every exit code; only the code says whether checks passed. */
+  outcome: 'exited' | 'timed-out' | 'cancelled' | 'failed-to-start';
+  exitCode: number | null;
+  /** Last lines of interleaved stdout/stderr, redacted; earlier output dropped. */
+  output: string;
+  truncated: boolean;
+  startedAt: string;
+  durationMs: number;
+}>;
 export type RunEventPayload =
   | { type: 'run.state'; state: RunState }
   | { type: 'capabilities'; capabilities: Capabilities }
@@ -99,6 +127,8 @@ export type RunEventPayload =
   | { type: 'diff'; path: string; oldText: string; newText: string }
   | { type: 'attention'; id: string; status: string }
   | { type: 'turn.end'; reason: string }
+  | { type: 'check.start'; command: string; candidate: string }
+  | ({ type: 'check.end' } & Omit<CheckResult, 'startedAt'>)
   | { type: 'diagnostic'; message: string };
 export type RunEvent = Readonly<
   { sequence: number; runId: RunId; at: string } & RunEventPayload
@@ -120,6 +150,26 @@ export interface Execution {
    * Failure preserves files; duplicate calls after collection have no side effect.
    */
   commitWorkspace(id: RunId, message: string): Promise<RunSnapshot>;
+  /**
+   * Local Git worktree Runs only. Freezes every non-ignored file of the
+   * worktree into a commit under refs/workbench/candidates/<run>; the
+   * worktree, its index and its branch are untouched and nothing is pushed.
+   * Unchanged code returns the previous Candidate. Removed worktrees throw.
+   */
+  createCandidate(id: RunId): Promise<Candidate>;
+  /**
+   * Validates and starts at once, throwing before anything runs: one check
+   * per Run, the Candidate must be this Run's, 1–1000 characters. Runs
+   * `/bin/sh -c command` in a fresh detached checkout of the Candidate with
+   * the operator's environment (local: no OS isolation), then stops its
+   * whole process group and removes the checkout. Ten-minute limit; stopping
+   * the Run or closing execution cancels it. Emits check.start/check.end.
+   */
+  startCheck(
+    id: RunId,
+    candidate: Candidate,
+    command: string,
+  ): Promise<CheckResult>;
   snapshot(id: RunId): RunSnapshot;
   list(): readonly RunSnapshot[];
   /** Read-only, at most 200 entries per relative directory; fixture/local only.
@@ -162,3 +212,4 @@ export {
   projectFoldersSchema,
 } from './internal/project-folders.js';
 export type { ProjectFolders } from './internal/project-folders.js';
+export { suggestCheck } from './internal/check.js';

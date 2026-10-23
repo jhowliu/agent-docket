@@ -5,6 +5,8 @@ import { isAbsolute } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import type { AttentionId, Choice } from '../../attention/index.js';
 import type {
+  Candidate,
+  CheckResult,
   Execution,
   ExecutionOptions,
   Launch,
@@ -22,6 +24,8 @@ import { createProgressChannel } from './progress.js';
 import type { ProgressChannel } from './progress.js';
 import { workbenchInstructions } from './progress-protocol.js';
 import { directoryPathSchema, readWorkspaceDirectory } from './directory.js';
+import { runCheck } from './check.js';
+import type { CheckRun } from './check.js';
 
 const workerFields = {
   image: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]{0,200}$/),
@@ -177,6 +181,10 @@ type Slot = {
   progress: ProgressChannel | null;
   progressTask: Promise<ProgressChannel> | null;
   stopped: boolean;
+  /** Last measured content identity; undefined while a turn may change it. */
+  tree: string | undefined;
+  treeEpoch: number;
+  check: { abort: AbortController; task: Promise<CheckResult> } | null;
 };
 const terminal = (state: RunState) =>
   ['cancelled', 'closed', 'failed', 'interrupted'].includes(state.kind);
@@ -184,14 +192,21 @@ const cancelling = (slot: Slot) =>
   ['cancelling', 'cancelled'].includes(slot.snapshot.state.kind);
 const isClosed = (slot: Slot) => slot.snapshot.state.kind === 'closed';
 const isStopping = (slot: Slot) => slot.snapshot.state.kind === 'cancelling';
+const redact = (text: string) =>
+  text.replace(
+    /\b(?:sk-[a-zA-Z0-9_-]{12,}|Bearer\s+[a-zA-Z0-9._-]{12,})\b/g,
+    '[redacted]',
+  );
 function safeText(text: string): string {
-  return text
-    .slice(0, 8000)
-    .replace(
-      /\b(?:sk-[a-zA-Z0-9_-]{12,}|Bearer\s+[a-zA-Z0-9._-]{12,})\b/g,
-      '[redacted]',
-    );
+  return redact(text.slice(0, 8000));
 }
+const withTree = (
+  worktree: WorktreeSnapshot,
+  tree: string | undefined,
+): WorktreeSnapshot => {
+  const { tree: _previous, ...rest } = worktree;
+  return tree ? { ...rest, tree } : rest;
+};
 const errorText = (error: unknown) =>
   safeText(error instanceof Error ? error.message : String(error));
 async function deadline<T>(task: Promise<T>, ms: number): Promise<T> {
@@ -302,13 +317,17 @@ export function createExecution(options: ExecutionOptions): Execution {
     );
   }
   function recordWorktree(slot: Slot, worktree: WorktreeSnapshot): void {
-    if (JSON.stringify(slot.snapshot.worktree) === JSON.stringify(worktree))
-      return;
     const status =
       worktree.status.kind === 'retained'
         ? { ...worktree.status, reason: safeText(worktree.status.reason) }
         : worktree.status;
-    slot.snapshot = { ...slot.snapshot, worktree: { ...worktree, status } };
+    const before = slot.snapshot.worktree;
+    const next = withTree({ ...worktree, status }, slot.tree);
+    if (JSON.stringify(before) === JSON.stringify(next)) return;
+    slot.snapshot = { ...slot.snapshot, worktree: next };
+    // A new content identity alone is not news for the Timeline.
+    if (before && JSON.stringify(before.status) === JSON.stringify(status))
+      return;
     emit(slot, {
       type: 'diagnostic',
       message:
@@ -321,7 +340,27 @@ export function createExecution(options: ExecutionOptions): Execution {
               : `Local worktree branch: ${worktree.branch}`,
     });
   }
+  function recordTree(slot: Slot, tree: string | undefined): void {
+    slot.treeEpoch++;
+    slot.tree = tree;
+    const worktree = slot.snapshot.worktree;
+    if (worktree)
+      slot.snapshot = { ...slot.snapshot, worktree: withTree(worktree, tree) };
+  }
+  /** Records what the worktree holds now; failures leave the content unknown. */
+  async function measure(slot: Slot): Promise<void> {
+    const worktree = slot.managed?.worktree;
+    if (!worktree || slot.snapshot.worktree?.status.kind === 'removed') return;
+    const epoch = slot.treeEpoch;
+    try {
+      const tree = await worktree.measure();
+      if (epoch === slot.treeEpoch) recordTree(slot, tree);
+    } catch {
+      if (epoch === slot.treeEpoch) recordTree(slot, undefined);
+    }
+  }
   async function clean(slot: Slot): Promise<void> {
+    slot.check?.abort.abort();
     if (!slot.cleanup)
       slot.cleanup = (async () => {
         slot.connection?.close();
@@ -343,8 +382,11 @@ export function createExecution(options: ExecutionOptions): Execution {
         throw error;
       });
     await slot.cleanup;
-    if (slot.managed?.worktree)
+    if (slot.managed?.worktree) {
+      // The agent may have changed files after its last turn ended.
+      await measure(slot);
       recordWorktree(slot, await slot.managed.worktree.collect());
+    }
   }
   function streamFor(slot: Slot, managed: ManagedProcess): acp.Stream {
     const base = acp.ndJsonStream(
@@ -515,6 +557,9 @@ export function createExecution(options: ExecutionOptions): Execution {
       progress: null,
       progressTask: null,
       stopped: false,
+      tree: undefined,
+      treeEpoch: 0,
+      check: null,
     };
     slots.set(id, slot);
     emit(slot, { type: 'run.state', state: { kind: 'starting' } });
@@ -710,6 +755,7 @@ export function createExecution(options: ExecutionOptions): Execution {
     setState(slot, { kind: 'running' });
     slot.tools.clear();
     emit(slot, { type: 'turn.start', text: safeText(text) });
+    if (slot.snapshot.worktree) recordTree(slot, undefined);
     return { slot, epoch: slot.epoch };
   }
   async function runPrompt(
@@ -745,6 +791,7 @@ export function createExecution(options: ExecutionOptions): Execution {
       attention.invalidate(id, 'Prompt turn ended');
       emit(slot, { type: 'turn.end', reason: result.stopReason });
       if (!terminal(slot.snapshot.state)) setState(slot, { kind: 'idle' });
+      void measure(slot);
       return { stopReason: result.stopReason };
     } catch (error) {
       if (cancelling(slot)) return { stopReason: 'cancelled' };
@@ -865,6 +912,86 @@ export function createExecution(options: ExecutionOptions): Execution {
       recordWorktree(slot, await worktree.commit(message));
       return structuredClone(slot.snapshot);
     },
+    async createCandidate(id) {
+      const slot = get(id);
+      if (closing) throw new Error('Execution is closing');
+      const worktree = slot.managed?.worktree;
+      if (!worktree)
+        throw new Error('Checks need a Run with a local Git worktree');
+      const epoch = slot.treeEpoch;
+      const frozen = await worktree.freeze(`refs/workbench/candidates/${id}`);
+      // During a turn the files may change again, so the content stays unknown.
+      if (epoch === slot.treeEpoch && slot.snapshot.state.kind !== 'running')
+        recordTree(slot, frozen.tree);
+      return {
+        runId: id,
+        ...frozen,
+        createdAt: new Date().toISOString(),
+      } satisfies Candidate;
+    },
+    startCheck(id, candidate, command) {
+      const slot = get(id);
+      if (closing) throw new Error('Execution is closing');
+      const worktree = slot.managed?.worktree;
+      if (!worktree)
+        throw new Error('Checks need a Run with a local Git worktree');
+      if (candidate.runId !== id)
+        throw new Error('This Candidate belongs to another Run');
+      const text = typeof command === 'string' ? command.trim() : '';
+      if (!text || text.length > 1000 || text.includes('\0'))
+        throw new Error('Enter a check command between 1 and 1000 characters');
+      if (slot.check)
+        throw new Error('Checks are already running for this Run');
+      const abort = new AbortController();
+      const startedAt = new Date().toISOString();
+      const started = Date.now();
+      emit(slot, {
+        type: 'check.start',
+        command: safeText(text),
+        candidate: candidate.sha,
+      });
+      const task = (async (): Promise<CheckResult> => {
+        let run: CheckRun;
+        try {
+          const checkout = await worktree.checkout(candidate.sha);
+          try {
+            run = await runCheck(checkout.path, text, {
+              timeoutMs: 10 * 60_000,
+              signal: abort.signal,
+            });
+          } finally {
+            await checkout.release().catch((error: unknown) =>
+              emit(slot, {
+                type: 'diagnostic',
+                message: 'Check checkout cleanup failed: ' + errorText(error),
+              }),
+            );
+          }
+        } catch (error) {
+          run = {
+            outcome: 'failed-to-start',
+            exitCode: null,
+            output: errorText(error),
+            truncated: false,
+          };
+        }
+        const result: CheckResult = {
+          command: text,
+          candidate: candidate.sha,
+          ...run,
+          output: redact(run.output),
+          startedAt,
+          durationMs: Date.now() - started,
+        };
+        const { startedAt: _startedAt, ...ended } = result;
+        emit(slot, { type: 'check.end', ...ended, command: safeText(text) });
+        return result;
+      })().finally(() => {
+        slot.check = null;
+      });
+      slot.check = { abort, task };
+      return task;
+    },
     snapshot(id) {
       return structuredClone(get(id).snapshot);
     },
@@ -949,6 +1076,12 @@ export function createExecution(options: ExecutionOptions): Execution {
               await clean(slot);
             }
           }),
+        );
+        // Checks were cancelled by cleanup; wait for their checkouts to go.
+        await Promise.allSettled(
+          [...slots.values()].flatMap((slot) =>
+            slot.check ? [slot.check.task] : [],
+          ),
         );
         unsubscribe();
         closed = true;

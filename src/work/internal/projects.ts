@@ -1,16 +1,16 @@
 import { createHash } from 'node:crypto';
 import { basename } from 'node:path';
-import { inspectLocalProject } from '../../execution/index.js';
+import { inspectLocalProject, suggestCheck } from '../../execution/index.js';
 import type { RunId, RunSnapshot } from '../../execution/index.js';
 import type { AttentionItem } from '../../attention/index.js';
 import type {
   NextAction,
   ProjectWorkspaces,
   ProjectWorkspacesOptions,
-  Work,
 } from '../index.js';
 import { nextActionSchema } from './contract.js';
-import { createWork } from './work.js';
+import { createTrackedWork } from './work.js';
+import { CheckRequired, createCheckStore } from './checks.js';
 
 const rank = (next: NextAction) => nextActionSchema.options.indexOf(next);
 // Prompt, working and ended rank alike for ordering: none asks for a decision.
@@ -39,8 +39,12 @@ function nextAction(
 export function createProjectWorkspaces(
   options: ProjectWorkspacesOptions,
 ): ProjectWorkspaces {
-  const projects = new Map<string, { source: string; work: Work }>();
+  const projects = new Map<
+    string,
+    { source: string; work: ReturnType<typeof createTrackedWork> }
+  >();
   const runs = new Map<RunId, string>();
+  const checks = createCheckStore(options.directory);
   let closed = false;
   function project(id: string) {
     const found = projects.get(id);
@@ -57,7 +61,11 @@ export function createProjectWorkspaces(
           throw new Error('Project limit reached for this process');
         projects.set(id, {
           source,
-          work: createWork({ ...options, projectKey }),
+          work: createTrackedWork({
+            execution: options.execution,
+            projectKey,
+            ...(options.directory ? { directory: options.directory } : {}),
+          }),
         });
       }
       return id;
@@ -134,6 +142,50 @@ export function createProjectWorkspaces(
           .map(({ runId, next }) => ({ runId, next }));
         const next = [...own].sort((a, b) => rank(a.next) - rank(b.next))[0];
         return { projectId, next: next ?? null, runs: own };
+      });
+    },
+    checks: () => checks.list(),
+    setCheck(id, command) {
+      project(id);
+      return checks.set(id, command);
+    },
+    async verify(runId) {
+      const id = runs.get(runId);
+      if (!id) throw new Error('Run has no project association');
+      const { work } = project(id);
+      const command = checks.get(id);
+      if (!command) {
+        const path = options.execution.snapshot(runId).worktree?.path;
+        throw new CheckRequired(path ? await suggestCheck(path) : null);
+      }
+      // A fresh plan read, so the check binds to the current spec revision.
+      await work.snapshot();
+      await options.evidence.verify({
+        runId,
+        command,
+        spec: work.specOf(runId),
+      });
+    },
+    verifications() {
+      return [...runs].flatMap(([runId, id]) => {
+        const found = projects.get(id);
+        const judged = found
+          ? options.evidence.assess(runId, {
+              tree: options.execution.snapshot(runId).worktree?.tree,
+              spec: found.work.specOf(runId),
+            })
+          : null;
+        return judged
+          ? [
+              {
+                runId,
+                command: judged.verification.command,
+                candidate: judged.verification.candidate.sha,
+                ...judged.assessment,
+                reason: judged.assessment.reason.slice(0, 400),
+              },
+            ]
+          : [];
       });
     },
     apply(id, command) {

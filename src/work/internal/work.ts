@@ -10,6 +10,7 @@ import {
 } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import type { RunId } from '../../execution/index.js';
+import type { SpecRef } from '../../evidence/index.js';
 import type {
   Work,
   WorkCommand,
@@ -27,6 +28,16 @@ const message = (error: unknown) =>
 
 /** Project planning and process-local Run association. No Run output is stored here. */
 export function createWork(options: WorkOptions): Work {
+  return createTrackedWork(options);
+}
+
+/**
+ * The same Work plus the Task spec a Run tracks, read from the plan loaded by
+ * the last snapshot or write; call snapshot() first for a fresh answer.
+ */
+export function createTrackedWork(
+  options: WorkOptions,
+): Work & { specOf(runId: RunId): SpecRef } {
   if (
     !options.projectKey ||
     (options.directory && !isAbsolute(options.directory))
@@ -237,6 +248,13 @@ export function createWork(options: WorkOptions): Work {
     }
   }
   return {
+    specOf(runId) {
+      const taskId = bindings.get(runId);
+      const task = plan?.phases
+        .flatMap((phase) => phase.tasks)
+        .find((task) => task.id === taskId);
+      return taskId && task ? { taskId, revision: task.spec.revision } : null;
+    },
     async snapshot(): Promise<WorkSnapshot> {
       await queue;
       try {

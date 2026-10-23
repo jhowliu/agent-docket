@@ -266,6 +266,16 @@
         return event.capabilities.agent + ' ' + event.capabilities.version;
       case 'diagnostic':
         return event.message;
+      case 'check.start':
+        return 'Checks started · ' + event.command;
+      case 'check.end':
+        return (
+          'Checks ended · ' +
+          (event.outcome === 'exited'
+            ? 'exit ' + event.exitCode
+            : event.outcome) +
+          ' (use the TUI for whether they still apply)'
+        );
       default:
         return event.type;
     }

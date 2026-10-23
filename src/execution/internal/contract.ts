@@ -7,10 +7,15 @@ import type {
   WorktreeSnapshot,
 } from '../index.js';
 
+const sha = z.string().regex(/^[a-f0-9]{40,64}$/);
 const worktree: z.ZodType<WorktreeSnapshot> = z.object({
   path: z.string(),
   branch: z.string(),
   baseRevision: z.string().regex(/^[a-f0-9]{40,64}$/),
+  tree: z
+    .string()
+    .regex(/^[a-f0-9]{40,64}$/)
+    .optional(),
   status: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('active') }),
     z.object({ kind: z.literal('removed') }),
@@ -96,6 +101,21 @@ export const runEventSchema: z.ZodType<RunEvent> = z.discriminatedUnion(
       type: z.literal('attention'),
       id: z.string(),
       status: z.string(),
+    }),
+    base.extend({
+      type: z.literal('check.start'),
+      command: z.string(),
+      candidate: sha,
+    }),
+    base.extend({
+      type: z.literal('check.end'),
+      command: z.string(),
+      candidate: sha,
+      outcome: z.enum(['exited', 'timed-out', 'cancelled', 'failed-to-start']),
+      exitCode: z.number().int().nullable(),
+      output: z.string(),
+      truncated: z.boolean(),
+      durationMs: z.number().int().nonnegative(),
     }),
     base.extend({ type: z.literal('turn.end'), reason: z.string() }),
     base.extend({ type: z.literal('diagnostic'), message: z.string() }),

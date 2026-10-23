@@ -1,5 +1,7 @@
 # Agent 工作台開發計畫
 
+2026-10-23 Candidate + Verify: the first `evidence` slice. `v` freezes a worktree Run's code into a Candidate commit under a hidden ref and runs the project's check command on a clean temporary checkout of it; `evidence` judges the latest result against the Run's current code and Task spec revision (passed / failed / stale / unconfirmed). Machine-run Verify needs only a fresh environment, no agent session. Independent Agent Review and Human Review acceptance remain next. See [Candidate and Verify](verification.md).
+
 2026-10-23 project overview: the TUI roster groups Runs by project with one line per project naming its next action and active Phase. `work.ProjectWorkspaces.overview()` owns the Next action ranking (urgent actions rise; others keep launch order) and `startSession` owns the New Session inspect/register/launch/associate sequence. This was the next candidate named below; Candidate-bound evidence and independent Review remain next. See [Project overview](project-overview.md).
 
 2026-10-22 priority change and first `delivery` slice: the user's main pains are losing progress across projects, not knowing what to do next and Diffs that are hard to understand, so a Change map now comes before Candidate-bound evidence. `delivery.describeChange` reads a Run worktree against its base (read-only, bounded) and returns files/declarations, module Interface changes and statically traced flows from a key press over the local HTTP route into the changed module code. TUI `m` / `:map` opens the browser page `/changes?run=…`; the authenticated `GET /api/changes` takes only a Run ID. It is not the M4 React PR viewer and not evidence. Next candidates: per-project progress and next-action ordering, then Candidate-bound evidence and independent Review. See [Change map](change-map.md).
@@ -186,7 +188,7 @@ ACP client 可以提供檔案與 terminal 能力，這些 callback 必須路由�
 | Verify | Spec、candidate、專案檢查設定              | 真實執行命令、exit code、log、環境版本與未驗證項目    |
 | PR     | 同一 candidate 的 review／verify artifacts | PR 描述、影響流程、證據連結、draft PR 與 comment 對應 |
 
-Review 與 Verify 各自開新 session／環境。Verify 在乾淨候選版本依驗收條件執行；agent 的口頭「已測試」不能直接當成通過。檢查結果包含 passed／failed／skipped／unknown，記錄實際覆蓋範圍。若 review／verify 產生需要提交的修正，回 Dev 建立新 candidate；新 SHA 必須重新產生 review 與 verify 結果。
+Review 與 Verify 各自使用新環境；Agent Review（及之後由 agent 提議檢查的 Verify）另開新 session，機器執行的 Verify 不開 agent session。Verify 在乾淨候選版本依驗收條件執行；agent 的口頭「已測試」不能直接當成通過。檢查結果包含 passed／failed／skipped／unknown，記錄實際覆蓋範圍。若 review／verify 產生需要提交的修正，回 Dev 建立新 candidate；新 SHA 必須重新產生 review 與 verify 結果。
 
 工作流採 Dev → Review → Verify → PR。Findings 回 Dev，重試有上限，超過後進 inbox。不同獨立任務可並行；相依任務需等待前置候選可用。第一版預設一個 task 一個 PR；整合或 rebase 改變 SHA 後重新驗證。
 

@@ -1,6 +1,16 @@
 import { execFile } from 'node:child_process';
-import { lstat, open, realpath, rmdir, unlink } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import {
+  copyFile,
+  lstat,
+  mkdtemp,
+  open,
+  realpath,
+  rm,
+  rmdir,
+  unlink,
+} from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { RunId, Source, WorktreeSnapshot } from '../index.js';
@@ -16,14 +26,28 @@ const environment = () => {
   env['LC_ALL'] = 'C';
   return env;
 };
-async function git(args: readonly string[]): Promise<string> {
+async function git(
+  args: readonly string[],
+  extra: NodeJS.ProcessEnv = {},
+): Promise<string> {
   const { stdout } = await exec(
     'git',
     ['-c', 'core.hooksPath=/dev/null', ...args],
-    { env: environment(), timeout: 30_000, maxBuffer: 4 * 1024 * 1024 },
+    {
+      env: { ...environment(), ...extra },
+      timeout: 30_000,
+      maxBuffer: 4 * 1024 * 1024,
+    },
   );
   return stdout;
 }
+// Candidates are internal snapshots, never the operator's commits.
+const candidateIdentity = {
+  GIT_AUTHOR_NAME: 'Agent Workbench',
+  GIT_AUTHOR_EMAIL: 'workbench@localhost',
+  GIT_COMMITTER_NAME: 'Agent Workbench',
+  GIT_COMMITTER_EMAIL: 'workbench@localhost',
+};
 const line = (value: string) => value.replace(/\n$/, '');
 const hasCode = (error: unknown, code: string) =>
   error !== null &&
@@ -358,6 +382,12 @@ export interface ManagedWorktree {
   collect(): Promise<WorktreeSnapshot>;
   /** Explicitly commits all non-ignored changes to the owned local branch. */
   commit(message: string): Promise<WorktreeSnapshot>;
+  /** Tree of every non-ignored file, via a copy of the index; changes nothing. */
+  measure(): Promise<string>;
+  /** Commits the same content under `ref` without moving the branch or index. */
+  freeze(ref: string): Promise<{ sha: string; tree: string; parent: string }>;
+  /** A fresh detached checkout of a commit, outside the Run directory. */
+  checkout(sha: string): Promise<{ path: string; release(): Promise<void> }>;
 }
 
 /** Git owns checkout/registration removal; this module never recursively deletes a repo. */
@@ -477,6 +507,96 @@ export async function createLocalWorktree(
     }
     return count;
   }
+  async function contentTree(): Promise<string> {
+    await validate();
+    const index = resolve(
+      path,
+      line(await git(['-C', path, 'rev-parse', '--git-path', 'index'])),
+    );
+    const scratch = await mkdtemp(join(tmpdir(), 'workbench-index-'));
+    const copy = join(scratch, 'index');
+    try {
+      try {
+        await copyFile(index, copy);
+      } catch (error) {
+        if (!hasCode(error, 'ENOENT')) throw error;
+      }
+      // The copied index keeps stat data, so only changed files are hashed.
+      await git(['-C', path, 'add', '--all', '--', '.'], {
+        GIT_INDEX_FILE: copy,
+      });
+      return line(
+        await git(['-C', path, 'write-tree'], { GIT_INDEX_FILE: copy }),
+      );
+    } finally {
+      await rm(scratch, { recursive: true, force: true });
+    }
+  }
+  async function freeze(ref: string) {
+    if (current.status.kind === 'removed')
+      throw new Error(
+        `This Run's worktree was removed; its code is on ${branch}`,
+      );
+    const tree = await contentTree();
+    const parent = line(await git(['-C', path, 'rev-parse', 'HEAD']));
+    const previous = line(
+      await git(['-C', path, 'rev-parse', '--verify', '--quiet', ref]).catch(
+        (error: unknown) => {
+          if (exitCode(error, 1)) return '';
+          throw error;
+        },
+      ),
+    );
+    if (previous) {
+      const [previousTree, previousParent] = line(
+        await git(['-C', path, 'show', '-s', '--format=%T %P', previous]),
+      ).split(' ');
+      if (previousTree === tree && previousParent === parent)
+        return { sha: previous, tree, parent };
+    }
+    const sha = line(
+      await git(
+        [
+          '-C',
+          path,
+          'commit-tree',
+          '--no-gpg-sign',
+          '-p',
+          parent,
+          '-m',
+          `Workbench candidate for ${id}`,
+          tree,
+        ],
+        candidateIdentity,
+      ),
+    );
+    await git(['-C', path, 'update-ref', ref, sha]);
+    return { sha, tree, parent };
+  }
+  async function checkout(sha: string) {
+    const scratch = await realpath(
+      await mkdtemp(join(tmpdir(), 'workbench-check-')),
+    );
+    const target = join(scratch, 'repo');
+    try {
+      await git(['-C', path, 'worktree', 'add', '--detach', '--', target, sha]);
+    } catch (error) {
+      await rm(scratch, { recursive: true, force: true });
+      throw error;
+    }
+    return {
+      path: target,
+      async release() {
+        try {
+          // Our own temporary checkout: build output and untracked files go too.
+          await administrative('worktree', 'remove', '--force', '--', target);
+        } finally {
+          await rm(scratch, { recursive: true, force: true });
+          await administrative('worktree', 'prune').catch(() => {});
+        }
+      },
+    };
+  }
   async function collect(): Promise<WorktreeSnapshot> {
     if (current.status.kind === 'removed') return structuredClone(current);
     try {
@@ -520,6 +640,9 @@ export async function createLocalWorktree(
   }
   return {
     snapshot: () => structuredClone(current),
+    measure: () => serialize(contentTree),
+    freeze: (ref) => serialize(() => freeze(ref)),
+    checkout: (sha) => serialize(() => checkout(sha)),
     collect: () => serialize(collect),
     commit: (message) =>
       serialize(async () => {

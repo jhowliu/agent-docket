@@ -16,6 +16,7 @@ import { render } from 'ink-testing-library';
 import stringWidth from 'string-width';
 import { createAttention } from '../src/attention/index.js';
 import { createProjectWorkspaces } from '../src/work/index.js';
+import type { Evidence } from '../src/evidence/index.js';
 import type { ProjectOverview } from '../src/work/index.js';
 import type {
   LocalWorker,
@@ -38,6 +39,11 @@ async function until(check: () => boolean | Promise<boolean>) {
   }
   throw new Error('Overview condition timed out');
 }
+// Overview and session tests never verify.
+const noEvidence: Evidence = {
+  verify: () => Promise.reject(new Error('Not used')),
+  assess: () => null,
+};
 function fakeExecution() {
   const runs: RunSnapshot[] = [];
   const launched: string[] = [];
@@ -104,6 +110,7 @@ test("overview puts Runs that ask something of the person first, keeps launch or
   const workspaces = createProjectWorkspaces({
     execution: fake.execution,
     attention,
+    evidence: noEvidence,
   });
   const names = new Map<string, string>();
   const project = (name: string) => {
@@ -187,6 +194,7 @@ test('startSession starts nothing for an unknown project or a launch without a s
   const workspaces = createProjectWorkspaces({
     execution: fake.execution,
     attention,
+    evidence: noEvidence,
   });
   await assert.rejects(
     workspaces.startSession({ provider: 'fixture' }),

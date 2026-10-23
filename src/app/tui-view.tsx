@@ -21,7 +21,7 @@ import type {
 } from '../work/index.js';
 import type { WorkbenchState } from './workbench-protocol.js';
 import { terminalText } from './tui-input.js';
-import { readableEvents, timelineEntries } from './tui-timeline.js';
+import { checkEnded, readableEvents, timelineEntries } from './tui-timeline.js';
 import type { TimelineEntry } from './tui-timeline.js';
 import { stageLabels, trackedWork } from './workbench-work.js';
 import { ProjectPanel } from './tui-project.js';
@@ -228,9 +228,16 @@ function eventSummary(event: RunEvent): string {
       return event.message;
     case 'capabilities':
       return `ACP · ${event.capabilities.agent} ${event.capabilities.version}`;
+    case 'check.start':
+      return `Checks started · ${event.command} · ${event.candidate.slice(0, 7)}`;
+    case 'check.end': {
+      const ended = checkEnded(event);
+      return `${ended.label} · ${ended.detail.replace(' · 1 Live', '')}`;
+    }
   }
 }
 function eventColor(event: RunEvent): string | undefined {
+  if (event.type === 'check.end') return checkEnded(event).color;
   return event.type === 'attention'
     ? 'yellow'
     : event.type === 'diagnostic' ||
@@ -332,9 +339,17 @@ function detailLines(
         event.type === 'turn.start' ||
         event.type === 'tool' ||
         event.type === 'diagnostic' ||
-        event.type === 'turn.end'
+        event.type === 'turn.end' ||
+        event.type === 'check.start'
       )
         append(eventSummary(event), eventColor(event));
+      else if (event.type === 'check.end') {
+        // The check's own output, as the shell printed it.
+        if (event.truncated) append('(earlier output dropped)', 'gray');
+        for (const line of event.output.replace(/\n+$/, '').split('\n'))
+          append(line);
+        append(eventSummary(event), eventColor(event));
+      }
     }
   } else {
     for (const entry of timelineEntries(ownEvents, attention)) {
@@ -873,6 +888,9 @@ export function WorkbenchScreen(props: ScreenProps) {
                 ? 'x close/recheck · :commit message saves all changes'
                 : 'Local code copies are retained · p paths'
               : 'p environment paths · x cancel Run',
+            selected?.worktree && state.features?.verify
+              ? 'v verify on a clean copy · :check <command> sets it'
+              : '',
           ]),
     );
   else if (props.help)
@@ -888,6 +906,8 @@ export function WorkbenchScreen(props: ScreenProps) {
       ':spec requirements · :confirm · :stage development',
       'Stopped worktree: c / :commit message saves all changes',
       'm / :map open the Run’s Change map in the browser',
+      'v verify: freeze the Run’s code, run the project check on a clean copy',
+      ':check <command> sets the check · :check shows it',
     );
   // Bound every optional region to leave a readable timeline at the minimum size.
   const extras = disclosures.filter(Boolean).slice(0, extraCapacity);

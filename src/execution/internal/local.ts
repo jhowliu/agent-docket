@@ -76,7 +76,9 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
       );
   }
 }
-async function stopGroup(child: ChildProcessWithoutNullStreams): Promise<void> {
+export async function stopGroup(
+  child: ChildProcessWithoutNullStreams,
+): Promise<void> {
   const pid = child.pid;
   if (pid === undefined) return;
   // A parent exit does not establish that its background descendants are gone.

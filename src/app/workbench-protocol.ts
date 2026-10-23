@@ -13,6 +13,8 @@ import {
   workSnapshotSchema,
   projectWorkSchema,
   projectOverviewSchema,
+  projectCheckSchema,
+  runVerificationSchema,
 } from '../work/index.js';
 
 const runId = runIdSchema;
@@ -131,6 +133,15 @@ export const commandSchema = z.discriminatedUnion('kind', [
     .strict(),
   // Marks an agent request done; nothing is sent to the agent.
   z.object({ kind: z.literal('complete-request'), id: attentionId }).strict(),
+  // Freezes the Run's code and runs its project's check on it.
+  z.object({ kind: z.literal('verify'), runId }).strict(),
+  z
+    .object({
+      kind: z.literal('set-check'),
+      projectId: projectWorkSchema.shape.id,
+      command: projectCheckSchema.shape.command,
+    })
+    .strict(),
   z.object({ kind: z.literal('shutdown') }).strict(),
   ...workCommandSchema.options,
 ]);
@@ -149,6 +160,8 @@ export const stateSchema = z.object({
   projects: z.array(projectWorkSchema).max(65).optional(),
   // Older daemons omit it; the TUI then lists Runs in launch order.
   overview: z.array(projectOverviewSchema).max(65).optional(),
+  checks: z.array(projectCheckSchema).max(65).optional(),
+  verifications: z.array(runVerificationSchema).max(64).optional(),
   defaultProjectId: projectWorkSchema.shape.id.optional(),
   sessionOptions: sessionOptionsSchema.optional(),
   features: z
@@ -158,6 +171,7 @@ export const stateSchema = z.object({
       folderCompletion: z.boolean().optional(),
       projectInitialization: z.boolean().optional(),
       changeMap: z.boolean().optional(),
+      verify: z.boolean().optional(),
     })
     .optional(),
   launch: z

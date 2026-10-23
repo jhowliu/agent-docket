@@ -92,6 +92,14 @@ _Avoid_: 將所有 agent 的服務合併成專案唯一一組
 一個可重建、可審查、可驗證的程式碼候選版本；版本改變後，證據與交付必須重新判斷適用性。
 _Avoid_: 用持續變動的工作目錄代稱 Candidate
 
+**Check**：
+專案層級、由使用者設定的一行 shell 指令，在 Candidate 的乾淨 checkout 上執行；以 exit code 判定結果，agent 不能設定或執行。
+_Avoid_: 把 agent 自己跑過的測試或口頭回報當成 Check
+
+**Verification**：
+某個 Check 針對某個 Candidate（及當時追蹤的 Task spec revision）的一次執行與其判定；程式碼或規格改變後變成過期，不代表 Task 完成或審查通過。
+_Avoid_: 把在持續變動的工作目錄上跑過的檢查稱為 Verification
+
 **Attention item**：
 需要使用者核准、回答或做決策的具體事項，帶有等待原因及所屬工作；失效或已處理的事項不再屬於待處理清單。
 _Avoid_: 把所有 pending 工具或未讀完成通知都稱為等待核准

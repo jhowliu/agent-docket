@@ -23,7 +23,8 @@ import type { Execution, Launch, LocalWorker } from '../execution/index.js';
 import { describeChange } from '../delivery/index.js';
 import type { ChangeMap } from '../delivery/index.js';
 import { launchFingerprint } from './launch-config.js';
-import { createProjectWorkspaces } from '../work/index.js';
+import { CheckRequired, createProjectWorkspaces } from '../work/index.js';
+import { createEvidence } from '../evidence/index.js';
 import { resolve } from 'node:path';
 
 const assets: Readonly<Record<string, { file: string; type: string }>> = {
@@ -113,6 +114,7 @@ export function createWebWorkbench(
   const work = createProjectWorkspaces({
     execution,
     attention,
+    evidence: createEvidence({ execution }),
     ...(options.planDirectory ? { directory: options.planDirectory } : {}),
   });
   const defaultProjectId = work.register(
@@ -205,6 +207,8 @@ export function createWebWorkbench(
         work: projects.find((project) => project.id === defaultProjectId)?.work,
         projects,
         overview: work.overview(),
+        checks: work.checks(),
+        verifications: work.verifications(),
         defaultProjectId,
         sessionOptions,
         features: {
@@ -213,6 +217,7 @@ export function createWebWorkbench(
           folderCompletion: true,
           projectInitialization: true,
           changeMap: true,
+          verify: true,
         },
         launch: {
           provider: launch.provider,
@@ -478,6 +483,26 @@ export function createWebWorkbench(
           } finally {
             launchPending = false;
           }
+        }
+        if (command.kind === 'set-check') {
+          await work.setCheck(command.projectId, command.command);
+          return json({ result: 'accepted' }, 202);
+        }
+        if (command.kind === 'verify') {
+          try {
+            await work.verify(command.runId);
+          } catch (error) {
+            if (error instanceof CheckRequired)
+              return json(
+                {
+                  error: error.message,
+                  ...(error.suggestion ? { suggestion: error.suggestion } : {}),
+                },
+                409,
+              );
+            throw error;
+          }
+          return json({ result: 'accepted' }, 202);
         }
         if (command.kind === 'complete-request') {
           const item = attention
