@@ -100,6 +100,10 @@ _Avoid_: 把 agent 自己跑過的測試或口頭回報當成 Check
 某個 Check 針對某個 Candidate（及當時追蹤的 Task spec revision）的一次執行與其判定；程式碼或規格改變後變成過期，不代表 Task 完成或審查通過。
 _Avoid_: 把在持續變動的工作目錄上跑過的檢查稱為 Verification
 
+**Unread**：
+某個 TUI 尚未顯示過的 Run 回合結果；只屬於該 TUI 程序，選到該 Run 即視為已讀。
+_Avoid_: 把 Unread 當成 Run 結束、Task 完成或審查通過
+
 **Attention item**：
 需要使用者核准、回答或做決策的具體事項，帶有等待原因及所屬工作；失效或已處理的事項不再屬於待處理清單。
 _Avoid_: 把所有 pending 工具或未讀完成通知都稱為等待核准

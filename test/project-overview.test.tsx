@@ -361,13 +361,17 @@ test('Ink groups Runs by project, puts the project waiting on an approval first 
   assert.doesNotMatch(output, /next: /);
   const rows = output.split('\n');
   const row = (text: string) => rows.findIndex((line) => line.includes(text));
-  assert.ok(row('│ alpha') >= 0 && row('│ beta') > row('│ alpha'), output);
-  assert.equal(row('> Run 1'), row('│ alpha') + 1, output);
-  assert.equal(row('Run 2 ·'), row('│ beta') + 1, output);
+  // Each header leads with its most urgent Run's icon; both are idle here.
+  assert.ok(
+    row('│ - alpha') >= 0 && row('│ - beta') > row('│ - alpha'),
+    output,
+  );
+  assert.equal(row('> Run 1'), row('│ - alpha') + 1, output);
+  assert.equal(row('Run 2 ·'), row('│ - beta') + 1, output);
   // Without projects either, the roster stays a flat launch-order list.
   const { projects, ...oldest } = older;
   assert.ok(projects);
   output = screen(oldest satisfies WorkbenchState);
-  assert.doesNotMatch(output, /│ alpha|│ beta/);
+  assert.doesNotMatch(output, /│ - alpha|│ - beta/);
   assert.ok(output.indexOf('> Run 1') < output.indexOf('Run 2 ·'), output);
 });

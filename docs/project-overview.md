@@ -3,13 +3,15 @@
 2026-10-23. The user's main pains are losing track of progress across projects and not knowing what to do next. The TUI agents roster now groups Runs by project. Each group opens with one line naming the project, its next action and its active Roadmap Phase:
 
 ```
-ptt-web · next: approve Run 4 · Phase 1/1 Session tokens
-  Run 4 · ptt-web                          Awaiting approval (1)
-  Run 2 · Refresh expiry                                    Idle
-web-shop · next: prompt Run 1
-> Run 1 · web-shop                                          Idle
-all-in-one · Run 3 · Located the theme configuration and its entry point…
+! ptt-web · next: approve Run 4 · Phase 1/1 Session tokens
+!   Run 4 · ptt-web                          Awaiting approval (1)
+-   Run 2 · Refresh expiry                                    Idle
+- web-shop · next: prompt Run 1
+- > Run 1 · web-shop                                          Idle
+~ all-in-one · Run 3 · Located the theme configuration and its entry point…
 ```
+
+The leading icons and `Unread` came later; see [background notices](background-notices.md).
 
 ## Behavior
 

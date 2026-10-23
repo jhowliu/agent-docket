@@ -21,7 +21,7 @@
 | `a` / `r`                           | 回答畫面聚焦的核准：允許一次／拒絕一次                                                               |
 | `y`                                 | 將選取的 agent request（Needs you）標為完成；不會通知 agent，需要時用 `i` 回覆                       |
 | `Tab` / `Shift+Tab`                 | 選定同 Run 的下一筆／上一筆待處理核准                                                                |
-| `w` / `d`                           | 跳到等待核准的 Run／展開核准細節與選項                                                               |
+| `w` / `d`                           | 依序跳到等待你的 Run，再到有未讀回合的 Run（[背景通知](background-notices.md)）／展開核准細節與選項  |
 | `PgUp/PgDn`、`g/G`                  | 詳情捲動、頂端／末端；離開末端後暫停追蹤                                                             |
 | `x`                                 | 停止 Run 並檢查 worktree；乾淨則回收，有修改則提醒 commit；停止後可再次檢查                          |
 | `c` / `:commit <message>`           | 停止的 worktree：輸入訊息後 commit 全部非 ignored 修改至本機分支，再回收工作目錄                     |

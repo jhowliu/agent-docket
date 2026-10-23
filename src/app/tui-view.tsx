@@ -2,6 +2,7 @@ import { basename } from 'node:path';
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { Backdrop, Box, Text } from './tui-text.js';
+import stringWidth from 'string-width';
 import wrapAnsi from 'wrap-ansi';
 import type { AttentionItem } from '../attention/index.js';
 import type { ChangeMap } from '../delivery/index.js';
@@ -36,6 +37,7 @@ export type Line = {
   timeline?: { time: string; entry: TimelineEntry };
 };
 const views: readonly View[] = ['live', 'diff', 'timeline'];
+const NO_UNREAD: ReadonlySet<RunId> = new Set();
 const tone = (color: string | undefined) => (color ? { color } : {});
 const workflowLabels = {
   clarification: 'Requirement clarification',
@@ -63,6 +65,62 @@ const ended = new Set<RunState['kind']>([
 export const workspaceNeedsAction = (run: RunSnapshot | undefined) =>
   run?.worktree?.status.kind === 'commit-required' ||
   run?.worktree?.status.kind === 'retained';
+type RunStatus = Readonly<{
+  label: string;
+  /** One ASCII column of a different shape per state; the label stays readable. */
+  icon: string;
+  color: string | undefined;
+  /** Lower is more urgent; a project header shows its most urgent Run's icon. */
+  rank: number;
+}>;
+/** A roster row's state; unread is this client's view of a finished turn. */
+function runStatus(
+  run: RunSnapshot,
+  pending: readonly AttentionItem[],
+  unread: boolean,
+): RunStatus {
+  const own = pending.filter((item) => item.runId === run.id);
+  // Approvals block the agent; agent requests only wait on the person.
+  if (own.length)
+    return {
+      label: own.some((item) => item.kind === 'permission')
+        ? `Awaiting approval (${own.length})`
+        : `Needs you (${own.length})`,
+      icon: '!',
+      color: 'yellow',
+      rank: 0,
+    };
+  if (workspaceNeedsAction(run))
+    return {
+      label:
+        run.worktree?.status.kind === 'commit-required'
+          ? 'Commit required'
+          : 'Worktree retained',
+      icon: '!',
+      color: 'yellow',
+      rank: 0,
+    };
+  const label = states[run.state.kind];
+  switch (run.state.kind) {
+    case 'authentication-required':
+      return { label, icon: '!', color: 'yellow', rank: 0 };
+    case 'failed':
+    case 'interrupted':
+      return { label, icon: 'x', color: 'red', rank: 1 };
+    case 'idle':
+      return unread
+        ? { label: 'Unread', icon: '*', color: 'magenta', rank: 2 }
+        : { label, icon: '-', color: 'gray', rank: 4 };
+    case 'starting':
+    case 'running':
+      return { label, icon: '~', color: 'blue', rank: 3 };
+    case 'cancelling':
+      return { label, icon: '~', color: undefined, rank: 3 };
+    case 'cancelled':
+    case 'closed':
+      return { label, icon: ' ', color: undefined, rank: 5 };
+  }
+}
 const shownBy =
   (state: WorkbenchState, filter: Filter) => (run: RunSnapshot) =>
     filter === 'inbox'
@@ -421,6 +479,10 @@ export type ScreenProps = {
   input?: ReactNode;
   /** The selected Run's worktree diff for the Diff tab; reported edits when absent. */
   worktreeDiff?: WorktreeDiff;
+  /** Runs with a finished turn this TUI has not shown yet. */
+  unread?: ReadonlySet<RunId>;
+  /** A background Run's latest change, shown beside the roster title. */
+  notice?: Readonly<{ text: string; color: string }> | undefined;
 };
 
 /** Keep the composer and the terminal viewport on the same column boundary. */
@@ -708,6 +770,7 @@ export function WorkbenchScreen(props: ScreenProps) {
     'trusted-fixture-directory';
   const fixture = provider === 'fixture';
   const pending = state.attention.filter((item) => item.status === 'pending');
+  const unread = props.unread ?? NO_UNREAD;
   const ownPending = pending.filter((item) => item.runId === selectedId);
   const tracked = trackedWork(state, selectedId);
   const plan = state.work?.kind === 'ready' ? state.work.plan : null;
@@ -897,7 +960,7 @@ export function WorkbenchScreen(props: ScreenProps) {
     disclosures.push(
       'Ctrl+W h/l focus Project/workspace · p browse',
       'Project: j/k move · h/l folders · g/G first/last',
-      'j/k agent · w waiting · Tab request · a/r allow/deny',
+      'j/k agent · w waiting/unread · Tab request · a/r allow/deny',
       'h/l or 1–3 views · PgUp/PgDn scroll · g/G top/end',
       'n new · i reply · Esc keep draft · p paths · s actions',
       ': command · q / Ctrl+C detach; Runs keep running',
@@ -937,6 +1000,20 @@ export function WorkbenchScreen(props: ScreenProps) {
           ? 'i to prompt · s for fixture scenarios'
           : 'i to prompt when idle · s actions'
     : 'n new Run';
+  const counts = ` · ${filter} · ${runs.length} runs${workspaceFocused ? ' · focus' : ''}${
+    rosterLines.length > rosterRows
+      ? ` · ${selectedIndex + 1}/${runs.length}`
+      : ''
+  }`;
+  const noticeWidth = props.notice
+    ? Math.min(stringWidth(props.notice.text), mainWidth - 'agents'.length - 1)
+    : 0;
+  // Counts give way whole rather than truncating the title next to a notice.
+  const rosterCounts =
+    !props.notice ||
+    'agents'.length + counts.length + 1 + noticeWidth <= mainWidth
+      ? counts
+      : '';
   const connection = !connected
     ? 'Disconnected · reconnecting'
     : busy
@@ -987,18 +1064,23 @@ export function WorkbenchScreen(props: ScreenProps) {
             </Box>
           )}
           <Box width={mainWidth} flexDirection="column" flexShrink={0}>
-            <Box height={1} flexShrink={0}>
-              <Text {...tone(workspaceFocused ? 'cyan' : undefined)}>
-                agents
-              </Text>
-              <Text dimColor>
-                {' '}
-                · {filter} · {runs.length} runs
-                {workspaceFocused ? ' · focus' : ''}
-                {rosterLines.length > rosterRows
-                  ? ` · ${selectedIndex + 1}/${runs.length}`
-                  : ''}
-              </Text>
+            <Box height={1} flexShrink={0} columnGap={1}>
+              <Box flexGrow={1} flexBasis={0} minWidth={0}>
+                <Text wrap="truncate-end">
+                  <Text {...tone(workspaceFocused ? 'cyan' : undefined)}>
+                    agents
+                  </Text>
+                  <Text dimColor>{rosterCounts}</Text>
+                </Text>
+              </Box>
+              {/* A background notice outranks the roster's counts while it shows. */}
+              {props.notice && (
+                <Box width={noticeWidth} flexShrink={0}>
+                  <Text color={props.notice.color} wrap="truncate-end">
+                    {props.notice.text}
+                  </Text>
+                </Box>
+              )}
             </Box>
             <Box
               borderStyle="single"
@@ -1015,6 +1097,14 @@ export function WorkbenchScreen(props: ScreenProps) {
                   const run = line.run;
                   if (!run) {
                     const header = groupHeader(state, line.group);
+                    // Groups always hold a visible Run; the header shows the most urgent.
+                    const rollup = line.group.runs
+                      .map((item) =>
+                        runStatus(item, pending, unread.has(item.id)),
+                      )
+                      .reduce<
+                        RunStatus | undefined
+                      >((most, item) => (most && most.rank <= item.rank ? most : item), undefined);
                     return (
                       <Box
                         key={`project-${line.group.project?.id ?? 'other'}`}
@@ -1022,6 +1112,9 @@ export function WorkbenchScreen(props: ScreenProps) {
                         flexShrink={0}
                       >
                         <Text wrap="truncate-end">
+                          <Text {...tone(rollup?.color)}>
+                            {rollup?.icon ?? ' '}{' '}
+                          </Text>
                           <Text bold>{header.name}</Text>
                           <Text
                             {...tone(header.urgent ? 'yellow' : undefined)}
@@ -1034,21 +1127,13 @@ export function WorkbenchScreen(props: ScreenProps) {
                       </Box>
                     );
                   }
-                  const own = pending.filter((item) => item.runId === run.id);
-                  const count = own.length;
                   const active = run.id === selectedId;
-                  // Approvals block the agent; agent requests only wait on the person.
-                  const status = count
-                    ? own.some((item) => item.kind === 'permission')
-                      ? `Awaiting approval (${count})`
-                      : `Needs you (${count})`
-                    : workspaceNeedsAction(run)
-                      ? run.worktree?.status.kind === 'commit-required'
-                        ? 'Commit required'
-                        : 'Worktree retained'
-                      : states[run.state.kind];
+                  const status = runStatus(run, pending, unread.has(run.id));
                   return (
                     <Box key={run.id} height={1} flexShrink={0} columnGap={1}>
+                      <Box width={1} flexShrink={0}>
+                        <Text {...tone(status.color)}>{status.icon}</Text>
+                      </Box>
                       <Box flexGrow={1} flexBasis={0} minWidth={0}>
                         <Text
                           {...tone(active ? 'cyan' : undefined)}
@@ -1064,28 +1149,9 @@ export function WorkbenchScreen(props: ScreenProps) {
                           )}
                         </Text>
                       </Box>
-                      <Box width={status.length} flexShrink={0}>
-                        <Text
-                          {...tone(
-                            count || workspaceNeedsAction(run)
-                              ? 'yellow'
-                              : ['failed', 'interrupted'].includes(
-                                    run.state.kind,
-                                  )
-                                ? 'red'
-                                : run.state.kind === 'authentication-required'
-                                  ? 'yellow'
-                                  : ['starting', 'running'].includes(
-                                        run.state.kind,
-                                      )
-                                    ? 'blue'
-                                    : run.state.kind === 'idle'
-                                      ? 'gray'
-                                      : undefined,
-                          )}
-                          wrap="truncate-end"
-                        >
-                          {status}
+                      <Box width={status.label.length} flexShrink={0}>
+                        <Text {...tone(status.color)} wrap="truncate-end">
+                          {status.label}
                         </Text>
                       </Box>
                     </Box>

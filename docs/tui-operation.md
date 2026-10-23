@@ -23,7 +23,7 @@ npm run daemon
 npm run daemon:stop
 ```
 
-`--connect` 禁止自動啟動；`daemon` 是前景服務，與 `ui` 同一入口；`daemon:stop` 明確停止該 port 的背景服務，取消／清理它管理的所有 Run。`WORKBENCH_PORT=4180` 可套用到上述任一命令。若連接先前啟動的舊 M0 server，shutdown 可能未提供；使用原服務的 Ctrl+C，不能以 TUI 相容性推定其支援新生命週期命令。
+`--connect` 禁止自動啟動；`daemon` 是前景服務，與 `ui` 同一入口；`daemon:stop` 明確停止該 port 的背景服務，取消／清理它管理的所有 Run。`WORKBENCH_PORT=4180` 可套用到上述任一命令；`WORKBENCH_NOTIFY=bell|osc9` 讓背景 Run 需要你或回合結束時另外響鈴／送終端機通知（[背景通知](background-notices.md)）。若連接先前啟動的舊 M0 server，shutdown 可能未提供；使用原服務的 Ctrl+C，不能以 TUI 相容性推定其支援新生命週期命令。
 
 Choose a port supported by HTTP Fetch, such as 4177, 4180 or 4182, and available on your machine. Ports in the [Fetch Standard's blocked list](https://fetch.spec.whatwg.org/#port-blocking), including 4190 and 6000, are rejected before connection or daemon startup. Previously, 4190 could start a server that the TUI could never reach; retrying then produced `EADDRINUSE`. Changing ports leaves the existing server and its Runs intact.
 

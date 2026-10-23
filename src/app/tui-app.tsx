@@ -24,6 +24,14 @@ import {
 import { useProjectTree } from './tui-project.js';
 import { useWorktreeDiff } from './tui-diff.js';
 import { NewSession } from './tui-session.js';
+import {
+  noticeText,
+  notices,
+  stillNews,
+  turnEnds,
+  unreadRuns,
+} from './tui-notices.js';
+import type { Notice } from './tui-notices.js';
 
 type Mode =
   | { kind: 'normal' }
@@ -39,6 +47,8 @@ const message = (error: unknown) =>
   );
 
 const NOTE_MS = 8000;
+// Changes handled within this delay, often by another client, are not announced.
+const NOTICE_DELAY_MS = 1000;
 const AGENT_NAMES = { codex: 'Codex', claude: 'Claude', fixture: 'The agent' };
 /** What the selected Run is doing and the keys that matter now. */
 function stateHint(
@@ -123,12 +133,15 @@ export function WorkbenchApp({
   pollInterval = 400,
   projectPath = process.cwd(),
   openUrl = openInBrowser,
+  notify,
 }: {
   client: WorkbenchClient;
   initial: WorkbenchState;
   pollInterval?: number;
   projectPath?: string;
   openUrl?: (url: string) => void;
+  /** Also announces background notices outside the TUI, such as a terminal bell. */
+  notify?: ((text: string) => void) | undefined;
 }) {
   const { exit } = useApp();
   const { columns, rows } = useWindowSize();
@@ -180,10 +193,43 @@ export function WorkbenchApp({
     );
   // Turns that ended before this TUI saw them are not announced again.
   const announcedTurn = useRef(lastTurnEnd(initial));
+  // Unread is per client: turns that ended before it connected count as seen.
+  const seenFloor = useRef(lastTurnEnd(initial));
+  const [seen, setSeen] = useState<Readonly<Record<string, number>>>({});
+  const latest = useRef(initial);
+  const queued = useRef<{ notice: Notice; due: number }[]>([]);
+  const [toast, setToast] = useState<{
+    runId: RunId;
+    text: string;
+    color: string;
+    at: number;
+  } | null>(null);
   const runs = visibleRuns(snapshot, filter);
   const selected = runs.find((run) => run.id === selectedId) ?? runs[0];
   const selectedRef = useRef<RunId | null>(null);
   selectedRef.current = selected?.id ?? null;
+  const unread = unreadRuns(
+    snapshot,
+    seen,
+    seenFloor.current,
+    selected?.id ?? null,
+  );
+  // The selected Run's turns are on screen, so they count as seen.
+  const selectedTurn = selected
+    ? (turnEnds(snapshot).get(selected.id) ?? 0)
+    : 0;
+  useEffect(() => {
+    if (selected && selectedTurn > (seen[selected.id] ?? 0))
+      setSeen((current) => ({ ...current, [selected.id]: selectedTurn }));
+  }, [selected?.id, selectedTurn]);
+  // A notice is done once its Run has been shown.
+  useEffect(() => {
+    if (toast && toast.runId === selected?.id) setToast(null);
+  }, [toast, selected?.id]);
+  const notice =
+    toast && toast.runId !== selected?.id && Date.now() - toast.at < NOTE_MS
+      ? toast
+      : undefined;
   const state = stateForRun(snapshot, selected?.id ?? null);
   const sessionOptions = state.sessionOptions;
   const pending = state.attention.filter(
@@ -234,7 +280,21 @@ export function WorkbenchApp({
       setFilter('active');
       setNote('Server restarted; fresh state loaded');
       announcedTurn.current = lastTurnEnd(snapshot);
+      seenFloor.current = lastTurnEnd(snapshot);
+      setSeen({});
+      queued.current = [];
+      setToast(null);
+    } else {
+      const due = Date.now() + NOTICE_DELAY_MS;
+      const news = notices(latest.current, snapshot).filter(
+        (notice) => notice.runId !== selectedRef.current,
+      );
+      if (news.length) {
+        queued.current.push(...news.map((notice) => ({ notice, due })));
+        setTimeout(announce, NOTICE_DELAY_MS);
+      }
     }
+    latest.current = snapshot;
     // When the selected Run finishes a turn in a worktree, point at the Change map.
     const ended = snapshot.events.filter(
       (event) =>
@@ -254,6 +314,23 @@ export function WorkbenchApp({
     setState(snapshot);
     connectedRef.current = true;
     setConnected(true);
+  }
+  /** Shows queued notices that are due and still news; later ones wait their turn. */
+  function announce() {
+    if (!mounted.current) return;
+    const now = Date.now();
+    const shown = queued.current
+      .filter(({ due }) => due <= now)
+      .map(({ notice }) => notice)
+      .filter((notice) =>
+        stillNews(latest.current, notice, selectedRef.current),
+      );
+    queued.current = queued.current.filter(({ due }) => due > now);
+    const text = noticeText(shown);
+    const first = [...shown].sort((a, b) => a.rank - b.rank)[0];
+    if (!first) return;
+    setToast({ runId: first.runId, text, color: first.color, at: now });
+    notify?.(text);
   }
   async function refresh() {
     try {
@@ -679,11 +756,15 @@ export function WorkbenchApp({
           null,
       );
     } else if (input === 'w') {
-      const waiting = runs.filter((run) =>
+      // Runs waiting on the person first, then Runs with an unread turn.
+      const asking = (run: RunSnapshot) =>
         state.attention.some(
           (item) => item.status === 'pending' && item.runId === run.id,
-        ),
-      );
+        );
+      const waiting = [
+        ...runs.filter(asking),
+        ...runs.filter((run) => !asking(run) && unread.has(run.id)),
+      ];
       select(
         waiting[
           (waiting.findIndex((run) => run.id === selected?.id) + 1) %
@@ -879,6 +960,8 @@ export function WorkbenchApp({
         state={state}
         selectedId={selected?.id ?? null}
         worktreeDiff={worktreeDiff}
+        unread={unread}
+        notice={notice}
         filter={filter}
         view={view}
         offset={offset}
