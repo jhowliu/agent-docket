@@ -20,6 +20,8 @@
 
 - 2026-10-23 user approved a project-grouped TUI roster. `work.ProjectWorkspaces.overview()` owns Next action ranking from current Run/attention state: Runs that ask something of the person (approve, respond, sign-in, commit, worktree) rise in that order, others keep launch order so turns do not reshuffle the list; each project names its most urgent Run. `startSession` owns inspect → register → launch → associate; app keeps presets and Run bounds. TUI only renders the overview, older daemons keep the flat list, browser unchanged. Next actions are guidance, never review or completion. See `docs/project-overview.md`.
 
+- 2026-10-23 TUI layout: at 80+ columns Project/Workflow sit in the left column (`Ctrl+W h` focuses Project, `l` the workspace). New Session is a centered modal in front of the dimmed workspace (`tui-text.tsx` `Backdrop`); reply and `:` input stay at the bottom.
+
 - 2026-10-21 real local Codex acceptance passed one copied file-login workflow: project reading/progress, sample edits/Diff/tests, once-only allow/reject and cancellation of an observed active process. `npm run qa:codex -- --launch <local-config>` deliberately uses disposable sample source and real model access; ordinary `npm test` stays deterministic. Local Git discovery stops at the Run directory. Other authentication flows, physical-terminal acceptance, Claude and OS isolation remain unverified. See `docs/codex-live-acceptance.md`.
 
 - 2026-10-20 已有 `work` 的可選 Roadmap 追蹤切片：保存專案計畫與需求版本，Run 關聯只留在目前程序；TUI／Web 保留原工作區並按需顯示小型 Stepper／Roadmap。工作位置不是審核通過，獨立 Review／checks、Candidate-bound 驗收及 agent 提案 tool 仍待實作。詳見 `docs/roadmap-operation.md`。

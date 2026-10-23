@@ -716,13 +716,13 @@ test('folder columns follow terminal width, arrows and Tab keep selection visibl
     if (selected.includes('11-linked') || selected.includes('10-kappa'))
       assert.ok(plain().includes('10–11/11'));
   }
-  for (const [columns, rows] of [
-    [80, 24],
-    [60, 20],
-  ]) {
-    assert.ok(columns && rows);
+  // The modal is wider than the old inline form: three columns fit at 80.
+  for (const [columns, rows, page] of [
+    [80, 24, '1–9/11'],
+    [60, 20, '1–6/11'],
+  ] as const) {
     resize(columns, rows);
-    await frame('1–6/11');
+    await frame(page);
     await new Promise((done) => setTimeout(done, 30));
     assert.match(plain(), /> 03-a-very-long-.*…\//);
     assert.ok(plain().split('\n').length <= rows);
@@ -795,4 +795,106 @@ test('New Session on an older daemon keeps manual paths and never requests unsup
   await frame('Enter create');
   assert.equal(folderRequests, 0);
   assert.equal((await client.poll()).runs.length, 0);
+});
+
+test('New Session is a centered modal over the workspace, sized by its branches, and creates from a shortened Run branch by its full name', async (t) => {
+  const data = await setup();
+  const runBranch = 'workbench/run-ce39dd78-321c-4bff-b0c6-35a76c23b7d7';
+  for (const name of [runBranch, ...[1, 2, 3, 4, 5].map((n) => `feature-${n}`)])
+    git(data.a, 'branch', name);
+  const app = createWebWorkbench(origin, data);
+  const client = createWorkbenchClient(origin, (request) => app.fetch(request));
+  const ui = render(
+    <WorkbenchApp
+      client={client}
+      initial={await client.connect()}
+      projectPath={data.a}
+      pollInterval={20}
+    />,
+  );
+  t.after(async () => {
+    ui.unmount();
+    ui.cleanup();
+    await app.close();
+    await rm(data.directory, { recursive: true, force: true });
+  });
+  const plain = () => stripVTControlCharacters(ui.lastFrame() ?? '');
+  const frame = (text: string, present = true) =>
+    until(() => plain().includes(text) === present).catch(() => {
+      throw new Error(`Expected ${present ? '' : 'no '}${text}\n${plain()}`);
+    });
+  function resize(columns: number, rows: number) {
+    Object.defineProperty(ui.stdout, 'columns', {
+      configurable: true,
+      value: columns,
+    });
+    Object.defineProperty(ui.stdout, 'rows', {
+      configurable: true,
+      value: rows,
+    });
+    ui.stdout.emit('resize');
+  }
+  /** Rows of the modal frame and branch entries within it. */
+  const modal = () => {
+    const rows = plain().split('\n');
+    const top = rows.findIndex((row) => row.includes('╭'));
+    const bottom = rows.findIndex((row) => row.includes('╰'));
+    const inside = rows.slice(top + 1, bottom);
+    return {
+      rows,
+      top,
+      height: bottom - top + 1,
+      branches: inside.filter((row) =>
+        /(main|feature-\d|saved-phase|run-ce39dd78…) · [0-9a-f]{7}/.test(row),
+      ).length,
+    };
+  };
+  resize(80, 24);
+  await frame('1 Live');
+  ui.stdin.write('n');
+  await frame('New Session');
+  // The workspace stays behind the modal; the title sits right under its frame.
+  const opened = modal();
+  assert.ok(plain().includes('1 Live'), plain());
+  assert.ok(opened.rows[opened.top + 1]?.includes('New Session'), plain());
+  ui.stdin.write('\r');
+  await frame('Enter create');
+  await until(() => modal().branches === 8);
+  assert.ok(plain().includes('workbench/run-ce39dd78… · '), plain());
+  assert.ok(!plain().includes(runBranch), plain());
+  for (const [columns, height] of [
+    [60, 20],
+    [120, 36],
+  ] as const) {
+    resize(columns, height);
+    // Wait for the resized frame, not the previous one.
+    await until(
+      () =>
+        modal().branches === 8 &&
+        modal().rows.length === height &&
+        modal().rows.every((row) => stringWidth(row) <= columns),
+    ).catch(() => {
+      throw new Error(
+        `Expected 8 branches at ${columns}×${height}\n${plain()}`,
+      );
+    });
+    const { rows, top, height: tall } = modal();
+    assert.ok(rows.length <= height, plain());
+    for (const row of rows) assert.ok(stringWidth(row) <= columns, row);
+    // Centered: the space above and below the frame differs by at most one row.
+    assert.ok(Math.abs(top - (height - top - tall)) <= 1, plain());
+  }
+  const before = modal().height;
+  ui.stdin.write('run-ce39');
+  await frame('> workbench/run-ce39dd78… · ');
+  // Filtering does not resize the modal.
+  assert.equal(modal().height, before, plain());
+  ui.stdin.write('\r');
+  await frame('New Session', false);
+  await until(async () => (await client.poll()).runs[0]?.state.kind === 'idle');
+  const [run] = (await client.poll()).runs;
+  assert.equal(
+    run?.worktree?.baseRevision,
+    git(data.a, 'rev-parse', runBranch),
+  );
 });

@@ -246,10 +246,10 @@ test('Timeline wraps the full brief report at 60/80/120 columns while ordinary c
       />,
       { columns },
     );
-    // Read down the main column; Project entries occupy the adjacent column.
+    // Read down the main column; Project entries occupy the left column.
     const main = output
       .split('\n')
-      .map((line) => line.slice(0, workbenchMainWidth(columns)))
+      .map((line) => line.slice(columns - workbenchMainWidth(columns)))
       .join('\n');
     const reading = main.replace(/[│\s]/gu, '');
     assert.ok(reading.includes(summary.replace(/\s/gu, '')), output);

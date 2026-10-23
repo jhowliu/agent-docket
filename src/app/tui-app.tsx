@@ -162,6 +162,7 @@ export function WorkbenchApp({
   const selectedRef = useRef<RunId | null>(null);
   selectedRef.current = selected?.id ?? null;
   const state = stateForRun(snapshot, selected?.id ?? null);
+  const sessionOptions = state.sessionOptions;
   const pending = state.attention.filter(
     (item) => item.status === 'pending' && item.runId === selected?.id,
   );
@@ -545,7 +546,7 @@ export function WorkbenchApp({
       if (windowCommand.current) {
         heldAction.current = null;
         setReceipt(null);
-        setNote('Focus · h workspace · l Project · w switch · Esc cancel');
+        setNote('Focus · h Project · l workspace · w switch · Esc cancel');
       }
       return;
     }
@@ -557,8 +558,9 @@ export function WorkbenchApp({
     if (input.length > 1) return;
     if (windowCommand.current) {
       windowCommand.current = false;
-      if (input === 'h' || key.leftArrow) focusPane('workspace');
-      else if (input === 'l' || key.rightArrow) focusPane('project');
+      // Project is the left pane, the workspace the right one.
+      if (input === 'h' || key.leftArrow) focusPane('project');
+      else if (input === 'l' || key.rightArrow) focusPane('workspace');
       else if (input === 'w')
         focusPane(focus === 'project' ? 'workspace' : 'project');
       else setNote('Focus unchanged · Ctrl+W h/l switches panes');
@@ -818,21 +820,24 @@ export function WorkbenchApp({
         outlineOffset={outlineOffset}
         mode={tooSmall ? 'normal' : mode.kind}
         composer={
-          mode.kind === 'new-session' && !tooSmall && state.sessionOptions ? (
-            <NewSession
-              client={client}
-              options={state.sessionOptions}
-              initialPath={projectPath}
-              width={workbenchMainWidth(columns)}
-              enabled={connected && !tooSmall}
-              folderCompletion={state.features?.folderCompletion === true}
-              onCreate={execute}
-              onClose={() => {
-                setMode({ kind: 'normal' });
-                heldAction.current = null;
-              }}
-            />
-          ) : undefined
+          mode.kind === 'new-session' && !tooSmall && sessionOptions
+            ? (size) => (
+                <NewSession
+                  client={client}
+                  options={sessionOptions}
+                  initialPath={projectPath}
+                  width={size.width}
+                  maxHeight={size.maxHeight}
+                  enabled={connected && !tooSmall}
+                  folderCompletion={state.features?.folderCompletion === true}
+                  onCreate={execute}
+                  onClose={() => {
+                    setMode({ kind: 'normal' });
+                    heldAction.current = null;
+                  }}
+                />
+              )
+            : undefined
         }
         columns={columns}
         rows={rows}

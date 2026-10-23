@@ -1,7 +1,7 @@
 import { basename } from 'node:path';
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { Box, Text } from 'ink';
+import { Backdrop, Box, Text } from './tui-text.js';
 import wrapAnsi from 'wrap-ansi';
 import type { AttentionItem } from '../attention/index.js';
 import type { ChangeMap } from '../delivery/index.js';
@@ -397,7 +397,10 @@ export type ScreenProps = {
   outlinePhase?: number;
   outlineOffset?: number;
   mode: 'normal' | 'reply' | 'command' | 'new-session';
-  composer?: ReactNode;
+  /** New Session form, given the most room its modal can offer. */
+  composer?:
+    | ((size: Readonly<{ width: number; maxHeight: number }>) => ReactNode)
+    | undefined;
   columns: number;
   rows: number;
   input?: ReactNode;
@@ -776,8 +779,10 @@ export function WorkbenchScreen(props: ScreenProps) {
       : compactDecision
         ? 2
         : 3 + (request.subject ? 1 : 0);
+  // New Session takes the detail viewport's place instead of adding rows.
+  const form = props.mode === 'new-session' && props.composer !== undefined;
   const inputRows =
-    props.mode === 'normal' ? 0 : props.mode === 'new-session' ? 9 : 2;
+    props.mode === 'normal' || props.mode === 'new-session' ? 0 : 2;
   const projectOpen =
     props.project && !props.outline && !(props.details && request);
   const focus = props.focus ?? (projectOpen ? 'project' : 'workspace');
@@ -872,7 +877,7 @@ export function WorkbenchScreen(props: ScreenProps) {
     );
   else if (props.help)
     disclosures.push(
-      'Ctrl+W h/l focus workspace/Project · p browse',
+      'Ctrl+W h/l focus Project/workspace · p browse',
       'Project: j/k move · h/l folders · g/G first/last',
       'j/k agent · w waiting · Tab request · a/r allow/deny',
       'h/l or 1–3 views · PgUp/PgDn scroll · g/G top/end',
@@ -900,6 +905,9 @@ export function WorkbenchScreen(props: ScreenProps) {
   const offset = Math.min(props.offset, Math.max(0, lines.length - logRows));
   const end = Math.max(0, lines.length - offset);
   const log = lines.slice(Math.max(0, end - logRows), end);
+  // New Session floats centered in front of the dimmed workspace.
+  const modalWidth = Math.min(columns - 6, 96);
+  const modalHeight = Math.min(rows - 4, 16);
   const empty = selected
     ? view === 'diff'
       ? 'No file changes yet'
@@ -916,319 +924,364 @@ export function WorkbenchScreen(props: ScreenProps) {
       : 'Connected';
   return (
     <Box width={columns} height={rows} flexDirection="column" overflow="hidden">
-      <Box height={1} flexShrink={0}>
-        <Text bold>workbench</Text>
-        <Text>
-          {' '}
-          ·{' '}
-          {fixture
-            ? 'FIXTURE / no model'
-            : environment === 'local'
-              ? 'LOCAL / no OS isolation'
-              : 'CONTAINER'}{' '}
-          ·{' '}
-        </Text>
-        <Text color={connected ? 'cyan' : 'yellow'}>{connection}</Text>
-        <Text color="yellow">
-          {pending.length ? ` · ${pending.length} pending` : ''}
-        </Text>
-      </Box>
-      <Box height={rows - 3} flexShrink={0} columnGap={sidebar ? 1 : 0}>
-        <Box width={mainWidth} flexDirection="column" flexShrink={0}>
-          <Box height={1} flexShrink={0}>
-            <Text {...tone(workspaceFocused ? 'cyan' : undefined)}>agents</Text>
-            <Text dimColor>
-              {' '}
-              · {filter} · {runs.length} runs
-              {workspaceFocused ? ' · focus' : ''}
-              {rosterLines.length > rosterRows
-                ? ` · ${selectedIndex + 1}/${runs.length}`
-                : ''}
-            </Text>
-          </Box>
-          <Box
-            borderStyle="single"
-            {...(workspaceFocused ? { borderColor: 'cyan' } : {})}
-            flexDirection="column"
-            height={rosterRows + 2}
-            flexShrink={0}
-            paddingX={1}
-          >
-            {runs.length === 0 ? (
-              <Text dimColor>{empty}</Text>
-            ) : (
-              shownLines.map((line) => {
-                const run = line.run;
-                if (!run) {
-                  const header = groupHeader(state, line.group);
-                  return (
-                    <Box
-                      key={`project-${line.group.project?.id ?? 'other'}`}
-                      height={1}
-                      flexShrink={0}
-                    >
-                      <Text wrap="truncate-end">
-                        <Text bold>{header.name}</Text>
-                        <Text
-                          {...tone(header.urgent ? 'yellow' : undefined)}
-                          dimColor={!header.urgent}
-                        >
-                          {header.next ? ` · ${header.next}` : ''}
-                        </Text>
-                        <Text dimColor>{header.phase}</Text>
-                      </Text>
-                    </Box>
-                  );
-                }
-                const own = pending.filter((item) => item.runId === run.id);
-                const count = own.length;
-                const active = run.id === selectedId;
-                // Approvals block the agent; agent requests only wait on the person.
-                const status = count
-                  ? own.some((item) => item.kind === 'permission')
-                    ? `Awaiting approval (${count})`
-                    : `Needs you (${count})`
-                  : workspaceNeedsAction(run)
-                    ? run.worktree?.status.kind === 'commit-required'
-                      ? 'Commit required'
-                      : 'Worktree retained'
-                    : states[run.state.kind];
-                return (
-                  <Box key={run.id} height={1} flexShrink={0} columnGap={1}>
-                    <Box flexGrow={1} flexBasis={0} minWidth={0}>
-                      <Text
-                        {...tone(active ? 'cyan' : undefined)}
-                        inverse={active && workspaceFocused}
-                        wrap="truncate-end"
-                      >
-                        {active ? '> ' : '  '}Run{' '}
-                        {state.runs.findIndex((item) => item.id === run.id) + 1}{' '}
-                        ·{' '}
-                        {terminalText(
-                          trackedWork(state, run.id)?.task.title ?? run.label,
-                        )}
-                      </Text>
-                    </Box>
-                    <Box width={status.length} flexShrink={0}>
-                      <Text
-                        {...tone(
-                          count || workspaceNeedsAction(run)
-                            ? 'yellow'
-                            : ['failed', 'interrupted'].includes(run.state.kind)
-                              ? 'red'
-                              : run.state.kind === 'authentication-required'
-                                ? 'yellow'
-                                : ['starting', 'running'].includes(
-                                      run.state.kind,
-                                    )
-                                  ? 'blue'
-                                  : run.state.kind === 'idle'
-                                    ? 'gray'
-                                    : undefined,
-                        )}
-                        wrap="truncate-end"
-                      >
-                        {status}
-                      </Text>
-                    </Box>
-                  </Box>
-                );
-              })
-            )}
-          </Box>
-          <Box height={1} flexShrink={0}>
-            <Box flexGrow={1} minWidth={0}>
-              {views.map((name, index) => (
-                <Text
-                  key={name}
-                  {...tone(view === name ? 'cyan' : undefined)}
-                  bold={view === name}
-                >
-                  {' '}
-                  {index + 1}{' '}
-                  {name === 'live'
-                    ? 'Live'
-                    : name === 'diff'
-                      ? 'Diff'
-                      : 'Timeline'}{' '}
-                </Text>
-              ))}
+      <Backdrop.Provider value={form}>
+        <Box height={1} flexShrink={0}>
+          <Text bold>workbench</Text>
+          <Text>
+            {' '}
+            ·{' '}
+            {fixture
+              ? 'FIXTURE / no model'
+              : environment === 'local'
+                ? 'LOCAL / no OS isolation'
+                : 'CONTAINER'}{' '}
+            ·{' '}
+          </Text>
+          <Text color={connected ? 'cyan' : 'yellow'}>{connection}</Text>
+          <Text color="yellow">
+            {pending.length ? ` · ${pending.length} pending` : ''}
+          </Text>
+        </Box>
+        <Box height={rows - 3} flexShrink={0} columnGap={sidebar ? 1 : 0}>
+          {/* Project and Workflow sit on the left, like an editor's file tree. */}
+          {sidebar && (
+            <Box width={sidebarWidth} flexDirection="column" flexShrink={0}>
+              <ProjectPanel
+                tree={props.tree}
+                expanded={projectOpen}
+                focused={projectFocused}
+                width={sidebarWidth}
+                height={projectRows}
+              />
+              {plan && (
+                <WorkflowPanel
+                  plan={plan}
+                  tracked={tracked}
+                  outline={props.outline === true}
+                  phaseIndex={props.outlinePhase ?? 0}
+                  taskOffset={props.outlineOffset ?? 0}
+                  width={sidebarWidth}
+                  maxRows={rows - 3 - projectRows}
+                />
+              )}
+            </Box>
+          )}
+          <Box width={mainWidth} flexDirection="column" flexShrink={0}>
+            <Box height={1} flexShrink={0}>
+              <Text {...tone(workspaceFocused ? 'cyan' : undefined)}>
+                agents
+              </Text>
               <Text dimColor>
-                {offset > 0
-                  ? mainWidth >= 70
-                    ? ' · follow paused'
-                    : ' · paused'
+                {' '}
+                · {filter} · {runs.length} runs
+                {workspaceFocused ? ' · focus' : ''}
+                {rosterLines.length > rosterRows
+                  ? ` · ${selectedIndex + 1}/${runs.length}`
                   : ''}
               </Text>
             </Box>
-            {!sidebar && (
-              <Box columnGap={1} flexShrink={0}>
-                <Text dimColor>p Project</Text>
-                {tracked && <Text dimColor>o Workflow</Text>}
-              </Box>
-            )}
-          </Box>
-          {compactProjectRows > 0 && (
-            <ProjectPanel
-              tree={props.tree}
-              expanded
-              focused={projectFocused}
-              width={mainWidth}
-              height={compactProjectRows}
-            />
-          )}
-          {compactWorkflowRows > 0 && plan && (
-            <WorkflowPanel
-              plan={plan}
-              tracked={tracked}
-              outline
-              phaseIndex={props.outlinePhase ?? 0}
-              taskOffset={props.outlineOffset ?? 0}
-              width={mainWidth}
-              maxRows={compactWorkflowRows}
-              compact
-            />
-          )}
-          <Box
-            borderStyle="single"
-            borderColor={request ? 'yellow' : undefined}
-            height={logRows + 2}
-            flexShrink={0}
-            paddingX={1}
-            flexDirection="column"
-            overflow="hidden"
-          >
-            {log.length ? (
-              log.map((line, index) => (
-                <Text key={index} {...tone(line.color)} wrap="truncate-end">
-                  {line.timeline ? (
-                    <>
-                      <Text dimColor>{line.timeline.time} </Text>
-                      <Text color={line.timeline.entry.color} bold>
-                        {line.timeline.entry.label}
-                      </Text>
-                      {line.timeline.entry.detail ? (
-                        <Text bold={line.timeline.entry.detailBold}>
-                          {' · '}
-                          {line.timeline.entry.detail}
+            <Box
+              borderStyle="single"
+              {...(workspaceFocused ? { borderColor: 'cyan' } : {})}
+              flexDirection="column"
+              height={rosterRows + 2}
+              flexShrink={0}
+              paddingX={1}
+            >
+              {runs.length === 0 ? (
+                <Text dimColor>{empty}</Text>
+              ) : (
+                shownLines.map((line) => {
+                  const run = line.run;
+                  if (!run) {
+                    const header = groupHeader(state, line.group);
+                    return (
+                      <Box
+                        key={`project-${line.group.project?.id ?? 'other'}`}
+                        height={1}
+                        flexShrink={0}
+                      >
+                        <Text wrap="truncate-end">
+                          <Text bold>{header.name}</Text>
+                          <Text
+                            {...tone(header.urgent ? 'yellow' : undefined)}
+                            dimColor={!header.urgent}
+                          >
+                            {header.next ? ` · ${header.next}` : ''}
+                          </Text>
+                          <Text dimColor>{header.phase}</Text>
                         </Text>
-                      ) : null}
-                    </>
-                  ) : (
-                    line.text || ' '
-                  )}
-                </Text>
-              ))
-            ) : (
-              <Text dimColor>{empty}</Text>
-            )}
-          </Box>
-          {request && (
-            <DecisionPanel
-              request={request}
-              position={
-                ownPending.findIndex((item) => item.id === request.id) + 1
-              }
-              total={ownPending.length}
-              armed={props.armed}
-              height={decisionRows}
-              shownSteps={shownSteps}
-              compact={compactDecision}
-            />
-          )}
-          {extras.map((line, index) => (
-            <Box key={index} height={1} flexShrink={0}>
-              <Text dimColor wrap="truncate-middle">
-                {terminalText(line)}
-              </Text>
+                      </Box>
+                    );
+                  }
+                  const own = pending.filter((item) => item.runId === run.id);
+                  const count = own.length;
+                  const active = run.id === selectedId;
+                  // Approvals block the agent; agent requests only wait on the person.
+                  const status = count
+                    ? own.some((item) => item.kind === 'permission')
+                      ? `Awaiting approval (${count})`
+                      : `Needs you (${count})`
+                    : workspaceNeedsAction(run)
+                      ? run.worktree?.status.kind === 'commit-required'
+                        ? 'Commit required'
+                        : 'Worktree retained'
+                      : states[run.state.kind];
+                  return (
+                    <Box key={run.id} height={1} flexShrink={0} columnGap={1}>
+                      <Box flexGrow={1} flexBasis={0} minWidth={0}>
+                        <Text
+                          {...tone(active ? 'cyan' : undefined)}
+                          inverse={active && workspaceFocused}
+                          wrap="truncate-end"
+                        >
+                          {active ? '> ' : '  '}Run{' '}
+                          {state.runs.findIndex((item) => item.id === run.id) +
+                            1}{' '}
+                          ·{' '}
+                          {terminalText(
+                            trackedWork(state, run.id)?.task.title ?? run.label,
+                          )}
+                        </Text>
+                      </Box>
+                      <Box width={status.length} flexShrink={0}>
+                        <Text
+                          {...tone(
+                            count || workspaceNeedsAction(run)
+                              ? 'yellow'
+                              : ['failed', 'interrupted'].includes(
+                                    run.state.kind,
+                                  )
+                                ? 'red'
+                                : run.state.kind === 'authentication-required'
+                                  ? 'yellow'
+                                  : ['starting', 'running'].includes(
+                                        run.state.kind,
+                                      )
+                                    ? 'blue'
+                                    : run.state.kind === 'idle'
+                                      ? 'gray'
+                                      : undefined,
+                          )}
+                          wrap="truncate-end"
+                        >
+                          {status}
+                        </Text>
+                      </Box>
+                    </Box>
+                  );
+                })
+              )}
             </Box>
-          ))}
-          {props.composer}
-          {props.mode !== 'normal' && props.mode !== 'new-session' && (
-            <Box flexDirection="column" height={2} flexShrink={0}>
-              <Text color="cyan">
-                {props.mode === 'reply'
-                  ? 'Reply · Enter send / Esc keep draft'
-                  : 'Command · Enter run / Esc close'}
-              </Text>
-              <Box height={1}>
-                <Text color="cyan">
-                  {props.mode === 'command' ? ': ' : '> '}
+            <Box height={1} flexShrink={0}>
+              <Box flexGrow={1} minWidth={0}>
+                {views.map((name, index) => (
+                  <Text
+                    key={name}
+                    {...tone(view === name ? 'cyan' : undefined)}
+                    bold={view === name}
+                  >
+                    {' '}
+                    {index + 1}{' '}
+                    {name === 'live'
+                      ? 'Live'
+                      : name === 'diff'
+                        ? 'Diff'
+                        : 'Timeline'}{' '}
+                  </Text>
+                ))}
+                <Text dimColor>
+                  {offset > 0
+                    ? mainWidth >= 70
+                      ? ' · follow paused'
+                      : ' · paused'
+                    : ''}
                 </Text>
-                {props.input}
               </Box>
+              {!sidebar && (
+                <Box columnGap={1} flexShrink={0}>
+                  <Text dimColor>p Project</Text>
+                  {tracked && <Text dimColor>o Workflow</Text>}
+                </Box>
+              )}
             </Box>
-          )}
-          <Box flexGrow={1} />
-        </Box>
-        {sidebar && (
-          <Box width={sidebarWidth} flexDirection="column" flexShrink={0}>
-            <ProjectPanel
-              tree={props.tree}
-              expanded={projectOpen}
-              focused={projectFocused}
-              width={sidebarWidth}
-              height={projectRows}
-            />
-            {plan && (
+            {compactProjectRows > 0 && (
+              <ProjectPanel
+                tree={props.tree}
+                expanded
+                focused={projectFocused}
+                width={mainWidth}
+                height={compactProjectRows}
+              />
+            )}
+            {compactWorkflowRows > 0 && plan && (
               <WorkflowPanel
                 plan={plan}
                 tracked={tracked}
-                outline={props.outline === true}
+                outline
                 phaseIndex={props.outlinePhase ?? 0}
                 taskOffset={props.outlineOffset ?? 0}
-                width={sidebarWidth}
-                maxRows={rows - 3 - projectRows}
+                width={mainWidth}
+                maxRows={compactWorkflowRows}
+                compact
               />
             )}
+            <Box
+              borderStyle="single"
+              borderColor={request ? 'yellow' : undefined}
+              height={logRows + 2}
+              flexShrink={0}
+              paddingX={1}
+              flexDirection="column"
+              overflow="hidden"
+            >
+              {log.length ? (
+                log.map((line, index) => (
+                  <Text key={index} {...tone(line.color)} wrap="truncate-end">
+                    {line.timeline ? (
+                      <>
+                        <Text dimColor>{line.timeline.time} </Text>
+                        <Text color={line.timeline.entry.color} bold>
+                          {line.timeline.entry.label}
+                        </Text>
+                        {line.timeline.entry.detail ? (
+                          <Text bold={line.timeline.entry.detailBold}>
+                            {' · '}
+                            {line.timeline.entry.detail}
+                          </Text>
+                        ) : null}
+                      </>
+                    ) : (
+                      line.text || ' '
+                    )}
+                  </Text>
+                ))
+              ) : (
+                <Text dimColor>{empty}</Text>
+              )}
+            </Box>
+            {request && (
+              <DecisionPanel
+                request={request}
+                position={
+                  ownPending.findIndex((item) => item.id === request.id) + 1
+                }
+                total={ownPending.length}
+                armed={props.armed}
+                height={decisionRows}
+                shownSteps={shownSteps}
+                compact={compactDecision}
+              />
+            )}
+            {extras.map((line, index) => (
+              <Box key={index} height={1} flexShrink={0}>
+                <Text dimColor wrap="truncate-middle">
+                  {terminalText(line)}
+                </Text>
+              </Box>
+            ))}
+            {props.mode !== 'normal' && props.mode !== 'new-session' && (
+              <Box flexDirection="column" height={2} flexShrink={0}>
+                <Text color="cyan">
+                  {props.mode === 'reply'
+                    ? 'Reply · Enter send / Esc keep draft'
+                    : 'Command · Enter run / Esc close'}
+                </Text>
+                <Box height={1}>
+                  <Text color="cyan">
+                    {props.mode === 'command' ? ': ' : '> '}
+                  </Text>
+                  {props.input}
+                </Box>
+              </Box>
+            )}
+            <Box flexGrow={1} />
           </Box>
-        )}
-      </Box>
-      <Box height={1} flexShrink={0}>
-        <Text {...tone(!connected ? 'yellow' : undefined)} wrap="truncate-end">
-          {terminalText(
-            workspaceAction &&
-              props.mode === 'normal' &&
-              connected &&
-              !props.actionFailed
-              ? selected?.worktree?.status.kind === 'commit-required'
-                ? 'Commit required · c commit all changes · x recheck'
-                : 'Worktree retained · x recheck · 1 Live for details'
-              : note,
-          )}
-        </Text>
-      </Box>
-      <Box height={1} flexShrink={0} columnGap={1}>
-        <Box flexShrink={0}>
-          <Text dimColor>
-            {selected
-              ? `Run ${state.runs.indexOf(selected) + 1} · ${selected.provider}`
-              : 'workbench'}
+        </Box>
+        <Box height={1} flexShrink={0}>
+          <Text
+            {...tone(!connected ? 'yellow' : undefined)}
+            wrap="truncate-end"
+          >
+            {terminalText(
+              workspaceAction &&
+                props.mode === 'normal' &&
+                connected &&
+                !props.actionFailed
+                ? selected?.worktree?.status.kind === 'commit-required'
+                  ? 'Commit required · c commit all changes · x recheck'
+                  : 'Worktree retained · x recheck · 1 Live for details'
+                : note,
+            )}
           </Text>
         </Box>
-        {selected?.worktree && (
-          <Box width={Math.floor(columns / 4)} flexShrink={0}>
-            <Text color="cyan" wrap="truncate-middle">
-              {terminalText(selected.worktree.branch)}
+        <Box height={1} flexShrink={0} columnGap={1}>
+          <Box flexShrink={0}>
+            <Text dimColor>
+              {selected
+                ? `Run ${state.runs.indexOf(selected) + 1} · ${selected.provider}`
+                : 'workbench'}
             </Text>
           </Box>
-        )}
-        <Box flexGrow={1} flexBasis={0} minWidth={0}>
-          <Text color="cyan" wrap="truncate-middle">
-            {selected
-              ? selected.environment.location === 'pending'
-                ? 'Workspace pending'
-                : terminalText(selected.environment.location).replace(
-                    /[\r\n\t]/g,
-                    ' ',
-                  )
-              : 'No Run selected'}
-          </Text>
+          {selected?.worktree && (
+            <Box width={Math.floor(columns / 4)} flexShrink={0}>
+              <Text color="cyan" wrap="truncate-middle">
+                {terminalText(selected.worktree.branch)}
+              </Text>
+            </Box>
+          )}
+          <Box flexGrow={1} flexBasis={0} minWidth={0}>
+            <Text color="cyan" wrap="truncate-middle">
+              {selected
+                ? selected.environment.location === 'pending'
+                  ? 'Workspace pending'
+                  : terminalText(selected.environment.location).replace(
+                      /[\r\n\t]/g,
+                      ' ',
+                    )
+                : 'No Run selected'}
+            </Text>
+          </Box>
+          <Box flexShrink={0}>
+            <Text dimColor>? help · q quit</Text>
+          </Box>
         </Box>
-        <Box flexShrink={0}>
-          <Text dimColor>? help · q quit</Text>
+      </Backdrop.Provider>
+      {form && (
+        // A full-screen layer that only centers the form; it draws nothing itself.
+        <Box
+          position="absolute"
+          top={0}
+          left={0}
+          width={columns}
+          height={rows}
+          justifyContent="center"
+          alignItems="center"
+        >
+          <Box width={modalWidth + 2} flexShrink={0} overflow="hidden">
+            {/* Blank cells first: nothing behind shows through the gutter or the form. */}
+            <Box position="absolute" top={0} left={0} flexDirection="column">
+              {Array.from({ length: rows }, (_, row) => (
+                <Text key={row}>{' '.repeat(modalWidth + 2)}</Text>
+              ))}
+            </Box>
+            <Box
+              margin={1}
+              width={modalWidth}
+              flexShrink={0}
+              borderStyle="round"
+              borderColor="cyan"
+              paddingX={1}
+              flexDirection="column"
+            >
+              {props.composer?.({
+                width: modalWidth - 4,
+                maxHeight: modalHeight - 2,
+              })}
+            </Box>
+          </Box>
         </Box>
-      </Box>
+      )}
     </Box>
   );
 }

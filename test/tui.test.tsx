@@ -309,12 +309,12 @@ test('Ink approval shortcuts target the focused request; paste and repeats canno
     2,
   );
   ui.stdin.write('\u0017');
-  await frameHas(ui, 'Focus · h workspace');
-  ui.stdin.write('l');
+  await frameHas(ui, 'Focus · h Project');
+  ui.stdin.write('h');
   await frameHas(ui, 'Project · focus');
   ui.stdin.write('\u0017');
-  await frameHas(ui, 'Focus · h workspace');
-  ui.stdin.write('h');
+  await frameHas(ui, 'Focus · h Project');
+  ui.stdin.write('l');
   await frameHas(ui, 'Workspace focused');
   ui.stdin.write('a'); // Switching pane focus cannot arm another approval.
   await frameHas(ui, 'Press Tab to select');
@@ -590,8 +590,8 @@ test('Project folders expand, refresh and follow the selected Run; workspace sta
   ui.stdin.write('R');
   await until(() => typeof delayed.release === 'function');
   ui.stdin.write('\u0017');
-  await frameHas(ui, 'Focus · h workspace');
-  ui.stdin.write('h');
+  await frameHas(ui, 'Focus · h Project');
+  ui.stdin.write('l');
   await frameHas(ui, 'Workspace focused');
   ui.stdin.write('j');
   await frameHas(ui, 'aaa-two.txt');
@@ -638,7 +638,7 @@ test('Vim navigation follows pane focus without switching Runs or views from Pro
   };
   const focus = async (value: string) => {
     await key('\u0017');
-    await frameHas(ui, 'Focus · h workspace');
+    await frameHas(ui, 'Focus · h Project');
     await key(value);
   };
   await frameHas(ui, 'alpha/');
@@ -677,11 +677,12 @@ test('Vim navigation follows pane focus without switching Runs or views from Pro
   await frameHas(ui, 'No file changes yet');
   assert.doesNotMatch(ui.lastFrame() ?? '', /^Run 2 · fixture/m);
 
-  await focus('h');
+  // Project is the left pane: Ctrl+W l focuses the workspace, h returns.
+  await focus('l');
   await frameHas(ui, 'Project · p focus');
   await key('h'); // Workspace h/l still changes tabs.
   await frameHas(ui, 'i to prompt · s for fixture scenarios');
-  await focus('l');
+  await focus('h');
   await selectedRow(/>\s+v alpha\//); // Expansion and selection survive focus changes.
   await key('h');
   await focus('w');

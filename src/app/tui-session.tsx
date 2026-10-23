@@ -10,12 +10,19 @@ import type { WorkbenchCommand, WorkbenchState } from './workbench-protocol.js';
 import { PromptInput, terminalText } from './tui-input.js';
 import { FolderInput, resolveProjectPath } from './tui-folder-input.js';
 
-/** A small composer disclosure. Project inspection is read-only; Enter explicitly creates. */
+const runBranch =
+  /^(workbench\/run-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** Display only: a saved Run branch keeps its first ID block; Enter uses the full name. */
+const branchLabel = (name: string) =>
+  name ? name.replace(runBranch, '$1…') : 'Current commit';
+
+/** A foreground form. Project inspection is read-only; Enter explicitly creates. */
 export function NewSession({
   client,
   options,
   initialPath,
   width,
+  maxHeight,
   enabled,
   folderCompletion,
   onCreate,
@@ -25,6 +32,8 @@ export function NewSession({
   options: NonNullable<WorkbenchState['sessionOptions']>;
   initialPath: string;
   width: number;
+  /** Most rows the modal offers; the branch list grows into them. */
+  maxHeight: number;
   enabled: boolean;
   folderCompletion: boolean;
   onCreate: (command: WorkbenchCommand) => Promise<boolean>;
@@ -271,10 +280,27 @@ export function NewSession({
     },
     { isActive: enabled },
   );
-  const start = Math.max(0, Math.min(index - 1, branches.length - 3));
+  // Title, agent, project, branch field, key hint and status take six rows.
+  // Sized by every branch, not the filtered ones, so typing does not resize it.
+  const branchRows = Math.max(
+    1,
+    Math.min(
+      maxHeight - 6,
+      (project?.branches.length ?? 0) + (project?.currentBranch ? 0 : 1),
+    ),
+  );
+  const start = Math.max(
+    0,
+    Math.min(index - Math.floor(branchRows / 2), branches.length - branchRows),
+  );
   return (
-    <Box flexDirection="column" height={9} overflow="hidden">
-      <Text color="cyan">New Session · Shift+Tab Agent · Esc close</Text>
+    <Box flexDirection="column" overflow="hidden">
+      <Text wrap="truncate-end">
+        <Text color="cyan" bold>
+          New Session
+        </Text>
+        <Text dimColor> · Shift+Tab Agent · Esc close</Text>
+      </Text>
       <Text
         {...(focus === 'agent' ? { color: 'cyan', bold: true } : {})}
         wrap="truncate-end"
@@ -351,20 +377,24 @@ export function NewSession({
                   <Text wrap="truncate-end">{terminalText(query)}</Text>
                 )}
               </Box>
-              {branches.slice(start, start + 3).map((branch, offset) => (
-                <Text
-                  key={branch.name}
-                  {...(start + offset === index ? { color: 'cyan' } : {})}
-                  wrap="truncate-end"
-                >
-                  {start + offset === index ? '> ' : '  '}
-                  {terminalText(branch.name || 'Current commit')} ·{' '}
-                  {branch.revision.slice(0, 7)}
-                </Text>
-              ))}
-              {!branches.length && (
-                <Text color="yellow">No matching branch</Text>
-              )}
+              <Box flexDirection="column" height={branchRows} flexShrink={0}>
+                {branches
+                  .slice(start, start + branchRows)
+                  .map((branch, offset) => (
+                    <Text
+                      key={branch.name}
+                      {...(start + offset === index ? { color: 'cyan' } : {})}
+                      wrap="truncate-end"
+                    >
+                      {start + offset === index ? '> ' : '  '}
+                      {terminalText(branchLabel(branch.name))} ·{' '}
+                      {branch.revision.slice(0, 7)}
+                    </Text>
+                  ))}
+                {!branches.length && (
+                  <Text color="yellow">No matching branch</Text>
+                )}
+              </Box>
               <Text dimColor wrap="truncate-end">
                 ↑/↓ select · Enter create · Ctrl+B folder
                 {project.truncated ? ' · first 256 branches' : ''}

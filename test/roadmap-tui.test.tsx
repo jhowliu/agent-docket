@@ -166,9 +166,10 @@ test('Workflow stays separate from content tabs, fits terminal cells and never i
           const panel = lines.find((line) =>
             line.includes(outline ? 'Roadmap' : 'Workflow'),
           );
+          // Workflow sits in the left column under Project.
           assert.ok(
             panel &&
-              panel.indexOf(outline ? 'Roadmap' : 'Workflow') > columns / 2,
+              panel.indexOf(outline ? 'Roadmap' : 'Workflow') < columns / 2,
             output,
           );
           if (!outline) assert.match(output, /> Requirement clarification/);

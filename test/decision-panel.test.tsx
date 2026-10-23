@@ -9,7 +9,7 @@ import { createExecution } from '../src/execution/index.js';
 import { createWebWorkbench } from '../src/app/web-workbench.js';
 import { createWorkbenchClient } from '../src/app/workbench-client.js';
 import { WorkbenchApp } from '../src/app/tui-app.js';
-import { WorkbenchScreen } from '../src/app/tui-view.js';
+import { WorkbenchScreen, workbenchMainWidth } from '../src/app/tui-view.js';
 import type { WorkbenchState } from '../src/app/workbench-protocol.js';
 
 async function until(predicate: () => boolean | Promise<boolean>) {
@@ -154,7 +154,11 @@ test('short terminals keep the decision to two rows without losing the subject o
     assert.ok(lines.length <= rows, `${columns}×${rows} overflows`);
     assert.ok(lines.every((line) => stringWidth(line) <= columns));
     const at = lines.findIndex((line) => line.includes('APPROVAL 1/1'));
-    const block = lines.slice(at, at + (compact ? 2 : 4)).join('\n');
+    // The decision sits in the main column, right of Project at 80+ columns.
+    const block = lines
+      .slice(at, at + (compact ? 2 : 4))
+      .map((line) => line.slice(columns - workbenchMainWidth(columns)))
+      .join('\n');
     if (compact) {
       assert.match(block, /APPROVAL 1\/1 {2}Run command · npm test/);
       assert.match(block, /a {2}Yes, proceed {4}r {2}No · d full details/);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Box, Text } from 'ink';
+import { Box, Text } from './tui-text.js';
 import wrapAnsi from 'wrap-ansi';
 import type { DirectoryListing, RunId } from '../execution/index.js';
 import type { WorkbenchClient } from './workbench-client.js';
@@ -314,7 +314,7 @@ export function ProjectPanel({
             <Box flexGrow={1} />
             <Text dimColor wrap="truncate-end">
               {view.note ||
-                (focused ? 'hjkl · Enter · R reload' : 'Ctrl+W l · p focus')}
+                (focused ? 'hjkl · Enter · R reload' : 'Ctrl+W h · p focus')}
             </Text>
           </>
         )}
