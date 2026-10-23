@@ -60,6 +60,10 @@ _Avoid_: 把每次模型回覆當成一個 StageRun
 某個 Run 內的一段 agent 對話；對話回合結束不代表 Run 或 Task 已通過驗收。
 _Avoid_: 用 Task 或完成狀態代稱 Session
 
+**Next action**：
+使用者在某個 Run 上接下來要做的事（核准、回覆 agent 請求、登入、commit、處理 worktree、下指令），由目前 Run 與 attention 狀態推得；Project 的 Next action 是其中最急的一個。
+_Avoid_: 把 Next action 當成 Stage、Task 進度、審查通過或任務完成
+
 **Environment**：
 某個 Run 專用的執行空間，包含程式工作目錄、CLI home、工具、程序與網路；工作目錄可由 Git worktree 提供，來源 repo 的工作路徑與 Environment 中的工作路徑不同。
 _Avoid_: 把使用者本機的來源 repo 直接視為 agent 可寫環境

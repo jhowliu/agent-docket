@@ -37,6 +37,8 @@ Choose a port supported by HTTP Fetch, such as 4177, 4180 or 4182, and available
 4. 右上方 Project tree 顯示目前 Run 的實際資料夾與檔案；`p` 聚焦後用 `j/k` 移動、`h/l` 收合／展開或回父層／進入子項、`R` 重新整理，Esc 回工作區。`Ctrl+w h/l` 切換工作區／Project 焦點並保留展開狀態；`[`／`]` 與 Enter 仍可操作。Run 工作目錄與 worktree 分支顯示於底部。`x` 或 `:cancel` 停止 Run 並讓核准失效；乾淨 worktree 回收後從名單移除，有修改則保留 `Commit required`，用 `c`／`:commit <message>` 保存至本機分支後回收。
 5. `q` 離開後重開 `npm run tui`，等待中的請求仍在。
 
+Run 名單依專案分組，每組第一行寫專案名、下一步與目前 Phase；需要你處理的 Run 排在前面，其餘維持啟動順序。詳見 [Project overview](project-overview.md)。
+
 `:active` 顯示進行中的 Run，`:inbox` 顯示待核准的 Run。`PgUp/PgDn`、`g/G` 只捲動目前保留的事件視窗；沒有過去 Run 名單、歷史分頁或自動存檔。
 
 `:prompt question` 觸發文字提問，閒置後用 i 回覆 `reply:名稱`。`:prompt two-permissions` 同時提出兩筆核准；`:prompt wait` 等取消；`:prompt crash` 測異常退出。一般文字指令只在 idle 接受，尚無執行中 steering。

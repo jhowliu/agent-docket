@@ -183,3 +183,26 @@ export const projectWorkSchema = z
     work: workSnapshotSchema,
   })
   .strict();
+
+/** Most urgent first. Through `worktree` each kind asks something of the person. */
+export const nextActionSchema = z.enum([
+  'approve',
+  'respond',
+  'sign-in',
+  'commit',
+  'worktree',
+  'prompt',
+  'working',
+  'ended',
+]);
+const runNextSchema = z
+  .object({ runId: runIdSchema, next: nextActionSchema })
+  .strict();
+export const projectOverviewSchema = z
+  .object({
+    projectId: projectWorkSchema.shape.id,
+    /** The project's most urgent Run; null without Runs. */
+    next: runNextSchema.nullable(),
+    runs: z.array(runNextSchema).max(64),
+  })
+  .strict();

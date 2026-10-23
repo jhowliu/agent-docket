@@ -153,7 +153,14 @@ test('Workflow stays separate from content tabs, fits terminal cells and never i
         if (columns >= 80 || outline) assert.match(output, /Phase 1\/1/);
         else {
           assert.match(output, /o Workflow/);
-          assert.doesNotMatch(output, /Current step|Phase 1\/1/);
+          assert.doesNotMatch(output, /Current step/);
+          // Only the roster's project line names the Phase.
+          assert.ok(
+            lines
+              .filter((line) => line.includes('Phase 1/1'))
+              .every((line) => line.includes('project · next: approve Run 1')),
+            output,
+          );
         }
         if (columns >= 80) {
           const panel = lines.find((line) =>

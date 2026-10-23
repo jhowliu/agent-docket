@@ -12,6 +12,7 @@ import {
   workCommandSchema,
   workSnapshotSchema,
   projectWorkSchema,
+  projectOverviewSchema,
 } from '../work/index.js';
 
 const runId = runIdSchema;
@@ -146,6 +147,8 @@ export const stateSchema = z.object({
   configurationId: z.string().optional(),
   work: workSnapshotSchema.optional(),
   projects: z.array(projectWorkSchema).max(65).optional(),
+  // Older daemons omit it; the TUI then lists Runs in launch order.
+  overview: z.array(projectOverviewSchema).max(65).optional(),
   defaultProjectId: projectWorkSchema.shape.id.optional(),
   sessionOptions: sessionOptionsSchema.optional(),
   features: z

@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { Box, Text } from 'ink';
@@ -12,7 +13,12 @@ import type {
   RunSnapshot,
   RunState,
 } from '../execution/index.js';
-import type { Stage, WorkPlan } from '../work/index.js';
+import type {
+  NextAction,
+  ProjectWork,
+  Stage,
+  WorkPlan,
+} from '../work/index.js';
 import type { WorkbenchState } from './workbench-protocol.js';
 import { terminalText } from './tui-input.js';
 import { readableEvents, timelineEntries } from './tui-timeline.js';
@@ -57,17 +63,145 @@ const ended = new Set<RunState['kind']>([
 export const workspaceNeedsAction = (run: RunSnapshot | undefined) =>
   run?.worktree?.status.kind === 'commit-required' ||
   run?.worktree?.status.kind === 'retained';
-export function visibleRuns(
-  state: WorkbenchState,
-  filter: Filter,
-): readonly RunSnapshot[] {
-  return state.runs.filter((run) =>
+const shownBy =
+  (state: WorkbenchState, filter: Filter) => (run: RunSnapshot) =>
     filter === 'inbox'
       ? state.attention.some(
           (item) => item.runId === run.id && item.status === 'pending',
         )
-      : !ended.has(run.state.kind) || workspaceNeedsAction(run),
+      : !ended.has(run.state.kind) || workspaceNeedsAction(run);
+type RosterLine = Readonly<
+  | { group: RosterGroup; run?: undefined }
+  | { group?: RosterGroup; run: RunSnapshot }
+>;
+type RunNext = Readonly<{ runId: RunId; next: NextAction }>;
+export type RosterGroup = Readonly<{
+  /** Absent for Runs the overview does not place in a project. */
+  project?: ProjectWork | undefined;
+  next?: RunNext | null;
+  runs: readonly RunSnapshot[];
+}>;
+/** Older daemons without an overview: work's project ownership in launch order. */
+function launchOrder(state: WorkbenchState) {
+  const position = (runId: RunId) =>
+    state.runs.findIndex((run) => run.id === runId);
+  const first = (runIds: readonly RunId[]) =>
+    Math.min(Infinity, ...runIds.map(position).filter((index) => index >= 0));
+  return (state.projects ?? [])
+    .map((project) => ({
+      projectId: project.id,
+      next: null,
+      runs: [...project.runIds]
+        .sort((a, b) => position(a) - position(b))
+        .map((runId) => ({ runId })),
+    }))
+    .sort(
+      (a, b) =>
+        first(a.runs.map(({ runId }) => runId)) -
+        first(b.runs.map(({ runId }) => runId)),
+    );
+}
+/**
+ * Visible Runs grouped by project in the daemon's overview order (work ranks
+ * them). Daemons from before the overview group in launch order without next
+ * actions; those without projects keep a flat launch-order list.
+ */
+export function rosterGroups(
+  state: WorkbenchState,
+  filter: Filter,
+): readonly RosterGroup[] | null {
+  const entries =
+    state.overview ?? (state.projects ? launchOrder(state) : null);
+  if (!entries) return null;
+  const shown = shownBy(state, filter);
+  const byId = new Map(state.runs.map((run) => [run.id, run]));
+  const placed = new Set<RunId>();
+  const groups: RosterGroup[] = entries.map((entry) => ({
+    project: state.projects?.find((project) => project.id === entry.projectId),
+    next: entry.next,
+    runs: entry.runs.flatMap(({ runId }) => {
+      const run = byId.get(runId);
+      if (!run || !shown(run)) return [];
+      placed.add(runId);
+      return [run];
+    }),
+  }));
+  groups.push({
+    runs: state.runs.filter((run) => !placed.has(run.id) && shown(run)),
+  });
+  return groups.filter((group) => group.runs.length);
+}
+export function visibleRuns(
+  state: WorkbenchState,
+  filter: Filter,
+): readonly RunSnapshot[] {
+  const groups = rosterGroups(state, filter);
+  return groups
+    ? groups.flatMap((group) => group.runs)
+    : state.runs.filter(shownBy(state, filter));
+}
+function nextText(
+  state: WorkbenchState,
+  entry: RunNext | null | undefined,
+): string {
+  if (!entry) return '';
+  const id = entry.runId;
+  const run = `Run ${state.runs.findIndex((item) => item.id === id) + 1}`;
+  switch (entry.next) {
+    case 'approve':
+      return `next: approve ${run}`;
+    case 'respond': {
+      const request = state.attention.find(
+        (item) =>
+          item.runId === id &&
+          item.status === 'pending' &&
+          item.kind === 'agent-request',
+      );
+      return `next: ${run} · ${terminalText(request?.title ?? 'needs you')}`;
+    }
+    case 'sign-in':
+      return `next: sign in ${run}`;
+    case 'commit':
+      return `next: commit ${run}`;
+    case 'worktree':
+      return `next: check ${run} worktree`;
+    case 'prompt':
+      return `next: prompt ${run}`;
+    case 'working': {
+      const progress = state.events
+        .filter(
+          (event) => event.runId === id && event.type === 'agent.progress',
+        )
+        .at(-1);
+      return progress?.type === 'agent.progress'
+        ? `${run} · ${terminalText(progress.summary)}`
+        : `${run} working`;
+    }
+    case 'ended':
+      return 'no action';
+  }
+}
+/** One line naming the project, what to do next and its active Phase (cut first). */
+function groupHeader(state: WorkbenchState, group: RosterGroup) {
+  const plan =
+    group.project?.work.kind === 'ready' ? group.project.work.plan : null;
+  const phase = plan?.phases.findIndex(
+    (phase) => phase.id === plan.activePhaseId,
   );
+  const next = group.next?.next;
+  return {
+    name: group.project
+      ? terminalText(basename(group.project.source))
+      : 'Other Runs',
+    phase:
+      plan && phase !== undefined && phase >= 0
+        ? ` · Phase ${phase + 1}/${plan.phases.length} ${terminalText(plan.phases[phase]?.title ?? '')}`
+        : '',
+    next: nextText(state, group.next),
+    urgent:
+      next !== undefined &&
+      ['approve', 'respond', 'sign-in', 'commit', 'worktree'].includes(next),
+  };
 }
 function eventSummary(event: RunEvent): string {
   switch (event.type) {
@@ -593,22 +727,40 @@ export function WorkbenchScreen(props: ScreenProps) {
       </Box>
     );
   }
+  // A one-row roster shows only the selected Run, without its project line.
+  const compactRoster = (props.outline || props.project) && !sidebar;
+  const groups = compactRoster ? null : rosterGroups(state, filter);
+  const rosterLines: readonly RosterLine[] = groups
+    ? groups.flatMap((group) => [
+        { group },
+        ...group.runs.map((run) => ({ group, run })),
+      ])
+    : runs.map((run) => ({ run }));
   const rosterRows = Math.max(
     1,
     Math.min(
-      (props.outline || props.project) && !sidebar ? 1 : 5,
-      runs.length || 1,
-      Math.floor(rows / 6),
+      compactRoster ? 1 : groups ? 6 : 5,
+      rosterLines.length || 1,
+      Math.floor(rows / 6) + (groups ? 1 : 0),
     ),
   );
   const selectedIndex = Math.max(
     0,
     runs.findIndex((run) => run.id === selectedId),
   );
+  const selectedLine = Math.max(
+    0,
+    rosterLines.findIndex((line) => line.run?.id === selectedId),
+  );
   const rosterStart = Math.max(
     0,
-    Math.min(runs.length - rosterRows, selectedIndex - rosterRows + 1),
+    Math.min(rosterLines.length - rosterRows, selectedLine - rosterRows + 1),
   );
+  const shownLines = rosterLines.slice(rosterStart, rosterStart + rosterRows);
+  // Keep a project named at the top when its header scrolls out of view.
+  const top = shownLines[0];
+  if (rosterRows > 1 && top?.run && top.group)
+    shownLines[0] = { group: top.group };
   const disclosures: string[] = [];
   // An agent request shows its first steps inline; d lists every step.
   const shownSteps =
@@ -789,7 +941,7 @@ export function WorkbenchScreen(props: ScreenProps) {
               {' '}
               · {filter} · {runs.length} runs
               {workspaceFocused ? ' · focus' : ''}
-              {runs.length > rosterRows
+              {rosterLines.length > rosterRows
                 ? ` · ${selectedIndex + 1}/${runs.length}`
                 : ''}
             </Text>
@@ -805,7 +957,29 @@ export function WorkbenchScreen(props: ScreenProps) {
             {runs.length === 0 ? (
               <Text dimColor>{empty}</Text>
             ) : (
-              runs.slice(rosterStart, rosterStart + rosterRows).map((run) => {
+              shownLines.map((line) => {
+                const run = line.run;
+                if (!run) {
+                  const header = groupHeader(state, line.group);
+                  return (
+                    <Box
+                      key={`project-${line.group.project?.id ?? 'other'}`}
+                      height={1}
+                      flexShrink={0}
+                    >
+                      <Text wrap="truncate-end">
+                        <Text bold>{header.name}</Text>
+                        <Text
+                          {...tone(header.urgent ? 'yellow' : undefined)}
+                          dimColor={!header.urgent}
+                        >
+                          {header.next ? ` · ${header.next}` : ''}
+                        </Text>
+                        <Text dimColor>{header.phase}</Text>
+                      </Text>
+                    </Box>
+                  );
+                }
                 const own = pending.filter((item) => item.runId === run.id);
                 const count = own.length;
                 const active = run.id === selectedId;

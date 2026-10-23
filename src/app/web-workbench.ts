@@ -24,7 +24,7 @@ import { describeChange } from '../delivery/index.js';
 import type { ChangeMap } from '../delivery/index.js';
 import { launchFingerprint } from './launch-config.js';
 import { createProjectWorkspaces } from '../work/index.js';
-import { basename, resolve } from 'node:path';
+import { resolve } from 'node:path';
 
 const assets: Readonly<Record<string, { file: string; type: string }>> = {
   '/': { file: 'runtime.html', type: 'text/html; charset=utf-8' },
@@ -112,6 +112,7 @@ export function createWebWorkbench(
         : `${launch.source.url}@${launch.source.revision}`;
   const work = createProjectWorkspaces({
     execution,
+    attention,
     ...(options.planDirectory ? { directory: options.planDirectory } : {}),
   });
   const defaultProjectId = work.register(
@@ -203,6 +204,7 @@ export function createWebWorkbench(
         configurationId,
         work: projects.find((project) => project.id === defaultProjectId)?.work,
         projects,
+        overview: work.overview(),
         defaultProjectId,
         sessionOptions,
         features: {
@@ -429,8 +431,8 @@ export function createWebWorkbench(
             );
           launchPending = true;
           try {
-            let selectedLaunch = launch;
-            let projectId = defaultProjectId;
+            let selected: Launch = launch;
+            let projectId: string | undefined = defaultProjectId;
             if (command.kind === 'new-session') {
               const preset = presets.find(
                 (preset) => preset.id === command.presetId,
@@ -442,49 +444,36 @@ export function createWebWorkbench(
               if (preset.kind === 'local') {
                 if (!localWorker || !command.project)
                   throw new Error('Choose a Git project and starting branch');
-                const base = command.project.base;
-                const project = await inspectLocalProject(
-                  command.project.path,
-                  base,
-                );
-                selectedLaunch = {
+                selected = {
                   provider: 'codex',
                   worker: localWorker,
-                  source: { kind: 'directory', path: project.path, base },
-                  label: basename(project.identityPath),
+                  source: { kind: 'directory', ...command.project },
                 };
-                projectId = work.register(
-                  `directory:${project.identityPath}`,
-                  project.identityPath,
+                projectId = undefined;
+              } else if (command.project)
+                throw new Error(
+                  'This agent preset uses its configured project',
                 );
-              } else {
-                if (command.project)
-                  throw new Error(
-                    'This agent preset uses its configured project',
-                  );
-                selectedLaunch =
-                  preset.kind === 'fixture' ? { provider: 'fixture' } : launch;
-                if (preset.kind === 'fixture') {
-                  const fixture = fileURLToPath(
-                    new URL('../fixtures/project/', directory),
-                  );
-                  projectId = work.register(`fixture:${fixture}`, fixture);
-                }
+              else if (preset.kind === 'fixture') {
+                const fixture = fileURLToPath(
+                  new URL('../fixtures/project/', directory),
+                );
+                selected = { provider: 'fixture' };
+                projectId = work.register(`fixture:${fixture}`, fixture);
               }
             }
-            const run =
-              selectedLaunch.provider === 'fixture'
-                ? await execution.start({
-                    ...selectedLaunch,
-                    label: selectedLaunch.label ?? `fixture / run-${++counter}`,
-                  })
-                : execution.launch({
-                    ...selectedLaunch,
+            const { run } = await work.startSession(
+              // A local project is inspected and named after its folder.
+              projectId === undefined
+                ? selected
+                : {
+                    ...selected,
                     label:
-                      selectedLaunch.label ??
-                      `${selectedLaunch.provider} / run-${++counter}`,
-                  });
-            work.associate(projectId, run.id);
+                      selected.label ??
+                      `${selected.provider} / run-${++counter}`,
+                  },
+              projectId,
+            );
             return json({ runId: run.id }, 201);
           } finally {
             launchPending = false;
