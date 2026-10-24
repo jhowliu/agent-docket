@@ -314,6 +314,17 @@ test('Ink groups Runs by project, puts the project waiting on an approval first 
   assert.ok(space('alpha') < space('beta'), ui.lastFrame());
   assert.equal(rowOf('prompt Run 1'), space('alpha') + 1, ui.lastFrame());
   assert.ok(rowOf('> Run 1') < rowOf('Run 2 ·'), ui.lastFrame());
+  // Agents sit under their project's label; their second line names the provider.
+  const label = (name: string) =>
+    left(ui.lastFrame() ?? '').findIndex((row) =>
+      new RegExp(`^${name} ─`).test(row),
+    );
+  assert.equal(label('alpha') + 1, rowOf('> Run 1'), ui.lastFrame());
+  assert.equal(label('beta') + 1, rowOf('Run 2 ·'), ui.lastFrame());
+  assert.match(
+    left(ui.lastFrame() ?? '')[rowOf('> Run 1') + 1] ?? '',
+    /idle · codex/,
+  );
   await client.command({
     kind: 'prompt',
     runId: beta,

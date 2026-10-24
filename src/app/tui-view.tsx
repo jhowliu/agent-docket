@@ -907,7 +907,8 @@ const SELECTED_BG = '#20242c';
 /**
  * The left column in herdr's style: unframed, lowercase section titles, a
  * "spaces" list of projects (glyph of the most urgent Run, bold name, next
- * action beneath) above "agents", two lines per Run (title; state · project).
+ * action beneath) above "agents", two lines per Run (title; state · provider)
+ * under a project label once Runs come from more than one project.
  */
 function SidebarList({
   state,
@@ -943,15 +944,61 @@ function SidebarList({
     Math.floor((Math.floor(height / 2) - 2) / 2),
   );
   const spaceRows = spaceCount > 0 ? 2 + spaceCount * 2 : 0;
-  const fit = Math.max(1, Math.floor((height - spaceRows - 1) / 2));
+  const budget = Math.max(1, height - spaceRows - 1);
+  // Each project's Runs sit under its label, so projects read apart.
+  const labelled = groups !== null && groups.length > 1;
+  const items: readonly RosterLine[] = labelled
+    ? groups.flatMap((group) => [
+        { group },
+        ...group.runs.map((run) => ({ group, run })),
+      ])
+    : runs.map((run) => ({ run }));
+  const rowsOf = (item: RosterLine | undefined) => (item?.run ? 2 : 1);
   const index = Math.max(
     0,
     runs.findIndex((run) => run.id === selectedId),
   );
-  const start = Math.max(0, Math.min(runs.length - fit, index - fit + 1));
+  const selectedItem = Math.max(
+    0,
+    items.findIndex((item) => item.run?.id === selectedId),
+  );
+  // Scroll only as far as the selected Run needs.
+  const startFor = (room: number) => {
+    let start = selectedItem;
+    let used = rowsOf(items[start]);
+    while (start > 0 && used + rowsOf(items[start - 1]) <= room)
+      used += rowsOf(items[--start]);
+    return start;
+  };
+  let start = startFor(budget);
+  // A project scrolled out of view stays named on top.
+  let pinned: RosterGroup | undefined;
+  if (labelled && items[start]?.run) {
+    start = startFor(budget - 1);
+    if (items[start]?.run) pinned = items[start]?.group;
+  }
+  let room = budget - (pinned ? 1 : 0);
+  const shown = items.slice(start).filter((item) => {
+    room -= rowsOf(item);
+    return room >= 0;
+  });
+  // A label whose Runs are all cut off would name nothing.
+  while (shown.length > 1 && !shown.at(-1)?.run) shown.pop();
+  const scrolled =
+    items.reduce((total, item) => total + rowsOf(item), 0) > budget;
   const count = `${filter === 'inbox' ? 'inbox · ' : ''}${
-    runs.length > fit ? `${index + 1}/` : ''
+    scrolled ? `${index + 1}/` : ''
   }${runs.length} run${runs.length === 1 ? '' : 's'}`;
+  const label = (group: RosterGroup) => {
+    const name = groupHeader(state, group).name;
+    return (
+      <Box key={`project:${group.project?.id ?? ''}`} height={1} flexShrink={0}>
+        <Text color="gray" wrap="truncate-end">
+          {name} {'─'.repeat(Math.max(0, width - stringWidth(name) - 1))}
+        </Text>
+      </Box>
+    );
+  };
   return (
     <Box
       width={width}
@@ -1008,7 +1055,9 @@ function SidebarList({
       {runs.length === 0 ? (
         <Text dimColor>{empty}</Text>
       ) : (
-        runs.slice(start, start + fit).map((run) => {
+        [...(pinned ? [{ group: pinned }] : []), ...shown].map((item) => {
+          const run = item.run;
+          if (!run) return item.group ? label(item.group) : null;
           const active = run.id === selectedId;
           const status = runStatus(
             run,
@@ -1016,9 +1065,6 @@ function SidebarList({
             unread.has(run.id),
             outcomes.get(run.id),
           );
-          const project = groups?.find((group) =>
-            group.runs.includes(run),
-          )?.project;
           return (
             <Box
               key={run.id}
@@ -1042,12 +1088,7 @@ function SidebarList({
                 <Text {...tone(status.color)}>
                   {status.short.toLowerCase()}
                 </Text>
-                <Text color="gray">
-                  {' · '}
-                  {project
-                    ? terminalText(basename(project.source))
-                    : run.provider}
-                </Text>
+                <Text color="gray"> · {run.provider}</Text>
               </Text>
             </Box>
           );
@@ -1213,6 +1254,7 @@ export function WorkbenchScreen(props: ScreenProps) {
     sideRows -
     (spaceCount ? 2 + spaceCount * 2 : 0) -
     1 -
+    (groups && groups.length > 1 ? groups.length : 0) -
     2 * Math.max(1, runs.length);
   const sideWorkflowRows =
     !sidebar || !plan

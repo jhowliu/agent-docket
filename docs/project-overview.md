@@ -11,7 +11,7 @@
 ~ all-in-one · Run 3 · Located the theme configuration and its entry point…
 ```
 
-The leading icons and `Unread` came later; see [background notices](background-notices.md). From 80 columns the left column shows the same order in herdr's style: a `spaces` list (glyph, project, next action beneath) above `agents`, two lines per Run.
+The leading icons and `Unread` came later; see [background notices](background-notices.md). From 80 columns the left column shows the same order in herdr's style: a `spaces` list (glyph, project, next action beneath) above `agents`, two lines per Run, each project's Runs under a `name ───` label once more than one project has Runs.
 
 ## Behavior
 
@@ -20,7 +20,7 @@ The leading icons and `Unread` came later; see [background notices](background-n
 - A project's next action is its most urgent Run, including `prompt` before `working`. Projects follow their first Run; equal urgency keeps launch order.
 - The header shows `next: approve Run 4`, `next: Run 2 · <request title>`, `next: prompt Run 1` and similar. A working project shows the latest `report_progress` summary retained in the TUI's events, otherwise `Run N working`. The active Phase is shown as `Phase i/n <title>`. Tasks have no completion state yet, so there is no Task count. The line truncates from the end, so the Phase is cut first.
 - Urgent next actions are yellow; the rest are dimmed. `:inbox` groups only Runs with pending decisions. When the header of the selected Run's group has scrolled away, the top row shows that project instead. The `i/N` counter appears whenever the roster scrolls.
-- From 80 columns the left column lists `spaces` (at most half of it) above `agents`, which scroll two lines per Run; the Phase stays in the Workflow panel (see [TUI operation](tui-operation.md)). Narrow layouts with an inline Roadmap panel keep the one-row roster: just the selected Run, without its project line. Daemons from before the overview (from New Session, 2026-10-21) still send each project's Runs. The TUI groups those in launch order, with headers but no `next:`. This was added after the user saw an ungrouped roster on a live older daemon whose Runs cannot move. Daemons without projects keep the flat launch-order list.
+- From 80 columns the left column lists `spaces` (at most half of it) above `agents`, which scroll two lines per Run (`state · provider` on the second) under a gray `name ───` label per project when Runs come from more than one project; the label of a project scrolled out of view stays on top and a label with no Run left on screen is dropped. Added 2026-10-25 after the user saw two projects' agents in one undivided list, each row repeating its project; the Phase stays in the Workflow panel (see [TUI operation](tui-operation.md)). Narrow layouts with an inline Roadmap panel keep the one-row roster: just the selected Run, without its project line. Daemons from before the overview (from New Session, 2026-10-21) still send each project's Runs. The TUI groups those in launch order, with headers but no `next:`. This was added after the user saw an ungrouped roster on a live older daemon whose Runs cannot move. Daemons without projects keep the flat launch-order list.
 - Browser and CLI are unchanged.
 
 ## Module map and public Interface
