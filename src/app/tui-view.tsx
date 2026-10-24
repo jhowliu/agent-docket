@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Backdrop, Box, Text } from './tui-text.js';
 import stringWidth from 'string-width';
@@ -22,11 +22,18 @@ import type {
 } from '../work/index.js';
 import type { WorkbenchState } from './workbench-protocol.js';
 import { terminalText } from './tui-input.js';
-import { checkEnded, readableEvents, timelineEntries } from './tui-timeline.js';
+import {
+  checkEnded,
+  readableEvents,
+  timelineEntries,
+  turnReplies,
+} from './tui-timeline.js';
 import type { TimelineEntry } from './tui-timeline.js';
 import { stageLabels, trackedWork } from './workbench-work.js';
 import { latestOutcomes } from './tui-outcome.js';
 import type { TurnOutcome } from './tui-outcome.js';
+import { markdownLines, plainText } from './tui-markdown.js';
+import type { Span } from './tui-markdown.js';
 
 export type View = 'live' | 'diff' | 'timeline';
 export type Filter = 'active' | 'inbox';
@@ -35,6 +42,10 @@ export type Line = {
   color?: string;
   bold?: boolean;
   timeline?: { time: string; entry: TimelineEntry };
+  /** The Timeline row this line belongs to, by index. */
+  row?: number;
+  /** Styled runs of a rendered Markdown reply, in place of `text`. */
+  spans?: readonly Span[];
 };
 const views: readonly View[] = ['live', 'diff', 'timeline'];
 const NO_UNREAD: ReadonlySet<RunId> = new Set();
@@ -330,7 +341,7 @@ function eventSummary(event: RunEvent): string {
     case 'agent.message':
       return event.text;
     case 'agent.progress':
-      return 'Progress · ' + event.summary;
+      return (event.finished ? 'Finished · ' : 'Progress · ') + event.summary;
     case 'turn.start':
       return 'Request · ' + event.text;
     case 'tool':
@@ -419,7 +430,7 @@ function detailLines(
   runId: RunId | null,
   view: View,
   width: number,
-  attention: readonly AttentionItem[],
+  entries: readonly TimelineEntry[],
   worktree: WorktreeDiff = NO_WORKTREE,
 ): Line[] {
   const ownEvents = events.filter((event) => event.runId === runId);
@@ -450,8 +461,10 @@ function detailLines(
     }
   } else if (view === 'live') {
     for (const event of selected) {
-      if (
-        event.type === 'agent.message' ||
+      if (event.type === 'agent.message')
+        for (const spans of markdownLines(event.text, width))
+          lines.push({ text: plainText(spans), spans });
+      else if (
         event.type === 'agent.progress' ||
         event.type === 'turn.start' ||
         event.type === 'tool' ||
@@ -469,7 +482,7 @@ function detailLines(
       }
     }
   } else {
-    for (const entry of timelineEntries(ownEvents, attention)) {
+    for (const [row, entry] of entries.entries()) {
       const date = new Date(entry.at);
       const time = Number.isNaN(date.getTime())
         ? '--:--:--'
@@ -489,8 +502,9 @@ function detailLines(
                   time,
                   entry: { ...entry, detail: part.slice(prefix.length) },
                 },
+                row,
               }
-            : { text: '  ' + part, bold: entry.detailBold },
+            : { text: '  ' + part, bold: entry.detailBold, row },
         );
       // Steps and reply endings sit indented beneath their row, dimmed; a
       // numbered step's wrapped lines hang under its text, not its number.
@@ -508,6 +522,7 @@ function detailLines(
               (index === 0 ? marker : ' '.repeat(marker.length)) +
               part,
             color: 'gray',
+            row,
           });
       }
     }
@@ -546,7 +561,51 @@ export type ScreenProps = {
   unread?: ReadonlySet<RunId>;
   /** A background Run's latest change, shown beside the roster title. */
   notice?: Readonly<{ text: string; color: string }> | undefined;
+  /** The selected Timeline row, by its entry's sequence; none follows the end. */
+  cursor?: number | undefined;
+  /** An open reply: its turn (as `turnReplies` keys it) and lines scrolled from the top. */
+  peek?: Readonly<{ turn: number; offset: number }> | undefined;
+  /** Receives the scroll actually shown, so keys never scroll past an end. */
+  onViewport?:
+    | ((viewport: Readonly<{ offset: number; peek: number }>) => void)
+    | undefined;
 };
+
+/** The Timeline row a cursor names, or the last one before it if that row is gone. */
+export function cursorRow(
+  entries: readonly TimelineEntry[],
+  cursor: number | undefined,
+): number {
+  if (cursor === undefined) return -1;
+  const exact = entries.findIndex((entry) => entry.sequence === cursor);
+  if (exact >= 0) return exact;
+  return Math.max(
+    0,
+    entries.filter((entry) => entry.sequence < cursor).length - 1,
+  );
+}
+
+/**
+ * The first line on screen. `offset` counts lines from the end, 0 following
+ * it; a selected Timeline row is kept in view.
+ */
+function scrollStart(
+  lines: readonly Line[],
+  rows: number,
+  offset: number,
+  row: number,
+): number {
+  const most = Math.max(0, lines.length - rows);
+  let start = most - Math.min(offset, most);
+  const first = row < 0 ? -1 : lines.findIndex((line) => line.row === row);
+  if (first >= 0) {
+    let last = first;
+    while (lines[last + 1]?.row === row) last++;
+    if (first < start) start = first;
+    else if (last >= start + rows) start = Math.min(first, last - rows + 1);
+  }
+  return Math.max(0, Math.min(most, start));
+}
 
 /** The left column (agents, Workflow) from 80 columns; it widens to 44. */
 function leftColumnWidth(columns: number) {
@@ -998,6 +1057,63 @@ function SidebarList({
   );
 }
 
+// Inline code sits on a faint block, so it reads as code without a new hue.
+const CODE_BG = '#2b303b';
+
+/** Rendered Markdown runs; an empty line keeps its row. */
+function Spans(props: { spans: readonly Span[] }) {
+  if (!props.spans.length) return <> </>;
+  return (
+    <>
+      {props.spans.map((span, index) => (
+        <Text
+          key={index}
+          bold={span.bold === true}
+          italic={span.italic === true}
+          dimColor={span.dim === true}
+          underline={span.underline === true}
+          strikethrough={span.strike === true}
+          {...(span.code ? { backgroundColor: CODE_BG } : {})}
+        >
+          {span.text}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+/** A frame's lower border carrying a short hint, like `└─ 1–20 of 57 ─┘`. */
+function FrameEdge(props: {
+  width: number;
+  round: boolean;
+  color: string | undefined;
+  hint: string;
+}) {
+  const [left, right] = props.round ? ['╰', '╯'] : ['└', '┘'];
+  const room = Math.max(0, props.width - 6);
+  const hint =
+    stringWidth(props.hint) <= room
+      ? props.hint
+      : room > 1
+        ? props.hint.slice(0, room - 1) + '…'
+        : '';
+  const rule = Math.max(
+    0,
+    props.width - 2 - (hint ? stringWidth(hint) + 3 : 0),
+  );
+  return (
+    <Box height={1} flexShrink={0}>
+      <Text wrap="truncate-end">
+        <Text {...tone(props.color)}>{hint ? left + '─ ' : left}</Text>
+        <Text dimColor>{hint}</Text>
+        <Text {...tone(props.color)}>
+          {(hint ? ' ' : '') + '─'.repeat(rule) + right}
+        </Text>
+      </Text>
+    </Box>
+  );
+}
+
 export function WorkbenchScreen(props: ScreenProps) {
   const {
     state,
@@ -1034,18 +1150,33 @@ export function WorkbenchScreen(props: ScreenProps) {
   const sidebarWidth = columns - mainWidth - 1;
   const width = Math.max(1, mainWidth - 4);
   const worktreeDiff = props.worktreeDiff ?? NO_WORKTREE;
+  const ownEvents = useMemo(
+    () => state.events.filter((event) => event.runId === selectedId),
+    [state.events, selectedId],
+  );
+  const entries = useMemo(
+    () => timelineEntries(ownEvents, state.attention),
+    [ownEvents, state.attention],
+  );
   const lines = useMemo(
     () =>
-      detailLines(
-        state.events,
-        selectedId,
-        view,
-        width,
-        state.attention,
-        worktreeDiff,
-      ),
-    [state.events, state.attention, selectedId, view, width, worktreeDiff],
+      detailLines(state.events, selectedId, view, width, entries, worktreeDiff),
+    [state.events, entries, selectedId, view, width, worktreeDiff],
   );
+  const replies = useMemo(() => turnReplies(ownEvents), [ownEvents]);
+  const peekTurn = props.peek && replies.get(props.peek.turn);
+  const peekLines = useMemo(
+    () => (peekTurn ? markdownLines(peekTurn.reply, width) : []),
+    [peekTurn, width],
+  );
+  // The scroll shown goes back to the app after each render.
+  const viewport = useRef<{ offset: number; peek: number } | undefined>(
+    undefined,
+  );
+  viewport.current = undefined;
+  useEffect(() => {
+    if (viewport.current) props.onViewport?.(viewport.current);
+  });
   if (columns < 60 || rows < 20) {
     return (
       <Box
@@ -1221,7 +1352,8 @@ export function WorkbenchScreen(props: ScreenProps) {
   else if (props.help)
     disclosures.push(
       'j/k agent · w waiting/unread · Tab request · a/r allow/deny',
-      'h/l or 1–3 views · PgUp/PgDn scroll · g/G top/end',
+      'h/l or 1–3 views · ↑↓ lines, Timeline rows · Space reply',
+      'Ctrl+U/D or PgUp/PgDn page · g/G top/end',
       'n new · Enter/i reply · Esc keep draft · s actions',
       ': command · q / Ctrl+C detach; Runs keep running',
       ':active all agents · :inbox pending approvals',
@@ -1243,9 +1375,48 @@ export function WorkbenchScreen(props: ScreenProps) {
       compactWorkflowRows -
       inputRows,
   );
-  const offset = Math.min(props.offset, Math.max(0, lines.length - logRows));
-  const end = Math.max(0, lines.length - offset);
-  const log = lines.slice(Math.max(0, end - logRows), end);
+  const selectedRow =
+    view === 'timeline' ? cursorRow(entries, props.cursor) : -1;
+  const start = scrollStart(lines, logRows, props.offset, selectedRow);
+  const log = lines.slice(start, start + logRows);
+  const offset = Math.max(0, lines.length - logRows - start);
+  // An open reply keeps its request on the first row and scrolls beneath it.
+  const peekRows = Math.max(1, logRows - 1);
+  const peekStart = Math.max(
+    0,
+    Math.min(props.peek?.offset ?? 0, peekLines.length - peekRows),
+  );
+  viewport.current = { offset, peek: peekStart };
+  const span = (first: number, shown: number, total: number) =>
+    `${first + 1}–${first + shown} of ${total}`;
+  // Where the view is and which keys move it, on the frame's lower edge.
+  const frameHint = props.peek
+    ? [
+        peekLines.length > peekRows
+          ? span(
+              peekStart,
+              Math.min(peekRows, peekLines.length - peekStart),
+              peekLines.length,
+            )
+          : '',
+        peekLines.length > peekRows ? '↑↓ scroll' : '',
+        'Esc close',
+      ]
+    : view === 'timeline'
+      ? [
+          selectedRow >= 0
+            ? `row ${selectedRow + 1} of ${entries.length}`
+            : lines.length > logRows
+              ? span(start, log.length, lines.length)
+              : '',
+          entries.length && selectedRow < 0 ? '↑↓ select' : '',
+          [...replies.values()].some((turn) => turn.reply) ? 'Space reply' : '',
+          selectedRow >= 0 ? 'G latest' : '',
+        ]
+      : lines.length > logRows
+        ? [span(start, log.length, lines.length), '↑↓ scroll', 'g/G top/end']
+        : [];
+  const frameColor = props.peek ? 'cyan' : request ? 'yellow' : undefined;
   // New Session floats centered in front of the dimmed workspace.
   const modalWidth = Math.min(columns - 6, 96);
   const modalHeight = Math.min(rows - 4, 16);
@@ -1528,44 +1699,84 @@ export function WorkbenchScreen(props: ScreenProps) {
               />
             )}
             <Box
-              borderStyle="single"
-              borderColor={request ? 'yellow' : undefined}
-              height={logRows + 2}
+              borderStyle={props.peek ? 'round' : 'single'}
+              borderBottom={false}
+              {...(frameColor ? { borderColor: frameColor } : {})}
+              height={logRows + 1}
               flexShrink={0}
               paddingX={1}
               flexDirection="column"
               overflow="hidden"
             >
-              {log.length ? (
-                log.map((line, index) => (
-                  <Text
-                    key={index}
-                    {...tone(line.color)}
-                    bold={line.bold === true}
-                    wrap="truncate-end"
-                  >
-                    {line.timeline ? (
-                      <>
-                        <Text dimColor>{line.timeline.time} </Text>
-                        <Text color={line.timeline.entry.color} bold>
-                          {line.timeline.entry.label}
-                        </Text>
-                        {line.timeline.entry.detail ? (
-                          <Text bold={line.timeline.entry.detailBold}>
-                            {' · '}
-                            {line.timeline.entry.detail}
-                          </Text>
-                        ) : null}
-                      </>
-                    ) : (
-                      line.text || ' '
-                    )}
+              {props.peek ? (
+                <>
+                  <Text wrap="truncate-end">
+                    <Text color="cyan" bold>
+                      Reply
+                    </Text>
+                    <Text dimColor>
+                      {peekTurn
+                        ? peekTurn.request
+                          ? ' · ' +
+                            terminalText(peekTurn.request).replace(/\s+/g, ' ')
+                          : ''
+                        : ' · no longer retained · 1 Live'}
+                    </Text>
                   </Text>
+                  {peekLines
+                    .slice(peekStart, peekStart + peekRows)
+                    .map((spans, index) => (
+                      <Text key={index} wrap="truncate-end">
+                        <Spans spans={spans} />
+                      </Text>
+                    ))}
+                </>
+              ) : log.length ? (
+                log.map((line, index) => (
+                  <Box
+                    key={index}
+                    height={1}
+                    flexShrink={0}
+                    {...(line.row !== undefined && line.row === selectedRow
+                      ? { backgroundColor: SELECTED_BG }
+                      : {})}
+                  >
+                    <Text
+                      {...tone(line.color)}
+                      bold={line.bold === true}
+                      wrap="truncate-end"
+                    >
+                      {line.timeline ? (
+                        <>
+                          <Text dimColor>{line.timeline.time} </Text>
+                          <Text color={line.timeline.entry.color} bold>
+                            {line.timeline.entry.label}
+                          </Text>
+                          {line.timeline.entry.detail ? (
+                            <Text bold={line.timeline.entry.detailBold}>
+                              {' · '}
+                              {line.timeline.entry.detail}
+                            </Text>
+                          ) : null}
+                        </>
+                      ) : line.spans ? (
+                        <Spans spans={line.spans} />
+                      ) : (
+                        line.text || ' '
+                      )}
+                    </Text>
+                  </Box>
                 ))
               ) : (
                 <Text dimColor>{empty}</Text>
               )}
             </Box>
+            <FrameEdge
+              width={mainWidth}
+              round={props.peek !== undefined}
+              color={frameColor}
+              hint={frameHint.filter(Boolean).join(' · ')}
+            />
             {request && (
               <DecisionPanel
                 request={request}

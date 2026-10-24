@@ -54,6 +54,7 @@ async function main() {
   const { client, initial } = await connectWorkbench(origin, {
     autostart: !args.includes('--connect'),
   });
+  const alternateScreen = process.env['INK_SCREEN_READER'] !== 'true';
   const app = render(
     <WorkbenchApp
       client={client}
@@ -62,7 +63,7 @@ async function main() {
       notify={notify}
     />,
     {
-      alternateScreen: process.env['INK_SCREEN_READER'] !== 'true',
+      alternateScreen,
       maxFps: 20,
       kittyKeyboard: {
         mode: 'auto',
@@ -70,6 +71,12 @@ async function main() {
       },
     },
   );
+  if (alternateScreen) {
+    // Alternate scroll: terminals that support it send the mouse wheel as
+    // arrow keys, which scroll the pane. Mouse selection stays the terminal's.
+    process.stdout.write('\u001b[?1007h');
+    process.once('exit', () => process.stdout.write('\u001b[?1007l'));
+  }
   await app.waitUntilExit();
   console.log(
     `Detached; Runs remain at ${origin}. Run npm run tui to reconnect.`,

@@ -2,6 +2,7 @@ import type { AttentionItem } from '../attention/index.js';
 import type { RunEvent } from '../execution/index.js';
 import { terminalText } from './tui-input.js';
 import { lastParagraph, outcomeOf, startsTurn } from './tui-outcome.js';
+import { inlineText } from './tui-markdown.js';
 
 export type TimelineEntry = Readonly<{
   sequence: number;
@@ -13,8 +14,10 @@ export type TimelineEntry = Readonly<{
   detailBold: boolean;
   /** Keeps the agent's own line breaks (progress); every row wraps on screen. */
   wrap: boolean;
-  /** Dim lines beneath: a request's steps, or the end of an undeclared reply. */
+  /** Dim lines beneath: a request's steps, or the end of the turn's reply. */
   notes: readonly string[];
+  /** The turn this row belongs to, keyed like `turnReplies`; null before any turn. */
+  turn: number | null;
 }>;
 type ToolActivity = {
   row: number;
@@ -80,6 +83,45 @@ export function checkEnded(
   }
 }
 
+/**
+ * Names each event's turn by the event that started it. A `turn.start` right
+ * after the Run started running belongs to that same turn.
+ */
+function turnKeys(): (event: RunEvent) => number | null {
+  let key: number | null = null;
+  let open = false;
+  return (event) => {
+    if (startsTurn(event)) {
+      if (!(open && event.type === 'turn.start')) key = event.sequence;
+      open = true;
+    } else if (event.type === 'turn.end') open = false;
+    return key;
+  };
+}
+
+/** Each turn's request and reply, verbatim; the reply is the agent's words, never interpreted. */
+export function turnReplies(
+  events: readonly RunEvent[],
+): ReadonlyMap<number, Readonly<{ request: string; reply: string }>> {
+  const turnOf = turnKeys();
+  const turns = new Map<number, { request: string; parts: string[] }>();
+  for (const event of readableEvents(events)) {
+    const key = turnOf(event);
+    if (key === null) continue;
+    const turn = turns.get(key) ?? { request: '', parts: [] };
+    turns.set(key, turn);
+    if (event.type === 'turn.start') turn.request = event.text;
+    else if (event.type === 'agent.message' && event.text.trim())
+      turn.parts.push(event.text);
+  }
+  return new Map(
+    [...turns].map(([key, turn]) => [
+      key,
+      { request: turn.request, reply: turn.parts.join('\n\n') },
+    ]),
+  );
+}
+
 /** Concatenate adjacent deltas for reading without changing raw events or cursors. */
 export function readableEvents(events: readonly RunEvent[]): RunEvent[] {
   const result: RunEvent[] = [];
@@ -117,9 +159,11 @@ export function timelineEntries(
   let turnAt: string | undefined;
   let requestRow: number | undefined;
   let ended = false;
-  // The turn's own events decide its outcome; its reply text stays in Live,
-  // except the last paragraph when the agent declared nothing.
+  // The turn's own events decide its outcome; its reply opens with Space,
+  // and its last paragraph sits under the turn's result row.
   let turn: RunEvent[] = [];
+  const turnOf = turnKeys();
+  let turnKey: number | null = null;
   let reply: string[] = [];
   // Marked-done requests the agent has not heard about until the next turn.
   let unreplied: { index: number; event: RunEvent; title: string }[] = [];
@@ -145,6 +189,7 @@ export function timelineEntries(
       detailBold,
       wrap,
       notes: [],
+      turn: turnKey,
     };
   };
   for (const event of readableEvents(events)) {
@@ -155,6 +200,7 @@ export function timelineEntries(
         rows[index] = row(done, 'Marked done', title);
       unreplied = [];
     } else turn.push(event);
+    turnKey = turnOf(event);
     switch (event.type) {
       case 'agent.progress': {
         rows.push(
@@ -346,11 +392,17 @@ export function timelineEntries(
         if (event.reason !== 'end_turn') details.push('stop: ' + event.reason);
         // The turn's result, as its agent declared it.
         const outcome = outcomeOf(turn, attention);
-        const ending = reply.length ? lastParagraph(reply.join('\n\n')) : '';
-        if (outcome.kind === 'none' && ending) details.push('1 Live');
+        // Whatever the agent declared, its reply may hold the answer.
+        const text = reply.join('\n\n');
+        // Its words without Markdown markers, which a dim line cannot show.
+        const ending = reply.length ? inlineText(lastParagraph(text)) : '';
+        if (ending) {
+          const count = text.split('\n').length;
+          details.push(`Space reply · ${count} line${count === 1 ? '' : 's'}`);
+        }
         const stats = details.filter(Boolean).join(' · ');
-        rows.push(
-          outcome.kind === 'blocked' || outcome.kind === 'question'
+        rows.push({
+          ...(outcome.kind === 'blocked' || outcome.kind === 'question'
             ? row(
                 event,
                 outcome.kind === 'blocked' ? 'Blocked' : 'Question',
@@ -359,11 +411,9 @@ export function timelineEntries(
               )
             : outcome.kind === 'finished'
               ? row(event, 'Finished', stats, 'green')
-              : {
-                  ...row(event, 'Turn ended', stats),
-                  notes: ending ? [ending] : [],
-                },
-        );
+              : row(event, 'Turn ended', stats)),
+          notes: ending ? [ending] : [],
+        });
         reply = [];
         ended = true;
         requestRow = undefined;

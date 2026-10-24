@@ -276,10 +276,10 @@ test('Ink approval shortcuts target the focused request; paste and repeats canno
   ui.stdin.write('s');
   await frameHas(ui, 'i prompts:');
   ui.stdin.write('?');
-  await frameHas(ui, 'PgUp/PgDn scroll');
+  await frameHas(ui, 'PgUp/PgDn page');
   ui.stdin.write('d');
   await frameHas(ui, ':answer 1');
-  assert.ok(!ui.lastFrame()?.includes('PgUp/PgDn scroll'));
+  assert.ok(!ui.lastFrame()?.includes('PgUp/PgDn page'));
   ui.stdin.write('\u001b');
   await frameHas(ui, ':answer 1', false);
   ui.stdin.write('\u001b[200~a\u001b[201~');

@@ -229,6 +229,16 @@ const app = agent({ name: 'workbench-fixture' })
       await message('Answer received: ' + text.slice(6));
       return { stopReason: 'end_turn' };
     }
+    // lines:<n> answers with n numbered lines, for reading a long reply.
+    if (/^lines:\d+$/.test(text)) {
+      const count = Math.min(200, Number(text.slice(6)));
+      await message(
+        Array.from({ length: count }, (_, index) => `Line ${index + 1}`).join(
+          '\n',
+        ),
+      );
+      return { stopReason: 'end_turn' };
+    }
     const permission = async (suffix) => {
       const toolCallId = `tool-${++counter}-${suffix}`;
       await update({

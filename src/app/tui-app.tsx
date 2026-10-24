@@ -11,6 +11,7 @@ import type { RunVerification } from '../work/index.js';
 import { PromptInput, terminalText } from './tui-input.js';
 import {
   WorkbenchScreen,
+  cursorRow,
   visibleRuns,
   workbenchMainWidth,
   workspaceNeedsAction,
@@ -33,6 +34,7 @@ import {
 } from './tui-notices.js';
 import type { Notice } from './tui-notices.js';
 import { latestOutcomes } from './tui-outcome.js';
+import { timelineEntries, turnReplies } from './tui-timeline.js';
 
 type Mode =
   | { kind: 'normal' }
@@ -88,7 +90,12 @@ function stateHint(
         outcome.done
       )
         return 'Blocked · marked done; Enter to tell the agent it can continue';
-      return `Idle · Enter message${changes} · n new Run`;
+      const replied = [
+        ...turnReplies(
+          state.events.filter((event) => event.runId === run.id),
+        ).values(),
+      ].some((turn) => turn.reply);
+      return `Idle · Enter message${replied ? ' · Space reply' : ''}${changes} · n new Run`;
     }
     case 'failed':
     case 'interrupted':
@@ -161,6 +168,11 @@ export function WorkbenchApp({
   const [filter, setFilter] = useState<Filter>('active');
   const [view, setView] = useState<View>('timeline');
   const [offset, setOffset] = useState(0);
+  // A selected Timeline row (its entry's sequence) and an open reply.
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [peek, setPeek] = useState<{ turn: number; offset: number } | null>(
+    null,
+  );
   const [focusedId, setFocusedId] = useState<AttentionId | null>(null);
   const [needsSelection, setNeedsSelection] = useState(false);
   const [mode, setMode] = useState<Mode>({ kind: 'normal' });
@@ -282,6 +294,8 @@ export function WorkbenchApp({
       setReceipt(null);
       setMode({ kind: 'normal' });
       setOffset(0);
+      setCursor(null);
+      setPeek(null);
       setOutline(false);
       setFilter('active');
       setNote('Server restarted; fresh state loaded');
@@ -377,6 +391,8 @@ export function WorkbenchApp({
     setReceipt(null);
     setDetails(false);
     setOffset(0);
+    setCursor(null);
+    setPeek(null);
     setOutline(false);
     setOutlineOffset(0);
   }
@@ -514,6 +530,45 @@ export function WorkbenchApp({
   function setTab(tab: View) {
     setView(tab);
     setOffset(0);
+    setCursor(null);
+    setPeek(null);
+  }
+  const ownEvents = () =>
+    state.events.filter((event) => event.runId === selected?.id);
+  /** Moves the Timeline row selection; past the newest row it follows the end again. */
+  function moveCursor(delta: number) {
+    const entries = timelineEntries(ownEvents(), state.attention);
+    if (!entries.length) return;
+    const index = cursor === null ? entries.length : cursorRow(entries, cursor);
+    const next = index + delta;
+    if (next >= entries.length) {
+      setCursor(null);
+      setOffset(0);
+    } else setCursor(entries[Math.max(0, next)]?.sequence ?? null);
+  }
+  /** Opens the selected row's turn reply, or the latest reply without a selection. */
+  function openReply() {
+    const replies = turnReplies(ownEvents());
+    const entries = timelineEntries(ownEvents(), state.attention);
+    const row =
+      view === 'timeline' && cursor !== null
+        ? entries[cursorRow(entries, cursor)]
+        : undefined;
+    const turn = row
+      ? row.turn
+      : ([...replies].reverse().find(([, turn]) => turn.reply)?.[0] ?? null);
+    if (turn === null || !replies.get(turn)?.reply) {
+      setNote(
+        row
+          ? 'No reply in this turn · 1 Live shows the whole conversation'
+          : 'No reply yet · 1 Live shows the whole conversation',
+      );
+      return;
+    }
+    setPeek({ turn, offset: 0 });
+    setOptions(false);
+    setHelp(false);
+    setDetails(false);
   }
   function changeFilter(next: Filter) {
     setFilter(next);
@@ -672,6 +727,47 @@ export function WorkbenchApp({
       if (heldAction.current === input) heldAction.current = null;
       return;
     }
+    // Half a screen: PgUp/PgDn, or Ctrl+U/Ctrl+D where there is no PgUp key.
+    const page =
+      key.pageUp || (key.ctrl && input === 'u')
+        ? -1
+        : key.pageDown || (key.ctrl && input === 'd')
+          ? 1
+          : 0;
+    const half = Math.max(1, Math.floor(rows / 2));
+    if (peek && !tooSmall) {
+      // A reply reads like a pager; any other key closes it and acts as usual,
+      // so Enter answers what was just read.
+      const lines =
+        key.upArrow || input === 'k'
+          ? -2
+          : key.downArrow || input === 'j'
+            ? 2
+            : page * half;
+      if (lines) {
+        setPeek({ ...peek, offset: Math.max(0, peek.offset + lines) });
+        return;
+      }
+      if (input === 'g' || key.home || input === 'G' || key.end) {
+        setPeek({
+          ...peek,
+          offset: input === 'g' || key.home ? 0 : 1_000_000,
+        });
+        return;
+      }
+      setPeek(null);
+      if (key.escape || input === ' ' || input === 'q') return;
+    }
+    if (page && (key.ctrl || key.pageUp || key.pageDown)) {
+      // In Timeline a page moves the row selection, which keeps itself in view.
+      if (view === 'timeline')
+        moveCursor(page * Math.max(1, Math.floor(rows / 4)));
+      else
+        setOffset((value) =>
+          Math.min(1_000_000, Math.max(0, value - page * half)),
+        );
+      return;
+    }
     if (key.ctrl || key.meta || key.super || key.hyper) return;
     if (input === 'q') {
       exit();
@@ -690,13 +786,21 @@ export function WorkbenchApp({
         return;
       heldAction.current = input;
     } else heldAction.current = null;
-    if (input === 'j' || key.downArrow || input === 'k' || key.upArrow) {
+    if (input === 'j' || input === 'k') {
       const index = runs.findIndex((run) => run.id === selected?.id);
-      const direction = input === 'j' || key.downArrow ? 1 : -1;
+      const direction = input === 'j' ? 1 : -1;
       select(
         runs[Math.max(0, Math.min(runs.length - 1, index + direction))]?.id ??
           null,
       );
+    } else if (key.upArrow || key.downArrow) {
+      // Arrows (and the wheel, which terminals send as arrows) move within
+      // the pane: Timeline rows, or Live/Diff lines; j/k move between Runs.
+      const direction = key.downArrow ? 1 : -1;
+      if (view === 'timeline') moveCursor(direction);
+      else setOffset((value) => Math.max(0, value - direction * 2));
+    } else if (input === ' ') {
+      openReply();
     } else if (input === 'w') {
       // Runs waiting on the person first, then Runs with an unread turn.
       const outcomes = latestOutcomes(state.events, state.attention);
@@ -818,17 +922,15 @@ export function WorkbenchApp({
           (views.indexOf(view) + (input === 'h' || key.leftArrow ? 2 : 1)) % 3
         ] ?? 'timeline',
       );
-    } else if (key.pageUp)
-      setOffset((value) =>
-        Math.min(1_000_000, value + Math.max(1, Math.floor(rows / 2))),
-      );
-    else if (key.pageDown)
-      setOffset((value) =>
-        Math.max(0, value - Math.max(1, Math.floor(rows / 2))),
-      );
-    else if (input === 'g' || key.home) setOffset(1_000_000);
-    else if (input === 'G' || key.end) setOffset(0);
-    else if (key.escape) {
+    } else if (input === 'g' || key.home) {
+      if (view === 'timeline') {
+        const first = timelineEntries(ownEvents(), state.attention)[0];
+        setCursor(first?.sequence ?? null);
+      } else setOffset(1_000_000);
+    } else if (input === 'G' || key.end) {
+      setCursor(null);
+      setOffset(0);
+    } else if (key.escape) {
       setOptions(false);
       setHelp(false);
       setDetails(false);
@@ -898,6 +1000,13 @@ export function WorkbenchApp({
         filter={filter}
         view={view}
         offset={offset}
+        cursor={cursor ?? undefined}
+        peek={peek ?? undefined}
+        onViewport={(shown) => {
+          if (shown.offset !== offset) setOffset(shown.offset);
+          if (peek && shown.peek !== peek.offset)
+            setPeek({ ...peek, offset: shown.peek });
+        }}
         request={request}
         armed={!needsSelection}
         connected={connected}

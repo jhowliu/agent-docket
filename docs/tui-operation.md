@@ -33,7 +33,7 @@ Choose a port supported by HTTP Fetch, such as 4177, 4180 or 4182, and available
 
 1. `n` 建立 Run，Enter（或 `i`）開啟輸入欄，輸入 `fix` 後 Enter 送出。輸入欄和 `:` 命令欄以上下兩條淡色分隔線框出（左側標籤寫明 Enter／Esc），與內容區和底部提示分開；低於 24 列時省略下方那條。這會啟動真實的 deterministic ACP fixture 程序。
 2. 收到核准時，顯示聚焦請求的標題與實際一次性選項。`a` 允許一次，`r` 拒絕；`Tab` 換另一筆，`w` 換另一個等待的 Run。一次回答後，須明確選定下一筆，避免長按誤答。
-3. `1` 看完整回覆與工具活動，`2` 看實際 before／after 文字，`3` 回 timeline。`PgUp/PgDn` 捲動；`g/G` 頂端／末端。Timeline 只列操作事件摘要；Live 與 Diff 可讀取換行內容。
+3. `1` 看完整回覆與工具活動，`2` 看實際 before／after 文字，`3` 回 timeline。↑ / ↓（或滾輪）在 Live／Diff 捲動、在 Timeline 選列；`Space` 在右側讀該輪完整回覆；`Ctrl+U/D`、`PgUp/PgDn` 翻頁；`g/G` 頂端／末端。Timeline 只列操作事件摘要；Live 與 Diff 可讀取換行內容。
 4. 左欄仿 herdr：上半是 `spaces`（每個專案一個狀態符號、粗體名稱，下一行是下一步），下半是 `agents`（每個 Run 兩行：`Run N · 標題`，下一行是狀態 · 專案），選中的 Run 整列淡色底；追蹤中的 Task 在底部顯示 Workflow。檔案樹已於 2026-10-24 移除。Run 工作目錄與 worktree 分支顯示於底部。`x` 或 `:cancel` 停止 Run 並讓核准失效；乾淨 worktree 回收後從名單移除，有修改則保留 `Commit required`，用 `c`／`:commit <message>` 保存至本機分支後回收。
 5. `q` 離開後重開 `npm run tui`，等待中的請求仍在。
 
@@ -41,7 +41,7 @@ Choose a port supported by HTTP Fetch, such as 4177, 4180 or 4182, and available
 
 Run 名單依專案分組，每組第一行寫專案名、下一步與目前 Phase；需要你處理的 Run 排在前面，其餘維持啟動順序。詳見 [Project overview](project-overview.md)。
 
-`:active` 顯示進行中的 Run，`:inbox` 顯示待核准的 Run。`PgUp/PgDn`、`g/G` 只捲動目前保留的事件視窗；沒有過去 Run 名單、歷史分頁或自動存檔。
+`:active` 顯示進行中的 Run，`:inbox` 顯示待核准的 Run。捲動與 `g/G` 只涵蓋目前保留的事件視窗；沒有過去 Run 名單、歷史分頁或自動存檔。
 
 `:prompt question` 觸發文字提問，閒置後用 i 回覆 `reply:名稱`。`:prompt two-permissions` 同時提出兩筆核准；`:prompt wait` 等取消；`:prompt crash` 測異常退出。一般文字指令只在 idle 接受，尚無執行中 steering。
 
@@ -61,7 +61,7 @@ The information split follows the inspected [oat-agents tabs](https://github.com
 
 See [Timeline ingestion](timeline-ingestion.md) for oat-agents' actual producers/JSONL reader, our event ownership and compatibility. Reopening the TUI improves old retained events; Request records require new prompts handled by an upgraded daemon. Existing prompt text cannot be reconstructed from lifecycle-only history.
 
-Operational summaries remain single-row previews. Explicit Progress reports wrap in full, with rendered rows used for page scrolling. Full retained assistant messages remain in `1 Live`. See [Agent progress](agent-progress.md) for the Run-specific MCP tool, 50-word limit and upgrade requirements. Oat uses [single-line Timeline summaries](https://github.com/Noopher-AI/oat-agents/blob/main/src/tui/text.rs#L293-L335); its [Log view wraps the transcript or full event fields](https://github.com/Noopher-AI/oat-agents/blob/main/src/tui/tabbed.rs#L249-L280). Its Timeline `e` key cycles filters, not expansion. Our earlier proposed general `z` toggle and tab removal were not implemented.
+Operational summaries remain single-row previews. Explicit Progress reports wrap in full, with rendered rows used for page scrolling. Full retained assistant messages remain in `1 Live`; `Space` opens one turn's reply over the right pane. See [Agent progress](agent-progress.md) for the Run-specific MCP tool, 50-word limit and upgrade requirements. Oat uses [single-line Timeline summaries](https://github.com/Noopher-AI/oat-agents/blob/main/src/tui/text.rs#L293-L335); its [Log view wraps the transcript or full event fields](https://github.com/Noopher-AI/oat-agents/blob/main/src/tui/tabbed.rs#L249-L280). Its Timeline `e` key cycles filters, not expansion. Our earlier proposed general `z` toggle and tab removal were not implemented.
 
 Use `:prompt stream` in fixture mode to reproduce six small ACP chunks forming `summarize its purpose.`. `test/streaming.test.tsx` covers the original per-fragment display bug, selected-Run/turn boundaries, whitespace/CJK/emoji, terminal widths 60/80/120, Timeline filtering, incremental polling and reconnection.
 

@@ -5,7 +5,8 @@ export const progressInstructions =
   'Report meaningful progress, a discovery, a blocker, a needed decision, or the outcome of your work. ' +
   'Explain what changed and the next step when useful. Choose your own wording; there are no progress categories. ' +
   'Do not report every tool call or repeat unchanged status. Keep the final answer in the conversation. ' +
-  'When you have finished what the person asked, call report_progress once more with finished: true and the outcome as the summary. ' +
+  'When you have finished what the person asked, call report_progress once more with finished: true and the outcome as the summary; ' +
+  'when they asked a question, the summary is the answer in brief, not a note that you answered it. ' +
   'Use the normal permission mechanism for approvals; a progress report does not grant permission or establish verification.';
 
 export const requestInstructions =

@@ -104,6 +104,10 @@ _Avoid_: 把在持續變動的工作目錄上跑過的檢查稱為 Verification
 某個回合結束時 agent 透過 Run 專用工具宣告的結果：blocked（要人去做某事）、question（要人回答）、finished（agent 自稱做完），或沒有宣告；由宣告決定，不從聊天內容推斷。
 _Avoid_: 把 finished 當成驗證通過、階段通過或 Task 完成；把 blocked 當成 Run failed；把標記 Done 當成已回覆 agent
 
+**Turn reply**：
+某個回合中 agent 在對話裡寫下的全部文字，逐字保留；TUI 以 `Space` 在右側讀取（Markdown 只改顯示，不改原文），結果列下方附最後一段。只是 agent 說的話，不經解讀。
+_Avoid_: 把 Turn reply 當成 Progress、finished summary 或驗證結果
+
 **Unread**：
 某個 TUI 尚未顯示過的 Run 回合結果；只屬於該 TUI 程序，選到該 Run 即視為已讀。
 _Avoid_: 把 Unread 當成 Run 結束、Task 完成或審查通過

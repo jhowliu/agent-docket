@@ -149,6 +149,11 @@ test('each turn ends as the agent declared it: blocked stays blocked after Done 
   assert.match(output, /Run 1 · [^│\n]* Finished /, output);
   assert.equal(last('Finished')?.color, 'green');
   assert.doesNotMatch(output, /verified|passed|accepted/i, output);
+  // Whatever it declared, the turn's reply is a key away and its end shows.
+  assert.match(last('Finished')?.detail ?? '', /Space reply · 1 line$/);
+  assert.deepEqual(last('Finished')?.notes, [
+    'Progress report submitted. Full conversation remains here.',
+  ]);
 
   // A question reads as one.
   await turn(

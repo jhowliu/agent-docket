@@ -12,7 +12,7 @@ npm run tui
 需要 Node.js 22.16 以上與互動式 terminal。TUI 自動連接本機 `127.0.0.1:4177`；沒有服務時啟動背景服務，不需另外開一個 terminal。畫面保留 agents＋timeline，按需展開回覆、路徑和操作。
 
 - `n` 開啟 New Session：輸入 Git 專案根目錄、Enter 讀取分支，選起始分支後 Enter 建立獨立 worktree。路徑欄 `Tab` 可列資料夾並補全，用方向鍵與 Enter 選取；`Shift+Tab` 回 Agent 欄選 Fixture 測試模式。建立後 Enter（或 `i`）輸入需求。
-- 工作區焦點下，`j/k` 切換 Run，`h/l` 或 `1–3` 切換 Live／Diff／Timeline；`PgUp/PgDn` 捲動。`w` 跳到待核准，`a/r` 允許一次／拒絕；`Tab` 選下一筆核准。
+- 工作區焦點下，`j/k` 切換 Run，`h/l` 或 `1–3` 切換 Live／Diff／Timeline；↑ / ↓ 或滾輪捲動（Timeline 選列），`Space` 讀該輪回覆，`Ctrl+U/D` 翻頁。`w` 跳到待核准，`a/r` 允許一次／拒絕；`Tab` 選下一筆核准。
 - 左欄列出各專案的 agents；Run 工作路徑顯示於底部。`s` 看操作、`?` 看按鍵、`:` 輸入白名單命令。
 - `Esc` 收起回覆並保留草稿；`q`／Ctrl+C 只離開 TUI，重開可繼續處理原本的 Run。
 
