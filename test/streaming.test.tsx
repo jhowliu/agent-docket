@@ -117,7 +117,12 @@ test('Timeline keeps only the last paragraph of streamed prose and groups tool u
   assert.ok(!output.includes('Reading the code first'), output);
   assert.ok(!output.includes('Tool pending · Read README'), output);
   const narrow = screen(events, 'timeline', 80);
-  assert.ok(narrow.includes('Run interrupted · Adapter connect'), narrow);
+  // Narrow rows wrap instead of cutting the reason.
+  assert.match(
+    narrow,
+    /Run interrupted · Adapter[\s│]*connection lost/,
+    narrow,
+  );
   assert.ok(
     screen(events, 'live', 80).includes('Adapter connection lost'),
     'The complete failure reason stays available in Live beside Project',

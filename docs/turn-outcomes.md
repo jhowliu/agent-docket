@@ -24,6 +24,7 @@ Each turn's own events decide it; an open request outranks a done one, and any r
 - **Done is not a reply.** `y` (or Mark done in the browser) closes the request but tells the agent nothing. So the Run stays `◉ blocked` (`Blocked · reply to continue` in the title), the Timeline row reads `Marked done · reply to continue · <title>` in yellow, `w` still stops there and the footer says Enter tells the agent it can continue. The next prompt resolves it and the row turns gray.
 - **The reply's last paragraph** is shown only after a turn that declared nothing. It is the reply's text after its last blank line, word for word, at most 400 characters, and never interpreted. It replaces the former `replied · 1 Live` marker; `1 Live` still points to the full reply.
 - **Failures** are unchanged: `✕ failed` means the Run or its agent process broke. A blocked agent is not a failure, so it does not send you to a new Run.
+- **No cut rows.** Every Timeline row wraps instead of ending in `…` (2026-10-24, after the user saw tool commands, `Blocked` and `Marked done` rows cut): continuation lines indent two cells, notes four, and a numbered step's later lines hang under its text. Tool titles keep their first line, at most 240 characters.
 - Background notices follow the same words: `is blocked: <title>`, `asks: <title>`, `reports finished`, `ended a turn`.
 
 ## Colors

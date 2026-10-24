@@ -11,6 +11,7 @@ export type TimelineEntry = Readonly<{
   detail: string;
   color: string;
   detailBold: boolean;
+  /** Keeps the agent's own line breaks (progress); every row wraps on screen. */
   wrap: boolean;
   /** Dim lines beneath: a request's steps, or the end of an undeclared reply. */
   notes: readonly string[];

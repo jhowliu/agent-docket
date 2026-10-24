@@ -33,6 +33,7 @@ export type Filter = 'active' | 'inbox';
 export type Line = {
   text: string;
   color?: string;
+  bold?: boolean;
   timeline?: { time: string; entry: TimelineEntry };
 };
 const views: readonly View[] = ['live', 'diff', 'timeline'];
@@ -473,41 +474,42 @@ function detailLines(
       const time = Number.isNaN(date.getTime())
         ? '--:--:--'
         : date.toLocaleTimeString('en-GB', { hour12: false });
-      if (entry.wrap) {
-        const prefix = `${time} ${entry.label} · `;
-        const wrapped = wrapAnsi(
-          prefix + entry.detail,
-          Math.max(1, width - 2),
-          {
-            hard: true,
-            trim: false,
-          },
+      // Every row wraps rather than cutting its detail; full output remains in Live.
+      const prefix = `${time} ${entry.label} · `;
+      const wrapped = wrapAnsi(prefix + entry.detail, Math.max(1, width - 2), {
+        hard: true,
+        trim: true,
+      }).split('\n');
+      for (const [index, part] of wrapped.entries())
+        lines.push(
+          index === 0
+            ? {
+                text: part,
+                timeline: {
+                  time,
+                  entry: { ...entry, detail: part.slice(prefix.length) },
+                },
+              }
+            : { text: '  ' + part, bold: entry.detailBold },
+        );
+      // Steps and reply endings sit indented beneath their row, dimmed; a
+      // numbered step's wrapped lines hang under its text, not its number.
+      for (const note of entry.notes) {
+        const marker = /^\d+\. /.exec(note)?.[0] ?? '';
+        const parts = wrapAnsi(
+          note.slice(marker.length),
+          Math.max(1, width - 6 - marker.length),
+          { hard: true, trim: true },
         ).split('\n');
-        for (const [index, part] of wrapped.entries())
-          lines.push(
-            index === 0
-              ? {
-                  text: part,
-                  timeline: {
-                    time,
-                    entry: { ...entry, detail: part.slice(prefix.length) },
-                  },
-                }
-              : { text: '  ' + part },
-          );
-      } else
-        // Timeline groups observations; full output remains in Live.
-        lines.push({
-          text: `${time}  ${terminalText(entry.text).replace(/\s+/g, ' ')}`,
-          timeline: { time, entry },
-        });
-      // Steps and reply endings sit indented beneath their row, dimmed.
-      for (const note of entry.notes)
-        for (const part of wrapAnsi(note, Math.max(1, width - 6), {
-          hard: true,
-          trim: false,
-        }).split('\n'))
-          lines.push({ text: '    ' + part, color: 'gray' });
+        for (const [index, part] of parts.entries())
+          lines.push({
+            text:
+              '    ' +
+              (index === 0 ? marker : ' '.repeat(marker.length)) +
+              part,
+            color: 'gray',
+          });
+      }
     }
   }
   return lines;
@@ -1536,7 +1538,12 @@ export function WorkbenchScreen(props: ScreenProps) {
             >
               {log.length ? (
                 log.map((line, index) => (
-                  <Text key={index} {...tone(line.color)} wrap="truncate-end">
+                  <Text
+                    key={index}
+                    {...tone(line.color)}
+                    bold={line.bold === true}
+                    wrap="truncate-end"
+                  >
                     {line.timeline ? (
                       <>
                         <Text dimColor>{line.timeline.time} </Text>
