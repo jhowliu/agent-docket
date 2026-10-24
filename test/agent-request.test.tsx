@@ -285,14 +285,12 @@ test('the TUI shows what the agent needs, marks it done with y and notes replies
   const frame = ui.lastFrame() ?? '';
   assert.ok(frame.includes('1. Quit the panel with q'), frame);
   assert.ok(frame.includes(' y  Done    i  Reply'), frame);
-  assert.ok(
-    frame.includes('Needs you (1)'),
-    'the roster does not call it an approval',
-  );
+  // The Run is blocked, not an approval; the turn's Timeline row says on what.
+  assert.match(frame, /Run 1 · [^│\n]*Blocked/, frame);
   assert.ok(!frame.includes('Awaiting approval'), frame);
   assert.ok(
-    frame.includes('replied · 1 Live'),
-    'the Timeline says the agent replied',
+    frame.includes('Blocked · Restart ro-panel with --write'),
+    'the Timeline says what blocks the agent',
   );
 
   ui.stdin.write('a');
@@ -322,6 +320,10 @@ test('the TUI shows what the agent needs, marks it done with y and notes replies
       agentRequests((await client.poll()).attention)[0]?.status === 'done',
   );
   await until(() => !ui.lastFrame()?.includes('NEEDS YOU 1/1'));
+  // Done tells the agent nothing, so the Run stays blocked until a reply.
+  await until(() => !!ui.lastFrame()?.includes('reply to continue'));
+  assert.match(ui.lastFrame() ?? '', /Run 1 · [^│\n]*Blocked/);
+  assert.doesNotMatch(ui.lastFrame() ?? '', /Run 1 · [^│\n]* Idle/);
   const repeated = await complete(request.id);
   assert.equal(repeated.status, 409);
   assert.equal(

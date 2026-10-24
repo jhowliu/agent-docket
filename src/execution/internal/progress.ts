@@ -19,7 +19,7 @@ export type ProgressChannel = Readonly<{
 
 /** A local Run's private MCP ingress. Its identity is bound here, never supplied by the agent. */
 export async function createProgressChannel(handlers: {
-  report: (summary: string) => void;
+  report: (summary: string, finished: boolean) => void;
   request: (request: AgentRequestInput) => void;
   failed: () => void;
 }): Promise<ProgressChannel> {
@@ -55,7 +55,8 @@ export async function createProgressChannel(handlers: {
           const input: unknown = JSON.parse(line);
           const parsed = toolRecord.parse(input);
           if (!turn || parsed.turn !== turn) continue;
-          if ('summary' in parsed) report(parsed.summary);
+          if ('summary' in parsed)
+            report(parsed.summary, parsed.finished === true);
           else request(parsed.request);
         }
       } catch {

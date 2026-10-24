@@ -63,6 +63,7 @@ const app = agent({ name: 'workbench-fixture' })
       text === 'progress' ||
       text.startsWith('progress:') ||
       text === 'progress-wait' ||
+      text.startsWith('done:') ||
       text.startsWith('needs:')
     ) {
       const [{ Client }, { StdioClientTransport }] = await Promise.all([
@@ -121,12 +122,16 @@ const app = agent({ name: 'workbench-fixture' })
           );
           return { stopReason: 'end_turn' };
         }
+        // done:<summary> reports the work finished.
+        const finished = text.startsWith('done:');
         const summary = text.startsWith('progress:')
           ? text.slice(9)
-          : 'Located the theme configuration and its entry point. I am checking how the setting reaches the rendered page; no changes have been made yet.';
+          : finished
+            ? text.slice(5)
+            : 'Located the theme configuration and its entry point. I am checking how the setting reaches the rendered page; no changes have been made yet.';
         const result = await progress.callTool({
           name: 'report_progress',
-          arguments: { summary },
+          arguments: finished ? { summary, finished: true } : { summary },
         });
         await message(
           result.isError

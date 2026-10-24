@@ -45,7 +45,6 @@ function timeline(events: RunEvent[], attention: AttentionItem[] = []) {
       connected
       busy={false}
       note="Ready"
-      project={false}
       options={false}
       help={false}
       details={false}
@@ -186,10 +185,7 @@ test('Timeline retains failure and stop reasons without claiming a successful ch
   ]);
   const output = timeline(journal);
   assert.ok(output.includes('Tool failed · npm test'), output);
-  assert.ok(
-    output.includes('Turn finished · 1 tool · stop: max_tokens'),
-    output,
-  );
+  assert.ok(output.includes('Turn ended · 1 tool · stop: max_tokens'), output);
   assert.ok(output.includes('Run interrupted · Adapter exited'), output);
   assert.ok(!output.includes('NaN'), output);
   assert.ok(!output.includes('passed'), output);

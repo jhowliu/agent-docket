@@ -402,7 +402,8 @@ test('Ink New Session uses its launch folder, filters saved branches, cancels sa
   ui.stdin.write('roadmap Alpha scope');
   await frame(': roadmap Alpha scope');
   ui.stdin.write('\r');
-  await frame('Current step');
+  // Two projects at 24 rows leave the Workflow compact; its stage still shows.
+  await frame('> Requirement clarification');
   ui.stdin.write('n');
   await frame('New Session');
   ui.stdin.write('\u0015');
@@ -414,15 +415,21 @@ test('Ink New Session uses its launch folder, filters saved branches, cancels sa
   await new Promise((done) => setTimeout(done, 40));
   ui.stdin.write('\r');
   await frame('New Session', false);
-  await frame('beta.txt');
-  await frame('Current step', false);
+  // Selecting a Run switches to its project's Workflow; beta has none.
+  await frame('> Run 2');
+  await frame('> Requirement clarification', false);
   ui.stdin.write('k');
-  await frame('alpha.txt');
-  await frame('Current step');
-  await frame('beta.txt', false);
+  await frame('> Run 1');
+  await frame('> Requirement clarification');
   ui.stdin.write('j');
-  await frame('beta.txt');
-  await frame('Current step', false);
+  await frame('> Run 2');
+  await frame('> Requirement clarification', false);
+  // New Session starts in the selected Run's project, not the launch folder.
+  ui.stdin.write('n');
+  await frame('New Session');
+  await frame(data.b.split('/').slice(-2).join('/'));
+  ui.stdin.write('\u001b');
+  await frame('New Session', false);
   assert.equal((await client.poll()).runs.length, 2);
   for (const row of (ui.lastFrame() ?? '').split('\n'))
     assert.ok(stringWidth(row) <= 100, row);

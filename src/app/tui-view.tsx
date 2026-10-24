@@ -25,12 +25,11 @@ import { terminalText } from './tui-input.js';
 import { checkEnded, readableEvents, timelineEntries } from './tui-timeline.js';
 import type { TimelineEntry } from './tui-timeline.js';
 import { stageLabels, trackedWork } from './workbench-work.js';
-import { ProjectPanel } from './tui-project.js';
-import type { ProjectTreeView } from './tui-project.js';
+import { latestOutcomes } from './tui-outcome.js';
+import type { TurnOutcome } from './tui-outcome.js';
 
 export type View = 'live' | 'diff' | 'timeline';
 export type Filter = 'active' | 'inbox';
-export type PaneFocus = 'workspace' | 'project';
 export type Line = {
   text: string;
   color?: string;
@@ -67,58 +66,117 @@ export const workspaceNeedsAction = (run: RunSnapshot | undefined) =>
   run?.worktree?.status.kind === 'retained';
 type RunStatus = Readonly<{
   label: string;
-  /** One ASCII column of a different shape per state; the label stays readable. */
+  /** The left column's label; still words, so the state reads without color. */
+  short: string;
+  /** herdr's glyphs, one column each: ◉ needs you, ✕ failed, ● active, ○ idle; the label stays readable. */
   icon: string;
   color: string | undefined;
   /** Lower is more urgent; a project header shows its most urgent Run's icon. */
   rank: number;
 }>;
-/** A roster row's state; unread is this client's view of a finished turn. */
+/**
+ * A roster row's state. Each color means one thing across the TUI: yellow
+ * needs you, red broke, green the agent reports finished (never verified),
+ * blue working, magenta new to you, gray quiet. `unread` is this client's view
+ * of a turn; `outcome` is what the agent declared when its latest turn ended.
+ */
 function runStatus(
   run: RunSnapshot,
   pending: readonly AttentionItem[],
   unread: boolean,
+  outcome?: TurnOutcome,
 ): RunStatus {
   const own = pending.filter((item) => item.runId === run.id);
-  // Approvals block the agent; agent requests only wait on the person.
+  const count = own.length > 1 ? ` (${own.length})` : '';
+  // Approvals block the agent; agent requests block it until the person acts or answers.
+  if (own.some((item) => item.kind === 'permission'))
+    return {
+      label: `Awaiting approval (${own.length})`,
+      short: `Approve (${own.length})`,
+      icon: '◉',
+      color: 'yellow',
+      rank: 0,
+    };
   if (own.length)
-    return {
-      label: own.some((item) => item.kind === 'permission')
-        ? `Awaiting approval (${own.length})`
-        : `Needs you (${own.length})`,
-      icon: '!',
-      color: 'yellow',
-      rank: 0,
-    };
+    return own.every(
+      (item) => item.kind === 'agent-request' && item.request === 'question',
+    )
+      ? {
+          label: `Question${count}`,
+          short: `Question${count}`,
+          icon: '◉',
+          color: 'yellow',
+          rank: 0,
+        }
+      : {
+          label: `Blocked${count}`,
+          short: `Blocked${count}`,
+          icon: '◉',
+          color: 'yellow',
+          rank: 0,
+        };
   if (workspaceNeedsAction(run))
-    return {
-      label:
-        run.worktree?.status.kind === 'commit-required'
-          ? 'Commit required'
-          : 'Worktree retained',
-      icon: '!',
-      color: 'yellow',
-      rank: 0,
-    };
+    return run.worktree?.status.kind === 'commit-required'
+      ? {
+          label: 'Commit required',
+          short: 'Commit',
+          icon: '◉',
+          color: 'yellow',
+          rank: 0,
+        }
+      : {
+          label: 'Worktree retained',
+          short: 'Worktree',
+          icon: '◉',
+          color: 'yellow',
+          rank: 0,
+        };
   const label = states[run.state.kind];
+  const short = label;
   switch (run.state.kind) {
     case 'authentication-required':
-      return { label, icon: '!', color: 'yellow', rank: 0 };
+      return { label, short: 'Sign in', icon: '◉', color: 'yellow', rank: 0 };
     case 'failed':
     case 'interrupted':
-      return { label, icon: 'x', color: 'red', rank: 1 };
+      return { label, short, icon: '✕', color: 'red', rank: 1 };
     case 'idle':
+      // Done tells the agent nothing: it stays blocked until the next prompt.
+      if (
+        (outcome?.kind === 'blocked' || outcome?.kind === 'question') &&
+        outcome.done
+      )
+        return {
+          label: 'Blocked · reply to continue',
+          short: 'Blocked',
+          icon: '◉',
+          color: 'yellow',
+          rank: 0,
+        };
+      if (outcome?.kind === 'finished')
+        return {
+          label: 'Finished',
+          short: 'Finished',
+          icon: unread ? '●' : '○',
+          color: 'green',
+          rank: unread ? 2 : 4,
+        };
       return unread
-        ? { label: 'Unread', icon: '*', color: 'magenta', rank: 2 }
-        : { label, icon: '-', color: 'gray', rank: 4 };
+        ? {
+            label: 'Unread',
+            short: 'Unread',
+            icon: '●',
+            color: 'magenta',
+            rank: 2,
+          }
+        : { label, short, icon: '○', color: 'gray', rank: 4 };
     case 'starting':
     case 'running':
-      return { label, icon: '~', color: 'blue', rank: 3 };
+      return { label, short, icon: '●', color: 'blue', rank: 3 };
     case 'cancelling':
-      return { label, icon: '~', color: undefined, rank: 3 };
+      return { label, short, icon: '●', color: undefined, rank: 3 };
     case 'cancelled':
     case 'closed':
-      return { label, icon: ' ', color: undefined, rank: 5 };
+      return { label, short, icon: ' ', color: undefined, rank: 5 };
   }
 }
 const shownBy =
@@ -437,13 +495,19 @@ function detailLines(
                 }
               : { text: '  ' + part },
           );
-        continue;
-      }
-      // Timeline groups observations; full output remains in Live.
-      lines.push({
-        text: `${time}  ${terminalText(entry.text).replace(/\s+/g, ' ')}`,
-        timeline: { time, entry },
-      });
+      } else
+        // Timeline groups observations; full output remains in Live.
+        lines.push({
+          text: `${time}  ${terminalText(entry.text).replace(/\s+/g, ' ')}`,
+          timeline: { time, entry },
+        });
+      // Steps and reply endings sit indented beneath their row, dimmed.
+      for (const note of entry.notes)
+        for (const part of wrapAnsi(note, Math.max(1, width - 6), {
+          hard: true,
+          trim: false,
+        }).split('\n'))
+          lines.push({ text: '    ' + part, color: 'gray' });
     }
   }
   return lines;
@@ -460,9 +524,6 @@ export type ScreenProps = {
   busy: boolean;
   actionFailed?: boolean;
   note: string;
-  project: boolean;
-  focus?: PaneFocus;
-  tree?: ProjectTreeView;
   options: boolean;
   help: boolean;
   details: boolean;
@@ -485,9 +546,16 @@ export type ScreenProps = {
   notice?: Readonly<{ text: string; color: string }> | undefined;
 };
 
+/** The left column (agents, Workflow) from 80 columns; it widens to 44. */
+function leftColumnWidth(columns: number) {
+  return columns >= 80
+    ? Math.min(44, Math.max(32, Math.floor(columns * 0.3)))
+    : 0;
+}
+
 /** Keep the composer and the terminal viewport on the same column boundary. */
 export function workbenchMainWidth(columns: number) {
-  return columns - (columns >= 80 ? 33 : 0);
+  return columns - (columns >= 80 ? leftColumnWidth(columns) + 1 : 0);
 }
 
 function WorkflowPanel({
@@ -512,7 +580,16 @@ function WorkflowPanel({
   if (!outline && tracked && maxRows < 11)
     return (
       <Box width={width} flexDirection="column" flexShrink={0}>
-        <Text bold>Workflow</Text>
+        <Text bold wrap="truncate-end">
+          Workflow
+          <Text dimColor>
+            {' '}
+            · Phase{' '}
+            {plan.phases.findIndex((phase) => phase.id === tracked.phase.id) +
+              1}
+            /{plan.phases.length}
+          </Text>
+        </Text>
         <Text color="cyan" wrap="truncate-end">
           &gt; {workflowLabels[tracked.task.stage]}
         </Text>
@@ -747,6 +824,178 @@ function DecisionPanel({
   );
 }
 
+/** The most urgent state among a project's Runs, for its header glyph. */
+function mostUrgent(
+  runs: readonly RunSnapshot[],
+  pending: readonly AttentionItem[],
+  unread: ReadonlySet<RunId>,
+  outcomes: ReadonlyMap<RunId, TurnOutcome>,
+): RunStatus | undefined {
+  return runs
+    .map((run) =>
+      runStatus(run, pending, unread.has(run.id), outcomes.get(run.id)),
+    )
+    .reduce<
+      RunStatus | undefined
+    >((most, item) => (most && most.rank <= item.rank ? most : item), undefined);
+}
+
+/** herdr's subtle row highlight; 16-colour terminals keep the cyan title and cursor. */
+const SELECTED_BG = '#20242c';
+
+/**
+ * The left column in herdr's style: unframed, lowercase section titles, a
+ * "spaces" list of projects (glyph of the most urgent Run, bold name, next
+ * action beneath) above "agents", two lines per Run (title; state · project).
+ */
+function SidebarList({
+  state,
+  groups,
+  runs,
+  selectedId,
+  pending,
+  unread,
+  outcomes,
+  navigating,
+  filter,
+  empty,
+  width,
+  height,
+}: {
+  state: WorkbenchState;
+  groups: readonly RosterGroup[] | null;
+  runs: readonly RunSnapshot[];
+  selectedId: RunId | null;
+  pending: readonly AttentionItem[];
+  unread: ReadonlySet<RunId>;
+  outcomes: ReadonlyMap<RunId, TurnOutcome>;
+  navigating: boolean;
+  filter: Filter;
+  empty: string;
+  width: number;
+  height: number;
+}) {
+  const spaces = groups?.filter((group) => group.project) ?? [];
+  // Projects take at most half the column; agents scroll in the rest.
+  const spaceCount = Math.min(
+    spaces.length,
+    Math.floor((Math.floor(height / 2) - 2) / 2),
+  );
+  const spaceRows = spaceCount > 0 ? 2 + spaceCount * 2 : 0;
+  const fit = Math.max(1, Math.floor((height - spaceRows - 1) / 2));
+  const index = Math.max(
+    0,
+    runs.findIndex((run) => run.id === selectedId),
+  );
+  const start = Math.max(0, Math.min(runs.length - fit, index - fit + 1));
+  const count = `${filter === 'inbox' ? 'inbox · ' : ''}${
+    runs.length > fit ? `${index + 1}/` : ''
+  }${runs.length} run${runs.length === 1 ? '' : 's'}`;
+  return (
+    <Box
+      width={width}
+      height={height}
+      flexDirection="column"
+      flexShrink={0}
+      overflow="hidden"
+    >
+      {spaceRows > 0 && (
+        <>
+          <Box height={1} flexShrink={0} justifyContent="space-between">
+            <Text bold color="gray">
+              spaces
+            </Text>
+            <Text color="gray">
+              {spaces.length > spaceCount
+                ? `${spaceCount}/${spaces.length}`
+                : ''}
+            </Text>
+          </Box>
+          {spaces.slice(0, spaceCount).map((group) => {
+            const header = groupHeader(state, group);
+            const rollup = mostUrgent(group.runs, pending, unread, outcomes);
+            return (
+              <Box
+                key={group.project?.id}
+                height={2}
+                flexDirection="column"
+                flexShrink={0}
+              >
+                <Text wrap="truncate-end">
+                  <Text {...tone(rollup?.color)}>{rollup?.icon ?? ' '}</Text>{' '}
+                  <Text bold>{header.name}</Text>
+                </Text>
+                <Text
+                  {...tone(header.urgent ? 'yellow' : 'gray')}
+                  wrap="truncate-end"
+                >
+                  {'  '}
+                  {header.next.replace(/^next: /, '')}
+                </Text>
+              </Box>
+            );
+          })}
+          <Text color="gray">{'─'.repeat(width)}</Text>
+        </>
+      )}
+      <Box height={1} flexShrink={0} justifyContent="space-between">
+        <Text bold color={navigating ? 'cyan' : 'gray'}>
+          agents
+        </Text>
+        <Text color="gray">{count}</Text>
+      </Box>
+      {runs.length === 0 ? (
+        <Text dimColor>{empty}</Text>
+      ) : (
+        runs.slice(start, start + fit).map((run) => {
+          const active = run.id === selectedId;
+          const status = runStatus(
+            run,
+            pending,
+            unread.has(run.id),
+            outcomes.get(run.id),
+          );
+          const project = groups?.find((group) =>
+            group.runs.includes(run),
+          )?.project;
+          return (
+            <Box
+              key={run.id}
+              height={2}
+              flexDirection="column"
+              flexShrink={0}
+              {...(active ? { backgroundColor: SELECTED_BG } : {})}
+            >
+              <Text wrap="truncate-end">
+                <Text {...tone(status.color)}>{status.icon}</Text>{' '}
+                <Text bold {...tone(active ? 'cyan' : undefined)}>
+                  {active ? '> ' : '  '}Run{' '}
+                  {state.runs.findIndex((item) => item.id === run.id) + 1} ·{' '}
+                  {terminalText(
+                    trackedWork(state, run.id)?.task.title ?? run.label,
+                  )}
+                </Text>
+              </Text>
+              <Text wrap="truncate-end">
+                {'    '}
+                <Text {...tone(status.color)}>
+                  {status.short.toLowerCase()}
+                </Text>
+                <Text color="gray">
+                  {' · '}
+                  {project
+                    ? terminalText(basename(project.source))
+                    : run.provider}
+                </Text>
+              </Text>
+            </Box>
+          );
+        })
+      )}
+    </Box>
+  );
+}
+
 export function WorkbenchScreen(props: ScreenProps) {
   const {
     state,
@@ -771,6 +1020,10 @@ export function WorkbenchScreen(props: ScreenProps) {
   const fixture = provider === 'fixture';
   const pending = state.attention.filter((item) => item.status === 'pending');
   const unread = props.unread ?? NO_UNREAD;
+  const outcomes = useMemo(
+    () => latestOutcomes(state.events, state.attention),
+    [state.events, state.attention],
+  );
   const ownPending = pending.filter((item) => item.runId === selectedId);
   const tracked = trackedWork(state, selectedId);
   const plan = state.work?.kind === 'ready' ? state.work.plan : null;
@@ -809,7 +1062,7 @@ export function WorkbenchScreen(props: ScreenProps) {
     );
   }
   // A one-row roster shows only the selected Run, without its project line.
-  const compactRoster = (props.outline || props.project) && !sidebar;
+  const compactRoster = props.outline && !sidebar;
   const groups = compactRoster ? null : rosterGroups(state, filter);
   const rosterLines: readonly RosterLine[] = groups
     ? groups.flatMap((group) => [
@@ -817,14 +1070,38 @@ export function WorkbenchScreen(props: ScreenProps) {
         ...group.runs.map((run) => ({ group, run })),
       ])
     : runs.map((run) => ({ run }));
+  const listed = rosterLines.length || 1;
+  // The left column holds spaces and agents above the Workflow; a tracked
+  // Task's four stages show when every Run keeps its two lines, an open
+  // Roadmap takes half.
+  const sideRows = rows - 3;
+  const spaceCount = groups?.filter((group) => group.project).length ?? 0;
+  const stagesRoom =
+    sideRows -
+    (spaceCount ? 2 + spaceCount * 2 : 0) -
+    1 -
+    2 * Math.max(1, runs.length);
+  const sideWorkflowRows =
+    !sidebar || !plan
+      ? 0
+      : props.outline
+        ? Math.min(14, Math.floor(sideRows / 2))
+        : !tracked
+          ? 0
+          : stagesRoom >= 11
+            ? Math.min(13, stagesRoom)
+            : 3;
   const rosterRows = Math.max(
     1,
     Math.min(
       compactRoster ? 1 : groups ? 6 : 5,
-      rosterLines.length || 1,
+      listed,
       Math.floor(rows / 6) + (groups ? 1 : 0),
     ),
   );
+  // Rows outside the viewport: header, note, status bar and the viewport's
+  // border, plus the Run title with tabs, or the stacked roster and tabs.
+  const chrome = 5 + (sidebar ? 1 : rosterRows + 4);
   const selectedIndex = Math.max(
     0,
     runs.findIndex((run) => run.id === selectedId),
@@ -859,27 +1136,16 @@ export function WorkbenchScreen(props: ScreenProps) {
         : 3 + (request.subject ? 1 : 0);
   // New Session takes the detail viewport's place instead of adding rows.
   const form = props.mode === 'new-session' && props.composer !== undefined;
-  const inputRows =
-    props.mode === 'normal' || props.mode === 'new-session' ? 0 : 2;
-  const projectOpen =
-    props.project && !props.outline && !(props.details && request);
-  const focus = props.focus ?? (projectOpen ? 'project' : 'workspace');
-  const projectFocused =
-    projectOpen && focus === 'project' && props.mode === 'normal';
-  const workspaceFocused = focus === 'workspace' && props.mode === 'normal';
-  const inlineCapacity = Math.min(
-    rows >= 24 ? 10 : 6,
-    rows - rosterRows - decisionRows - inputRows - 10,
-  );
-  const compactProjectRows = !sidebar && projectOpen ? inlineCapacity : 0;
-  const projectRows = sidebar
-    ? projectOpen
-      ? Math.min(
-          Math.max(6, (props.tree?.rows.length ?? 0) + 4),
-          rows - 3 - (tracked ? 3 : 0),
-        )
-      : 6
-    : 0;
+  const inputLabel =
+    props.mode === 'reply'
+      ? 'Reply · Enter send · Esc keep draft'
+      : props.mode === 'command'
+        ? 'Command · Enter run · Esc close'
+        : '';
+  // Below 24 rows the input drops its lower rule and keeps two rows, like the decision.
+  const inputRows = !inputLabel ? 0 : compactDecision ? 2 : 3;
+  // Keys move through the roster unless an input line has them.
+  const navigating = props.mode === 'normal';
   const compactWorkflowRows =
     props.outline && plan && !sidebar
       ? Math.min(
@@ -889,13 +1155,7 @@ export function WorkbenchScreen(props: ScreenProps) {
       : 0;
   const extraCapacity = Math.max(
     0,
-    rows -
-      rosterRows -
-      compactWorkflowRows -
-      compactProjectRows -
-      decisionRows -
-      inputRows -
-      12,
+    rows - chrome - compactWorkflowRows - decisionRows - inputRows - 3,
   );
   // The input adapter opens one group at a time; decision details also take priority here.
   if (props.details && request?.kind === 'agent-request') {
@@ -945,12 +1205,12 @@ export function WorkbenchScreen(props: ScreenProps) {
             'two-permissions · x cancel · :active/:inbox',
           ]
         : [
-            'i new prompt · a/r approval · x cancel',
+            'Enter new prompt · a/r approval · x cancel',
             environment === 'local'
               ? selected?.worktree
                 ? 'x close/recheck · :commit message saves all changes'
-                : 'Local code copies are retained · p paths'
-              : 'p environment paths · x cancel Run',
+                : 'Local code copies are retained'
+              : 'x cancel Run',
             selected?.worktree && state.features?.verify
               ? 'v verify on a clean copy · :check <command> sets it'
               : '',
@@ -958,11 +1218,9 @@ export function WorkbenchScreen(props: ScreenProps) {
     );
   else if (props.help)
     disclosures.push(
-      'Ctrl+W h/l focus Project/workspace · p browse',
-      'Project: j/k move · h/l folders · g/G first/last',
       'j/k agent · w waiting/unread · Tab request · a/r allow/deny',
       'h/l or 1–3 views · PgUp/PgDn scroll · g/G top/end',
-      'n new · i reply · Esc keep draft · p paths · s actions',
+      'n new · Enter/i reply · Esc keep draft · s actions',
       ': command · q / Ctrl+C detach; Runs keep running',
       ':active all agents · :inbox pending approvals',
       'o Roadmap · :roadmap title · :track P.T · :direct',
@@ -977,13 +1235,11 @@ export function WorkbenchScreen(props: ScreenProps) {
   const logRows = Math.max(
     1,
     rows -
-      rosterRows -
+      chrome -
       extras.length -
       decisionRows -
       compactWorkflowRows -
-      compactProjectRows -
-      inputRows -
-      9,
+      inputRows,
   );
   const offset = Math.min(props.offset, Math.max(0, lines.length - logRows));
   const end = Math.max(0, lines.length - offset);
@@ -997,60 +1253,198 @@ export function WorkbenchScreen(props: ScreenProps) {
       : view === 'timeline'
         ? 'No milestones yet · 1 Live for full output'
         : fixture
-          ? 'i to prompt · s for fixture scenarios'
-          : 'i to prompt when idle · s actions'
+          ? 'Enter to prompt · s for fixture scenarios'
+          : 'Enter to prompt when idle · s actions'
     : 'n new Run';
-  const counts = ` · ${filter} · ${runs.length} runs${workspaceFocused ? ' · focus' : ''}${
+  const counts = ` · ${filter} · ${runs.length} run${runs.length === 1 ? '' : 's'}${
     rosterLines.length > rosterRows
       ? ` · ${selectedIndex + 1}/${runs.length}`
       : ''
   }`;
-  const noticeWidth = props.notice
-    ? Math.min(stringWidth(props.notice.text), mainWidth - 'agents'.length - 1)
-    : 0;
-  // Counts give way whole rather than truncating the title next to a notice.
-  const rosterCounts =
-    !props.notice ||
-    'agents'.length + counts.length + 1 + noticeWidth <= mainWidth
-      ? counts
-      : '';
   const connection = !connected
     ? 'Disconnected · reconnecting'
     : busy
       ? 'Sending'
       : 'Connected';
+  const isolation = fixture
+    ? 'FIXTURE / no model'
+    : environment === 'local'
+      ? 'LOCAL / no OS isolation'
+      : 'CONTAINER';
+  const pendingCount = pending.length ? ` · ${pending.length} pending` : '';
+  // A background notice takes the header's free space beside the left column,
+  // or shares the stacked roster's title, whose counts give way whole.
+  const noticeRoom = sidebar
+    ? columns -
+      stringWidth(`workbench · ${isolation} · ${connection}${pendingCount}`) -
+      1
+    : mainWidth - 'agents'.length - 1;
+  const noticeWidth =
+    props.notice && noticeRoom >= 12
+      ? Math.min(stringWidth(props.notice.text), noticeRoom)
+      : 0;
+  const notice = props.notice && noticeWidth > 0 && (
+    <Box width={noticeWidth} flexShrink={0}>
+      <Text color={props.notice.color} wrap="truncate-end">
+        {props.notice.text}
+      </Text>
+    </Box>
+  );
+  const rosterCounts =
+    sidebar ||
+    !noticeWidth ||
+    'agents'.length + counts.length + 1 + noticeWidth <= mainWidth
+      ? counts
+      : '';
+  const selectedStatus =
+    selected && runStatus(selected, pending, false, outcomes.get(selected.id));
+  // Typing to the selected Run: its title takes the focus color from the roster.
+  const replying = props.mode === 'reply';
+  const tabNames = views.map(
+    (name, index) =>
+      ` ${index + 1} ${name === 'live' ? 'Live' : name === 'diff' ? 'Diff' : 'Timeline'} `,
+  );
+  const paused =
+    offset > 0 ? (mainWidth >= 70 ? ' · follow paused' : ' · paused') : '';
+  const tabsText = tabNames.join('') + paused;
+  const tabs = (
+    <>
+      {views.map((name, index) => (
+        <Text
+          key={name}
+          {...tone(view === name ? 'cyan' : undefined)}
+          bold={view === name}
+        >
+          {tabNames[index]}
+        </Text>
+      ))}
+      <Text dimColor>{paused}</Text>
+    </>
+  );
+  const roster = (
+    <>
+      <Box height={1} flexShrink={0} columnGap={1}>
+        <Box flexGrow={1} flexBasis={0} minWidth={0}>
+          <Text wrap="truncate-end">
+            <Text {...tone(navigating ? 'cyan' : undefined)}>agents</Text>
+            <Text dimColor>{rosterCounts}</Text>
+          </Text>
+        </Box>
+        {!sidebar && notice}
+      </Box>
+      <Box
+        borderStyle="single"
+        {...(navigating ? { borderColor: 'cyan' } : {})}
+        flexDirection="column"
+        height={rosterRows + 2}
+        flexShrink={0}
+        paddingX={1}
+      >
+        {runs.length === 0 ? (
+          <Text dimColor>{empty}</Text>
+        ) : (
+          shownLines.map((line) => {
+            const run = line.run;
+            if (!run) {
+              const header = groupHeader(state, line.group);
+              // Groups always hold a visible Run; the header shows the most urgent.
+              const rollup = mostUrgent(
+                line.group.runs,
+                pending,
+                unread,
+                outcomes,
+              );
+              return (
+                <Box
+                  key={`project-${line.group.project?.id ?? 'other'}`}
+                  height={1}
+                  flexShrink={0}
+                >
+                  <Text wrap="truncate-end">
+                    <Text {...tone(rollup?.color)}>{rollup?.icon ?? ' '} </Text>
+                    <Text bold>{header.name}</Text>
+                    <Text
+                      {...tone(header.urgent ? 'yellow' : undefined)}
+                      dimColor={!header.urgent}
+                    >
+                      {header.next ? ` · ${header.next}` : ''}
+                    </Text>
+                    <Text dimColor>{header.phase}</Text>
+                  </Text>
+                </Box>
+              );
+            }
+            const active = run.id === selectedId;
+            const status = runStatus(
+              run,
+              pending,
+              unread.has(run.id),
+              outcomes.get(run.id),
+            );
+            // The left column is narrow; the Run title on the right spells it out.
+            const label = sidebar ? status.short : status.label;
+            return (
+              <Box key={run.id} height={1} flexShrink={0} columnGap={1}>
+                <Box width={1} flexShrink={0}>
+                  <Text {...tone(status.color)}>{status.icon}</Text>
+                </Box>
+                <Box flexGrow={1} flexBasis={0} minWidth={0}>
+                  <Text
+                    {...tone(active ? 'cyan' : undefined)}
+                    inverse={active && navigating}
+                    wrap="truncate-end"
+                  >
+                    {active ? '> ' : '  '}Run{' '}
+                    {state.runs.findIndex((item) => item.id === run.id) + 1} ·{' '}
+                    {terminalText(
+                      trackedWork(state, run.id)?.task.title ?? run.label,
+                    )}
+                  </Text>
+                </Box>
+                <Box width={label.length} flexShrink={0}>
+                  <Text {...tone(status.color)} wrap="truncate-end">
+                    {label}
+                  </Text>
+                </Box>
+              </Box>
+            );
+          })
+        )}
+      </Box>
+    </>
+  );
   return (
     <Box width={columns} height={rows} flexDirection="column" overflow="hidden">
       <Backdrop.Provider value={form}>
-        <Box height={1} flexShrink={0}>
-          <Text bold>workbench</Text>
-          <Text>
-            {' '}
-            ·{' '}
-            {fixture
-              ? 'FIXTURE / no model'
-              : environment === 'local'
-                ? 'LOCAL / no OS isolation'
-                : 'CONTAINER'}{' '}
-            ·{' '}
-          </Text>
-          <Text color={connected ? 'cyan' : 'yellow'}>{connection}</Text>
-          <Text color="yellow">
-            {pending.length ? ` · ${pending.length} pending` : ''}
-          </Text>
+        <Box height={1} flexShrink={0} justifyContent="space-between">
+          <Box flexShrink={0}>
+            <Text bold>workbench</Text>
+            <Text> · {isolation} · </Text>
+            <Text color={connected ? 'cyan' : 'yellow'}>{connection}</Text>
+            <Text color="yellow">{pendingCount}</Text>
+          </Box>
+          {sidebar && notice}
         </Box>
         <Box height={rows - 3} flexShrink={0} columnGap={sidebar ? 1 : 0}>
-          {/* Project and Workflow sit on the left, like an editor's file tree. */}
+          {/* Agents and Workflow sit on the left like an editor's sidebar;
+              the selected Run fills the right. */}
           {sidebar && (
             <Box width={sidebarWidth} flexDirection="column" flexShrink={0}>
-              <ProjectPanel
-                tree={props.tree}
-                expanded={projectOpen}
-                focused={projectFocused}
+              <SidebarList
+                state={state}
+                groups={groups}
+                runs={runs}
+                selectedId={selectedId}
+                pending={pending}
+                unread={unread}
+                outcomes={outcomes}
+                navigating={navigating}
+                filter={filter}
+                empty={empty}
                 width={sidebarWidth}
-                height={projectRows}
+                height={sideRows - sideWorkflowRows}
               />
-              {plan && (
+              {sideWorkflowRows > 0 && plan && (
                 <WorkflowPanel
                   plan={plan}
                   tracked={tracked}
@@ -1058,147 +1452,66 @@ export function WorkbenchScreen(props: ScreenProps) {
                   phaseIndex={props.outlinePhase ?? 0}
                   taskOffset={props.outlineOffset ?? 0}
                   width={sidebarWidth}
-                  maxRows={rows - 3 - projectRows}
+                  maxRows={sideWorkflowRows}
                 />
               )}
             </Box>
           )}
           <Box width={mainWidth} flexDirection="column" flexShrink={0}>
-            <Box height={1} flexShrink={0} columnGap={1}>
-              <Box flexGrow={1} flexBasis={0} minWidth={0}>
-                <Text wrap="truncate-end">
-                  <Text {...tone(workspaceFocused ? 'cyan' : undefined)}>
-                    agents
-                  </Text>
-                  <Text dimColor>{rosterCounts}</Text>
-                </Text>
-              </Box>
-              {/* A background notice outranks the roster's counts while it shows. */}
-              {props.notice && (
-                <Box width={noticeWidth} flexShrink={0}>
-                  <Text color={props.notice.color} wrap="truncate-end">
-                    {props.notice.text}
-                  </Text>
-                </Box>
-              )}
-            </Box>
-            <Box
-              borderStyle="single"
-              {...(workspaceFocused ? { borderColor: 'cyan' } : {})}
-              flexDirection="column"
-              height={rosterRows + 2}
-              flexShrink={0}
-              paddingX={1}
-            >
-              {runs.length === 0 ? (
-                <Text dimColor>{empty}</Text>
-              ) : (
-                shownLines.map((line) => {
-                  const run = line.run;
-                  if (!run) {
-                    const header = groupHeader(state, line.group);
-                    // Groups always hold a visible Run; the header shows the most urgent.
-                    const rollup = line.group.runs
-                      .map((item) =>
-                        runStatus(item, pending, unread.has(item.id)),
-                      )
-                      .reduce<
-                        RunStatus | undefined
-                      >((most, item) => (most && most.rank <= item.rank ? most : item), undefined);
-                    return (
-                      <Box
-                        key={`project-${line.group.project?.id ?? 'other'}`}
-                        height={1}
-                        flexShrink={0}
+            {/* Beside the left column the Run's title shares the tabs' row,
+                so both columns' frames start on the same line. */}
+            {sidebar ? (
+              <Box height={1} flexShrink={0} columnGap={1}>
+                <Box flexGrow={1} flexBasis={0} minWidth={0} columnGap={1}>
+                  <Box flexShrink={0}>
+                    <Text bold {...tone(replying ? 'cyan' : undefined)}>
+                      {selected
+                        ? `Run ${state.runs.indexOf(selected) + 1}`
+                        : 'No Run selected'}
+                    </Text>
+                  </Box>
+                  {selected && (
+                    <Box flexShrink={1} minWidth={0}>
+                      <Text
+                        bold
+                        {...tone(replying ? 'cyan' : undefined)}
+                        wrap="truncate-end"
                       >
-                        <Text wrap="truncate-end">
-                          <Text {...tone(rollup?.color)}>
-                            {rollup?.icon ?? ' '}{' '}
-                          </Text>
-                          <Text bold>{header.name}</Text>
-                          <Text
-                            {...tone(header.urgent ? 'yellow' : undefined)}
-                            dimColor={!header.urgent}
-                          >
-                            {header.next ? ` · ${header.next}` : ''}
-                          </Text>
-                          <Text dimColor>{header.phase}</Text>
-                        </Text>
-                      </Box>
-                    );
-                  }
-                  const active = run.id === selectedId;
-                  const status = runStatus(run, pending, unread.has(run.id));
-                  return (
-                    <Box key={run.id} height={1} flexShrink={0} columnGap={1}>
-                      <Box width={1} flexShrink={0}>
-                        <Text {...tone(status.color)}>{status.icon}</Text>
-                      </Box>
-                      <Box flexGrow={1} flexBasis={0} minWidth={0}>
-                        <Text
-                          {...tone(active ? 'cyan' : undefined)}
-                          inverse={active && workspaceFocused}
-                          wrap="truncate-end"
-                        >
-                          {active ? '> ' : '  '}Run{' '}
-                          {state.runs.findIndex((item) => item.id === run.id) +
-                            1}{' '}
-                          ·{' '}
-                          {terminalText(
-                            trackedWork(state, run.id)?.task.title ?? run.label,
-                          )}
-                        </Text>
-                      </Box>
-                      <Box width={status.label.length} flexShrink={0}>
-                        <Text {...tone(status.color)} wrap="truncate-end">
-                          {status.label}
-                        </Text>
-                      </Box>
+                        ·{' '}
+                        {terminalText(
+                          trackedWork(state, selected.id)?.task.title ??
+                            selected.label,
+                        )}
+                      </Text>
                     </Box>
-                  );
-                })
-              )}
-            </Box>
-            <Box height={1} flexShrink={0}>
-              <Box flexGrow={1} minWidth={0}>
-                {views.map((name, index) => (
-                  <Text
-                    key={name}
-                    {...tone(view === name ? 'cyan' : undefined)}
-                    bold={view === name}
-                  >
-                    {' '}
-                    {index + 1}{' '}
-                    {name === 'live'
-                      ? 'Live'
-                      : name === 'diff'
-                        ? 'Diff'
-                        : 'Timeline'}{' '}
-                  </Text>
-                ))}
-                <Text dimColor>
-                  {offset > 0
-                    ? mainWidth >= 70
-                      ? ' · follow paused'
-                      : ' · paused'
-                    : ''}
-                </Text>
-              </Box>
-              {!sidebar && (
-                <Box columnGap={1} flexShrink={0}>
-                  <Text dimColor>p Project</Text>
-                  {tracked && <Text dimColor>o Workflow</Text>}
+                  )}
+                  {selectedStatus && (
+                    <Box flexShrink={0}>
+                      <Text {...tone(selectedStatus.color)}>
+                        {mainWidth - stringWidth(tabsText) - 10 >=
+                        selectedStatus.label.length + 8
+                          ? selectedStatus.label
+                          : selectedStatus.short}
+                      </Text>
+                    </Box>
+                  )}
                 </Box>
-              )}
-            </Box>
-            {compactProjectRows > 0 && (
-              <ProjectPanel
-                tree={props.tree}
-                expanded
-                focused={projectFocused}
-                width={mainWidth}
-                height={compactProjectRows}
-              />
+                <Box flexShrink={0}>{tabs}</Box>
+              </Box>
+            ) : (
+              <>
+                {roster}
+                <Box height={1} flexShrink={0}>
+                  <Box flexGrow={1} minWidth={0}>
+                    {tabs}
+                  </Box>
+                  {tracked && (
+                    <Box flexShrink={0}>
+                      <Text dimColor>o Workflow</Text>
+                    </Box>
+                  )}
+                </Box>
+              </>
             )}
             {compactWorkflowRows > 0 && plan && (
               <WorkflowPanel
@@ -1266,19 +1579,26 @@ export function WorkbenchScreen(props: ScreenProps) {
                 </Text>
               </Box>
             ))}
-            {props.mode !== 'normal' && props.mode !== 'new-session' && (
-              <Box flexDirection="column" height={2} flexShrink={0}>
-                <Text color="cyan">
-                  {props.mode === 'reply'
-                    ? 'Reply · Enter send / Esc keep draft'
-                    : 'Command · Enter run / Esc close'}
+            {inputLabel && (
+              // Rules above and below set the input apart from the viewport and footer.
+              <Box flexDirection="column" height={inputRows} flexShrink={0}>
+                <Text wrap="truncate-end">
+                  <Text dimColor>── </Text>
+                  <Text color="cyan">{inputLabel}</Text>
+                  <Text dimColor>
+                    {' '}
+                    {'─'.repeat(
+                      Math.max(0, mainWidth - stringWidth(inputLabel) - 4),
+                    )}
+                  </Text>
                 </Text>
                 <Box height={1}>
-                  <Text color="cyan">
+                  <Text color="cyan" bold>
                     {props.mode === 'command' ? ': ' : '> '}
                   </Text>
                   {props.input}
                 </Box>
+                {inputRows > 2 && <Text dimColor>{'─'.repeat(mainWidth)}</Text>}
               </Box>
             )}
             <Box flexGrow={1} />

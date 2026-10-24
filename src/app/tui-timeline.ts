@@ -1,6 +1,7 @@
 import type { AttentionItem } from '../attention/index.js';
 import type { RunEvent } from '../execution/index.js';
 import { terminalText } from './tui-input.js';
+import { lastParagraph, outcomeOf, startsTurn } from './tui-outcome.js';
 
 export type TimelineEntry = Readonly<{
   sequence: number;
@@ -11,6 +12,8 @@ export type TimelineEntry = Readonly<{
   color: string;
   detailBold: boolean;
   wrap: boolean;
+  /** Dim lines beneath: a request's steps, or the end of an undeclared reply. */
+  notes: readonly string[];
 }>;
 type ToolActivity = {
   row: number;
@@ -113,8 +116,12 @@ export function timelineEntries(
   let turnAt: string | undefined;
   let requestRow: number | undefined;
   let ended = false;
-  // Whether the agent wrote any reply this turn; its text stays in Live.
-  let replied = false;
+  // The turn's own events decide its outcome; its reply text stays in Live,
+  // except the last paragraph when the agent declared nothing.
+  let turn: RunEvent[] = [];
+  let reply: string[] = [];
+  // Marked-done requests the agent has not heard about until the next turn.
+  let unreplied: { index: number; event: RunEvent; title: string }[] = [];
   const row = (
     event: RunEvent,
     label: string,
@@ -136,17 +143,29 @@ export function timelineEntries(
       color,
       detailBold,
       wrap,
+      notes: [],
     };
   };
   for (const event of readableEvents(events)) {
+    if (startsTurn(event)) {
+      turn = [];
+      reply = [];
+      for (const { index, event: done, title } of unreplied)
+        rows[index] = row(done, 'Marked done', title);
+      unreplied = [];
+    } else turn.push(event);
     switch (event.type) {
       case 'agent.progress': {
-        rows.push(row(event, 'Progress', event.summary, 'cyan', false, true));
+        rows.push(
+          event.finished
+            ? row(event, 'Finished', event.summary, 'green', false, true)
+            : row(event, 'Progress', event.summary, 'cyan', false, true),
+        );
         break;
       }
       case 'agent.message':
         // Free-form conversation is available in Live; progress has its own explicit ingress.
-        if (event.text.trim()) replied = true;
+        if (event.text.trim()) reply.push(event.text);
         break;
       case 'run.state': {
         const state = event.state;
@@ -155,7 +174,6 @@ export function timelineEntries(
           files.clear();
           turnAt = event.at;
           ended = false;
-          replied = false;
           requestRow = rows.length;
           rows.push(row(event, 'Turn started', '', 'blue'));
         } else if (state.kind === 'idle') {
@@ -194,7 +212,6 @@ export function timelineEntries(
           tools.clear();
           files.clear();
           turnAt = event.at;
-          replied = false;
           rows.push(entry);
         }
         ended = false;
@@ -246,19 +263,25 @@ export function timelineEntries(
             done: 'Marked done',
             stale: 'Request expired',
           };
-          rows.push(
-            row(
+          const title = preview(decision.title);
+          if (event.status === 'done')
+            unreplied.push({ index: rows.length, event, title });
+          rows.push({
+            ...row(
               event,
               labels[event.status] ?? event.status,
-              preview(decision.title),
-              event.status === 'pending'
-                ? 'yellow'
-                : event.status === 'done'
-                  ? 'green'
-                  : 'gray',
+              // Done tells the agent nothing; it waits for the next prompt.
+              event.status === 'done' ? `reply to continue · ${title}` : title,
+              event.status === 'stale' ? 'gray' : 'yellow',
               event.status === 'pending',
             ),
-          );
+            notes:
+              event.status === 'pending'
+                ? decision.steps.map(
+                    (step, index) => `${index + 1}. ${terminalText(step)}`,
+                  )
+                : [],
+          });
           break;
         }
         if (!decision) {
@@ -320,11 +343,27 @@ export function timelineEntries(
             `${files.size} file${files.size === 1 ? '' : 's'} changed`,
           );
         if (event.reason !== 'end_turn') details.push('stop: ' + event.reason);
-        if (replied) details.push('replied · 1 Live');
-        replied = false;
+        // The turn's result, as its agent declared it.
+        const outcome = outcomeOf(turn, attention);
+        const ending = reply.length ? lastParagraph(reply.join('\n\n')) : '';
+        if (outcome.kind === 'none' && ending) details.push('1 Live');
+        const stats = details.filter(Boolean).join(' · ');
         rows.push(
-          row(event, 'Turn finished', details.filter(Boolean).join(' · ')),
+          outcome.kind === 'blocked' || outcome.kind === 'question'
+            ? row(
+                event,
+                outcome.kind === 'blocked' ? 'Blocked' : 'Question',
+                [preview(outcome.title), stats].filter(Boolean).join(' · '),
+                'yellow',
+              )
+            : outcome.kind === 'finished'
+              ? row(event, 'Finished', stats, 'green')
+              : {
+                  ...row(event, 'Turn ended', stats),
+                  notes: ending ? [ending] : [],
+                },
         );
+        reply = [];
         ended = true;
         requestRow = undefined;
         break;

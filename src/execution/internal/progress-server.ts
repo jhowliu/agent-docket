@@ -73,8 +73,18 @@ server.registerTool(
     inputSchema: progressInput,
     annotations: { destructiveHint: false, openWorldHint: false },
   },
-  ({ summary }) =>
-    record({ summary }, 'Progress recorded as an agent report.', 'progress'),
+  ({ summary, finished }) =>
+    finished
+      ? record(
+          { summary, finished: true },
+          'Recorded as your report that the work is finished; it is not verification.',
+          'progress',
+        )
+      : record(
+          { summary },
+          'Progress recorded as an agent report.',
+          'progress',
+        ),
 );
 server.registerTool(
   'request_user',

@@ -30,11 +30,13 @@ async function stateWhen(
   return result;
 }
 const origin = 'http://127.0.0.1:4177';
-/** A roster row: icon column, unselected cursor, the Run and its state label. */
+const escaped = (text: string) => text.replace(/[()]/g, '\\$&');
+/** A stacked roster row: glyph, unselected cursor, the Run (its title may be cut) and its state label. */
 const rowOf = (icon: string, run: string, label: string) =>
-  new RegExp(
-    `${icon.replace(/[*!]/, '\\$&')} {3}${run} +${label.replace(/[()]/g, '\\$&')}`,
-  );
+  new RegExp(`${icon} {3}${run} · [^│\n]* ${escaped(label)}`);
+/** A left-column agent: glyph, unselected cursor and the Run, then its state beneath. */
+const agentOf = (icon: string, run: string, state: string) =>
+  new RegExp(`${icon} {3}${run} · [^\n]*\n {4}${escaped(state)} · `);
 const turnsOf = (state: WorkbenchState, runId: string) =>
   state.events.filter(
     (event) => event.type === 'turn.end' && event.runId === runId,
@@ -81,28 +83,28 @@ test('background Runs turn unread, are announced once after the delay, and w jum
       throw new Error(`Expected ${present ? '' : 'no '}${text}\n${frame()}`);
     });
   await frameHas('> Run 1');
-  assert.match(frame(), rowOf('-', run2, 'Idle'));
+  assert.match(frame(), agentOf('○', 'Run 2', 'idle'));
 
   const sent = Date.now();
   await client.command({ kind: 'prompt', runId: two.runId, text: 'reply:b' });
-  await frameHas(`${run2} finished a turn · w jump`);
+  await frameHas(`${run2} ended a turn · w jump`);
   assert.ok(Date.now() - sent >= 1000, 'notices wait for the delay');
-  assert.match(frame(), rowOf('*', run2, 'Unread'));
-  assert.deepEqual(alerts, [`${run2} finished a turn · w jump`]);
+  assert.match(frame(), agentOf('●', 'Run 2', 'unread'));
+  assert.deepEqual(alerts, [`${run2} ended a turn · w jump`]);
 
   // Once shown, the Run is read and its notice gone.
   ui.stdin.write('w');
   await frameHas('> Run 2');
-  await frameHas('finished a turn', false);
+  await frameHas('ended a turn', false);
   ui.stdin.write('k');
   await frameHas('> Run 1');
-  assert.match(frame(), rowOf('-', run2, 'Idle'));
+  assert.match(frame(), agentOf('○', 'Run 2', 'idle'));
 
   // The selected Run's own turn is already on screen.
   await client.command({ kind: 'prompt', runId: one.runId, text: 'reply:c' });
   await stateWhen(client, (state) => turnsOf(state, one.runId) === 1);
   await new Promise((done) => setTimeout(done, 1300));
-  assert.doesNotMatch(frame(), /Unread|finished a turn/);
+  assert.doesNotMatch(frame(), /Unread|ended a turn/);
   assert.equal(alerts.length, 1);
 
   // An approval answered elsewhere within the delay is never announced; the
@@ -123,7 +125,7 @@ test('background Runs turn unread, are announced once after the delay, and w jum
   const allow = item.choices.find((choice) => choice.kind === 'allow-once');
   assert.ok(allow);
   await client.command({ kind: 'answer', id: item.id, choiceId: allow.id });
-  await frameHas(`${run2} finished a turn · w jump`);
+  await frameHas(`${run2} ended a turn · w jump`);
   assert.ok(
     !ui.frames.slice(shown).some((text) => text.includes('needs approval')),
   );
@@ -134,12 +136,15 @@ test('background Runs turn unread, are announced once after the delay, and w jum
     runId: two.runId,
     text: 'command-permission',
   });
-  await frameHas(`${run2} needs approval · w jump`);
-  assert.match(frame(), rowOf('!', run2, 'Awaiting approval (1)'));
+  // The header's pending count leaves the notice less room; the alert is whole.
+  await frameHas(`${run2} needs approval`);
+  assert.match(frame(), agentOf('◉', 'Run 2', 'approve (1)'));
   assert.equal(alerts.at(-1), `${run2} needs approval · w jump`);
   ui.stdin.write('w');
   await frameHas('> Run 2');
   await frameHas('needs approval', false);
+  // The left column's short label is spelled out beside the selected Run's title.
+  assert.match(frame(), /Run 2 · [^│\n]*Awaiting approval \(1\)/);
 });
 
 test('notices and roster icons fit narrow terminals', async (t) => {
@@ -170,7 +175,6 @@ test('notices and roster icons fit narrow terminals', async (t) => {
         connected
         busy={false}
         note=""
-        project={false}
         options={false}
         help={false}
         details={false}
@@ -179,7 +183,7 @@ test('notices and roster icons fit narrow terminals', async (t) => {
         rows={rows}
         unread={new Set([two.runId])}
         notice={{
-          text: 'Run 2 · ' + '很長的任務名稱 '.repeat(12) + 'finished a turn',
+          text: 'Run 2 · ' + '很長的任務名稱 '.repeat(12) + 'ended a turn',
           color: 'magenta',
         }}
       />,
@@ -189,9 +193,12 @@ test('notices and roster icons fit narrow terminals', async (t) => {
       assert.ok(stringWidth(line) <= columns, `${columns}: ${line}`);
     assert.match(
       output,
-      rowOf('*', `Run 2 · ${state.runs[1]?.label}`, 'Unread'),
+      columns >= 80
+        ? agentOf('●', 'Run 2', 'unread')
+        : rowOf('●', 'Run 2', 'Unread'),
       output,
     );
-    assert.match(output, /agents.*Run 2 · 很長/, output);
+    // The header holds the notice beside the left column; narrower, the roster title.
+    assert.match(output, /(workbench|agents).*Run 2 · 很長/, output);
   }
 });

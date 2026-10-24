@@ -3,25 +3,34 @@
 2026-10-23. Borrowed from the agent multiplexer herdr after the user asked which of its TUI ideas fit. The goal: see which Run has news without selecting it, and hear about it when it is not on screen.
 
 ```
-! project · next: approve Run 2
-!   Run 2 · ptt-web                          Awaiting approval (1)
-- > Run 1 · web-shop                                          Idle
-*   Run 3 · all-in-one                                      Unread
-~   Run 4 · ro-info                                        Running
+spaces
+◉ ptt-web
+  approve Run 2
+──────────────────────
+agents          3 runs
+◉   Run 2 · ptt-web
+    approve (1) · ptt-web
+○ > Run 1 · web-shop
+    idle · web-shop
+●   Run 3 · all-in-one
+    unread · all-in-one
 ```
+
+The left column took herdr's style on 2026-10-24 (see [TUI operation](tui-operation.md)); below 80 columns rows stay one line, as in `◉   Run 2 · ptt-web    Awaiting approval (1)`.
 
 ## Behavior
 
 - **Unread.** An idle Run whose latest turn ended after this TUI last showed it. Selecting a Run marks it read. Turns that ended before the TUI connected, or before a daemon restart, count as read. Seen state lives in this TUI process only: another TUI or the browser keeps its own, nothing is stored, and it never changes next-action ranking. A Run that asks for something shows that instead.
-- **Icons.** Each roster row and project header starts with a one-column ASCII icon. Every state has a different shape, and the label beside it stays (DESIGN.md's state text rule):
-  - `!` yellow: approval, agent request, sign-in, commit or retained worktree;
-  - `x` red: failed or interrupted;
-  - `*` magenta: unread;
-  - `~` blue: starting or running (cancelling is uncolored);
-  - `-` gray: idle;
+- **Icons.** Each agent row and project starts with one glyph, herdr's shapes since 2026-10-24 (ASCII `! x * ~ -` before). The state word beside it stays (DESIGN.md's state text rule):
+  - `◉` yellow: approval, blocked, question, sign-in, commit or retained worktree;
+  - `✕` red: failed or interrupted;
+  - `●` magenta: unread;
+  - `●` green (unread) or `○` green: the agent reported finished ([turn outcomes](turn-outcomes.md));
+  - `●` blue: starting or running (cancelling is uncolored);
+  - `○` gray: idle;
   - blank: ended.
 
-  A project header shows the icon of its most urgent Run in that order. Icons are ASCII because ambiguous-width symbols such as `●` can take two cells in CJK terminal settings and break alignment.
+  A project shows the glyph of its most urgent Run in that order. `◉ ● ○` are East Asian ambiguous width; a terminal set to draw those two cells wide misaligns them, as it would Claude Code's own `●`, so switch back to ASCII if that setting is in use.
 
 - **Notices.** These changes on a Run that is not selected are announced:
   - a new approval or agent request;
@@ -30,7 +39,7 @@
   - a check ended;
   - a turn finished.
 
-  Each Run gets one notice, its most urgent change, in that order. A notice waits one second and is dropped if, by then, the request was answered (for example from the browser), the Run was selected, or a finished Run is no longer idle. It shows beside the roster title for 8 seconds, as in `Run 2 · ptt-web needs approval · +1 more · w jump`, and disappears once its Run is selected. When space runs out, the roster counts give way.
+  Each Run gets one notice, its most urgent change, in that order. A notice waits one second and is dropped if, by then, the request was answered (for example from the browser), the Run was selected, or a finished Run is no longer idle. It shows for 8 seconds, as in `Run 2 · ptt-web needs approval · +1 more · w jump`, and disappears once its Run is selected. From 80 columns it sits at the right of the header line, beside the left column, and is cut to fit, or hidden under 12 free cells; narrower, it sits beside the roster title, whose counts give way.
 
 - **`w`** cycles through Runs waiting on the person, then unread Runs, in roster order.
 - **Outside the TUI.** Off by default. `WORKBENCH_NOTIFY=bell npm run tui` rings the terminal bell. `WORKBENCH_NOTIFY=osc9` sends an OSC 9 desktop notification with the notice text, in terminals that support it, such as iTerm2. Inside tmux, OSC 9 needs passthrough, so `bell` is the safer choice there. Any other value refuses to start.

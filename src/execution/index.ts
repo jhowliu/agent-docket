@@ -121,8 +121,11 @@ export type RunEventPayload =
   /** Input accepted locally; does not assert provider delivery or task success. */
   | { type: 'turn.start'; text: string }
   | { type: 'agent.message'; text: string }
-  /** Agent-authored progress, at most 50 whitespace-separated words; not a verified verdict. */
-  | { type: 'agent.progress'; summary: string }
+  /**
+   * Agent-authored progress, at most 50 whitespace-separated words; not a
+   * verified verdict. `finished` is the agent saying the requested work is done.
+   */
+  | { type: 'agent.progress'; summary: string; finished?: true | undefined }
   | { type: 'tool'; id: string; title: string; status: string }
   | { type: 'diff'; path: string; oldText: string; newText: string }
   | { type: 'attention'; id: string; status: string }

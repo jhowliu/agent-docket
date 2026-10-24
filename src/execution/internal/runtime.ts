@@ -581,11 +581,12 @@ export function createExecution(options: ExecutionOptions): Execution {
         )
       ) {
         slot.progressTask = createProgressChannel({
-          report: (summary) => {
+          report: (summary, finished) => {
             if (slot.snapshot.state.kind === 'running')
               emit(slot, {
                 type: 'agent.progress',
                 summary: safeText(summary),
+                ...(finished ? { finished: true as const } : {}),
               });
           },
           // The agent asked the person to act or answer; attention keeps it past the turn.

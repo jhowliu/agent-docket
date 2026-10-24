@@ -43,7 +43,6 @@ function screen(
       connected
       busy={false}
       note="Ready"
-      project={false}
       options={false}
       help={false}
       details={false}
@@ -76,11 +75,11 @@ test('Live joins streaming fragments into readable text', () => {
   );
 });
 
-test('Timeline omits ordinary streamed prose and groups tool updates into concise activity entries', () => {
+test('Timeline keeps only the last paragraph of streamed prose and groups tool updates into concise activity entries', () => {
   const at = '2026-10-19T07:51:47Z';
   const payloads = [
     { type: 'run.state', state: { kind: 'running' } },
-    { type: 'agent.message', text: 'sum' },
+    { type: 'agent.message', text: 'Reading the code first.\n\nsum' },
     { type: 'agent.message', text: 'marize' },
     { type: 'tool', id: 'read', title: 'Read README', status: 'pending' },
     { type: 'tool', id: 'read', title: 'Read README', status: 'completed' },
@@ -109,11 +108,13 @@ test('Timeline omits ordinary streamed prose and groups tool updates into concis
     'File changed · app.js',
     'Tool failed · npm test',
     'Adapter connection lost',
-    'Turn finished',
+    'Turn ended',
   ])
     assert.ok(output.includes(detail), output);
   assert.equal(output.split('Read README').length - 1, 1, output);
-  assert.ok(!output.includes('summarize'), output);
+  // The agent declared nothing, so its reply's last paragraph follows the turn.
+  assert.match(output, /Turn ended[^\n]*\n[│ ]*summarize/, output);
+  assert.ok(!output.includes('Reading the code first'), output);
   assert.ok(!output.includes('Tool pending · Read README'), output);
   const narrow = screen(events, 'timeline', 80);
   assert.ok(narrow.includes('Run interrupted · Adapter connect'), narrow);

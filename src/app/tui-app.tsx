@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { isAbsolute } from 'node:path';
 import { useEffect, useRef, useState } from 'react';
 import { useApp, useInput, useWindowSize } from 'ink';
 import type { AttentionId, AttentionItem } from '../attention/index.js';
@@ -14,14 +15,13 @@ import {
   workbenchMainWidth,
   workspaceNeedsAction,
 } from './tui-view.js';
-import type { Filter, PaneFocus, View } from './tui-view.js';
+import type { Filter, View } from './tui-view.js';
 import {
   roadmapCommand,
   trackedWork,
   stateForRun,
   projectForRun,
 } from './workbench-work.js';
-import { useProjectTree } from './tui-project.js';
 import { useWorktreeDiff } from './tui-diff.js';
 import { NewSession } from './tui-session.js';
 import {
@@ -32,6 +32,7 @@ import {
   unreadRuns,
 } from './tui-notices.js';
 import type { Notice } from './tui-notices.js';
+import { latestOutcomes } from './tui-outcome.js';
 
 type Mode =
   | { kind: 'normal' }
@@ -80,8 +81,15 @@ function stateHint(
       return 'Stopping the agent…';
     case 'authentication-required':
       return 'Sign-in required · s actions';
-    case 'idle':
-      return `Idle · i message${changes} · n new Run`;
+    case 'idle': {
+      const outcome = latestOutcomes(state.events, state.attention).get(run.id);
+      if (
+        (outcome?.kind === 'blocked' || outcome?.kind === 'question') &&
+        outcome.done
+      )
+        return 'Blocked · marked done; Enter to tell the agent it can continue';
+      return `Idle · Enter message${changes} · n new Run`;
+    }
     case 'failed':
     case 'interrupted':
       return `Run ${run.state.kind}${changes} · n new Run`;
@@ -160,9 +168,6 @@ export function WorkbenchApp({
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
   const [commandText, setCommandText] = useState('');
-  const [project, setProject] = useState(false);
-  const [focus, setFocus] = useState<PaneFocus>('workspace');
-  const windowCommand = useRef(false);
   const [options, setOptions] = useState(false);
   const [help, setHelp] = useState(false);
   const [details, setDetails] = useState(false);
@@ -242,12 +247,16 @@ export function WorkbenchApp({
     selected?.id ?? null,
     view === 'diff',
   );
-  const projectTree = useProjectTree(
-    client,
-    state,
-    selected?.id ?? null,
-    columns >= 80 || project,
-  );
+  // New Session starts in the selected Run's own project, else the launch
+  // folder; fixture Runs belong to a template folder, not a project to reuse.
+  const ownProject =
+    selected &&
+    selected.environment.kind !== 'trusted-fixture-directory' &&
+    snapshot.projects?.find((project) => project.runIds.includes(selected.id));
+  const sessionPath =
+    ownProject && isAbsolute(ownProject.source)
+      ? ownProject.source
+      : projectPath;
   const answered = state.attention.find((item) => item.id === receipt);
   const fresh = note !== '' && Date.now() - noted.at < NOTE_MS;
   const footer = !connected
@@ -274,9 +283,6 @@ export function WorkbenchApp({
       setMode({ kind: 'normal' });
       setOffset(0);
       setOutline(false);
-      setProject(false);
-      setFocus('workspace');
-      windowCommand.current = false;
       setFilter('active');
       setNote('Server restarted; fresh state loaded');
       announcedTurn.current = lastTurnEnd(snapshot);
@@ -365,7 +371,6 @@ export function WorkbenchApp({
   }, [client, pollInterval]);
 
   function select(id: RunId | null) {
-    setFocus('workspace');
     setSelectedId(id);
     setFocusedId(null);
     setNeedsSelection(false);
@@ -398,16 +403,16 @@ export function WorkbenchApp({
         select(result.runId);
         setNote(
           command.kind === 'new-session'
-            ? 'Session requested · i prompt when idle · s actions'
+            ? 'Session requested · Enter prompts when idle · s actions'
             : state.launch?.provider && state.launch.provider !== 'fixture'
-              ? 'Run requested · i prompt when idle · s actions'
-              : 'Run started · i prompt · s scenarios',
+              ? 'Run requested · Enter prompts when idle · s actions'
+              : 'Run started · Enter prompts · s scenarios',
         );
       } else if (command.kind === 'answer') {
         setReceipt(command.id);
         setNote('Last response accepted');
       } else if (command.kind === 'complete-request')
-        setNote('Marked done · the agent was not told; i to reply');
+        setNote('Marked done · the agent was not told; Enter to reply');
       else if (command.kind === 'prompt')
         setNote('Message accepted · watch Timeline');
       else if (command.kind === 'verify')
@@ -470,7 +475,8 @@ export function WorkbenchApp({
     }
   }
   function answer(kind: 'allow-once' | 'reject-once', index?: number) {
-    setFocus('workspace');
+    // A refusal below must not hide behind the previous answer's receipt.
+    setReceipt(null);
     if (!request || needsSelection) {
       setNote('Press Tab to select a pending request first');
       return;
@@ -493,7 +499,7 @@ export function WorkbenchApp({
   }
   /** Marks the visibly selected agent request done; the agent is not told. */
   function complete() {
-    setFocus('workspace');
+    setReceipt(null);
     if (!request || needsSelection) {
       setNote('Press Tab to select a pending request first');
       return;
@@ -506,28 +512,12 @@ export function WorkbenchApp({
     void execute({ kind: 'complete-request', id: request.id });
   }
   function setTab(tab: View) {
-    setFocus('workspace');
     setView(tab);
     setOffset(0);
   }
   function changeFilter(next: Filter) {
     setFilter(next);
     select(visibleRuns(state, next)[0]?.id ?? null);
-  }
-  function focusPane(next: PaneFocus) {
-    setFocus(next);
-    if (next === 'project') {
-      setProject(true);
-      setOutline(false);
-      setOptions(false);
-      setHelp(false);
-      setDetails(false);
-    }
-    setNote(
-      next === 'project'
-        ? 'Project focused · j/k move · h/l folders · Esc back'
-        : 'Workspace focused · j/k Runs · h/l views',
-    );
   }
   /** The server reads the Run's own worktree; the TUI only names the Run. */
   function openChangeMap() {
@@ -546,7 +536,6 @@ export function WorkbenchApp({
     }
   }
   function verify() {
-    setFocus('workspace');
     if (!selected) setNote('Select a Run to verify');
     else if (!snapshot.features?.verify)
       setNote('Verify needs an updated server; start a new daemon');
@@ -583,8 +572,6 @@ export function WorkbenchApp({
         return;
       }
       if (name === 'roadmap' && !argument) {
-        setFocus('workspace');
-        setProject(false);
         setOutline(!outline);
         return;
       }
@@ -660,8 +647,6 @@ export function WorkbenchApp({
       return;
     }
     if (name === 'help' && !argument) {
-      setFocus('workspace');
-      setProject(false);
       setOptions(false);
       setDetails(false);
       setHelp(true);
@@ -675,7 +660,6 @@ export function WorkbenchApp({
   }
   function newSession() {
     if (state.features?.newSession && state.sessionOptions) {
-      setFocus('workspace');
       setReceipt(null);
       setMode({ kind: 'new-session' });
     } else void execute({ kind: 'start' });
@@ -688,37 +672,13 @@ export function WorkbenchApp({
       if (heldAction.current === input) heldAction.current = null;
       return;
     }
-    if (key.ctrl || key.meta || key.super || key.hyper) {
-      windowCommand.current =
-        key.ctrl &&
-        !key.meta &&
-        !key.super &&
-        !key.hyper &&
-        input === 'w' &&
-        !tooSmall;
-      if (windowCommand.current) {
-        heldAction.current = null;
-        setReceipt(null);
-        setNote('Focus · h Project · l workspace · w switch · Esc cancel');
-      }
-      return;
-    }
+    if (key.ctrl || key.meta || key.super || key.hyper) return;
     if (input === 'q') {
       exit();
       return;
     }
     if (columns < 60 || rows < 20) return;
     if (input.length > 1) return;
-    if (windowCommand.current) {
-      windowCommand.current = false;
-      // Project is the left pane, the workspace the right one.
-      if (input === 'h' || key.leftArrow) focusPane('project');
-      else if (input === 'l' || key.rightArrow) focusPane('workspace');
-      else if (input === 'w')
-        focusPane(focus === 'project' ? 'workspace' : 'project');
-      else setNote('Focus unchanged · Ctrl+W h/l switches panes');
-      return;
-    }
     // Keys with outside effects; v runs the project's check command.
     const action = ['n', 'a', 'r', 'x', 'v'].includes(input);
     if (action) {
@@ -730,24 +690,6 @@ export function WorkbenchApp({
         return;
       heldAction.current = input;
     } else heldAction.current = null;
-    if (focus === 'project' && project) {
-      let navigated = true;
-      if (input === 'j' || key.downArrow || input === ']') projectTree.move(1);
-      else if (input === 'k' || key.upArrow || input === '[')
-        projectTree.move(-1);
-      else if (input === 'h' || key.leftArrow) projectTree.left();
-      else if (input === 'l' || key.rightArrow) projectTree.right();
-      else if (input === 'g' || key.home) projectTree.first();
-      else if (input === 'G' || key.end) projectTree.last();
-      else if (key.pageUp || key.pageDown)
-        projectTree.move(
-          (key.pageUp ? -1 : 1) * Math.max(1, Math.floor(rows / 2)),
-        );
-      else if (key.return || input === ' ') projectTree.toggle();
-      else if (input === 'R') projectTree.refresh();
-      else navigated = false;
-      if (navigated) return;
-    }
     if (input === 'j' || key.downArrow || input === 'k' || key.upArrow) {
       const index = runs.findIndex((run) => run.id === selected?.id);
       const direction = input === 'j' || key.downArrow ? 1 : -1;
@@ -757,10 +699,19 @@ export function WorkbenchApp({
       );
     } else if (input === 'w') {
       // Runs waiting on the person first, then Runs with an unread turn.
-      const asking = (run: RunSnapshot) =>
-        state.attention.some(
-          (item) => item.status === 'pending' && item.runId === run.id,
+      const outcomes = latestOutcomes(state.events, state.attention);
+      const asking = (run: RunSnapshot) => {
+        const outcome = outcomes.get(run.id);
+        return (
+          state.attention.some(
+            (item) => item.status === 'pending' && item.runId === run.id,
+          ) ||
+          // Marked done but not yet replied to: the agent is still stuck.
+          (run.state.kind === 'idle' &&
+            (outcome?.kind === 'blocked' || outcome?.kind === 'question') &&
+            outcome.done)
         );
+      };
       const waiting = [
         ...runs.filter(asking),
         ...runs.filter((run) => !asking(run) && unread.has(run.id)),
@@ -774,7 +725,6 @@ export function WorkbenchApp({
           null,
       );
     } else if (key.tab) {
-      setFocus('workspace');
       const index = pending.findIndex((item) => item.id === request?.id);
       setFocusedId(
         pending[(index + (key.shift ? pending.length - 1 : 1)) % pending.length]
@@ -792,18 +742,16 @@ export function WorkbenchApp({
     } else if (input === 'v') {
       verify();
     } else if (input === 'x' && selected) {
-      setFocus('workspace');
       void execute({ kind: 'cancel', runId: selected.id });
     } else if (input === 'c' && workspaceNeedsAction(selected)) {
-      setFocus('workspace');
       setReceipt(null);
       setCommandText('commit ');
       setMode({ kind: 'command' });
       setNote(
         'Commit all non-ignored changes to the local branch, then remove the worktree',
       );
-    } else if (input === 'i' && selected) {
-      setFocus('workspace');
+    } else if ((input === 'i' || key.return) && selected) {
+      // Enter on the selected Run moves into it: the reply line opens below.
       setReceipt(null);
       if (selected.state.kind === 'idle')
         setMode({ kind: 'reply', runId: selected.id });
@@ -837,8 +785,6 @@ export function WorkbenchApp({
             ) ?? 0,
           ),
         );
-        setProject(false);
-        setFocus('workspace');
         setOptions(false);
         setHelp(false);
         setDetails(false);
@@ -854,18 +800,7 @@ export function WorkbenchApp({
       setOutlineOffset((value) =>
         Math.max(0, Math.min(count - 1, value + (input === '}' ? 1 : -1))),
       );
-    } else if (
-      input === 'p' ||
-      input === 's' ||
-      input === '?' ||
-      input === 'd'
-    ) {
-      if (input === 'p' && (!project || focus !== 'project'))
-        focusPane('project');
-      else {
-        setProject(false);
-        focusPane('workspace');
-      }
+    } else if (input === 's' || input === '?' || input === 'd') {
       setOptions(input === 's' ? !options : false);
       setHelp(input === '?' ? !help : false);
       setDetails(input === 'd' ? !details : false);
@@ -894,8 +829,6 @@ export function WorkbenchApp({
     else if (input === 'g' || key.home) setOffset(1_000_000);
     else if (input === 'G' || key.end) setOffset(0);
     else if (key.escape) {
-      if (focus === 'project') focusPane('workspace');
-      setProject(false);
       setOptions(false);
       setHelp(false);
       setDetails(false);
@@ -971,9 +904,6 @@ export function WorkbenchApp({
         busy={busy}
         actionFailed={actionFailed}
         note={footer}
-        project={project}
-        focus={focus}
-        tree={projectTree.view}
         options={options}
         help={help}
         details={details}
@@ -987,7 +917,8 @@ export function WorkbenchApp({
                 <NewSession
                   client={client}
                   options={sessionOptions}
-                  initialPath={projectPath}
+                  initialPath={sessionPath}
+                  base={projectPath}
                   width={size.width}
                   maxHeight={size.maxHeight}
                   enabled={connected && !tooSmall}

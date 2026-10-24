@@ -31,10 +31,10 @@ Choose a port supported by HTTP Fetch, such as 4177, 4180 or 4182, and available
 
 ## 最小操作
 
-1. `n` 建立 Run，`i` 輸入 `fix`，Enter 送出。這會啟動真實的 deterministic ACP fixture 程序。
+1. `n` 建立 Run，Enter（或 `i`）開啟輸入欄，輸入 `fix` 後 Enter 送出。輸入欄和 `:` 命令欄以上下兩條淡色分隔線框出（左側標籤寫明 Enter／Esc），與內容區和底部提示分開；低於 24 列時省略下方那條。這會啟動真實的 deterministic ACP fixture 程序。
 2. 收到核准時，顯示聚焦請求的標題與實際一次性選項。`a` 允許一次，`r` 拒絕；`Tab` 換另一筆，`w` 換另一個等待的 Run。一次回答後，須明確選定下一筆，避免長按誤答。
 3. `1` 看完整回覆與工具活動，`2` 看實際 before／after 文字，`3` 回 timeline。`PgUp/PgDn` 捲動；`g/G` 頂端／末端。Timeline 只列操作事件摘要；Live 與 Diff 可讀取換行內容。
-4. 左上方 Project tree 顯示目前 Run 的實際資料夾與檔案；`p` 聚焦後用 `j/k` 移動、`h/l` 收合／展開或回父層／進入子項、`R` 重新整理，Esc 回工作區。`Ctrl+w h/l` 切換 Project（左）／工作區（右）焦點並保留展開狀態；`[`／`]` 與 Enter 仍可操作。Run 工作目錄與 worktree 分支顯示於底部。`x` 或 `:cancel` 停止 Run 並讓核准失效；乾淨 worktree 回收後從名單移除，有修改則保留 `Commit required`，用 `c`／`:commit <message>` 保存至本機分支後回收。
+4. 左欄仿 herdr：上半是 `spaces`（每個專案一個狀態符號、粗體名稱，下一行是下一步），下半是 `agents`（每個 Run 兩行：`Run N · 標題`，下一行是狀態 · 專案），選中的 Run 整列淡色底；追蹤中的 Task 在底部顯示 Workflow。檔案樹已於 2026-10-24 移除。Run 工作目錄與 worktree 分支顯示於底部。`x` 或 `:cancel` 停止 Run 並讓核准失效；乾淨 worktree 回收後從名單移除，有修改則保留 `Commit required`，用 `c`／`:commit <message>` 保存至本機分支後回收。
 5. `q` 離開後重開 `npm run tui`，等待中的請求仍在。
 
 `v` 會把所選 Run 的程式碼凍結成 Candidate，並在乾淨副本執行專案的 Check（先用 `:check npm ci && npm test` 設定）；footer 顯示結果是否仍適用目前程式碼與需求。詳見 [Candidate and Verify](verification.md)。
@@ -47,7 +47,7 @@ Run 名單依專案分組，每組第一行寫專案名、下一步與目前 Pha
 
 ## Timeline and streaming output
 
-At 80+ columns, the **Project** panel in the left column, above Workflow, shows real folders and filenames from the selected Run workspace. The bottom status bar shows that Run, provider and working path. `p` focuses browsing; `j/k` selects entries, `h/l` collapses/expands folders or moves to their parent/first child, and `g/G` selects first/last. Arrows follow the same focus; `[` / `]`, Enter and `R` remain selection, toggle and reload controls. `Ctrl+w h/l` focuses Project (left)/the workspace (right) and `Ctrl+w w` switches between them without clearing expansion. Focus is labeled and framed in cyan. Esc closes browsing; Tab retains approval selection. Narrow terminals use **p Project**. This is read-only directory metadata through execution, not file contents or a cwd change. Fixture/local workspaces are supported; old daemons need a new server on another port. See [Project tree](project-tree.md) for limits and transport details.
+At 80+ columns the left column (30% of the width, 32–44 cells) follows herdr's sidebar style and the selected Run fills the right; its title shares the tabs' row. No frame: a lowercase `spaces` title lists projects (glyph of the most urgent Run, bold name, next action beneath, at most half the column), a rule, then `agents` with two lines per Run (glyph, `Run N · title`; then `state · project`), scrolling to keep the selection visible. The selected Run has a subtle background, a cyan title and the `>` cursor; `agents` turns cyan while keys move through it. State words are short and lowercase (`approve (1)`, `respond (1)`, `sign in`, `commit`, `worktree`); the right title spells them out when it fits. Workflow shows its four stages when every Run keeps its two lines; an open Roadmap takes half the column. The bottom status bar shows the selected Run, provider and working path. Below 80 columns the roster stays above the tabs. The Files panel (folder tree) was removed on 2026-10-24 as unused; see [Project tree](project-tree.md).
 
 Optional project planning is available in the compact workspace: `:roadmap <title>` creates a plan, `:spec <text>` and `:confirm` confirm requirements, `o` opens the small outline, and `:direct` detaches tracking. Project plans survive a daemon restart; Run associations, transcripts and permissions do not. Current stage tracking does not pass a review. See [Roadmap operation and module map](roadmap-operation.md) for attachment, Phase/Task commands, storage, concurrency and remaining gates.
 

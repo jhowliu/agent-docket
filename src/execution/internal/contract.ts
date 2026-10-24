@@ -83,6 +83,7 @@ export const runEventSchema: z.ZodType<RunEvent> = z.discriminatedUnion(
     base.extend({
       type: z.literal('agent.progress'),
       summary: z.string().min(1).max(2000),
+      finished: z.literal(true).optional(),
     }),
     base.extend({ type: z.literal('turn.start'), text: z.string() }),
     base.extend({

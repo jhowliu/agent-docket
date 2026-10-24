@@ -4,38 +4,33 @@
 
 ## Ink TUI
 
-| 模式／按鍵                          | 操作                                                                                                 |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| 工作區：`j/k`、↑ / ↓                | 依畫面上的專案分組順序選下一個／上一個可見 Run                                                       |
-| 工作區：`h/l`、← / →、`1–3`         | 切換 Live／Diff／Timeline                                                                            |
-| `Ctrl+w` 後 `h/l` 或 `w`            | 聚焦左側 Project／右側工作區，或切換兩者；保留資料夾展開與選取                                       |
-| `n` / `i`                           | 開啟 New Session 選專案、分支／在 idle Run 輸入文字                                                  |
-| `p` / `s` / `?`                     | 瀏覽 Project 檔案樹／操作／說明                                                                      |
-| Project：`j/k`、↑ / ↓、`[` / `]`    | 上下選取項目；略過狀態提示                                                                           |
-| Project：`h/l`、← / →               | 收合／展開資料夾；已收合時回父層、已展開時進入子項                                                   |
-| Project：`g/G`、Home/End、PgUp/PgDn | 首／末項；上下移動多個項目                                                                           |
-| `o`                                 | 左側 Workflow 欄切換 Roadmap；窄視窗開關小視窗                                                       |
-| Project 中 `Enter` / `R`            | 展開／收合資料夾；重新整理檔案樹                                                                     |
-| outline 中 `[` / `]`                | 瀏覽上一個／下一個 Phase；不推進進度                                                                 |
-| outline 中 `{` / `}`                | 捲動 Task 清單                                                                                       |
-| `a` / `r`                           | 回答畫面聚焦的核准：允許一次／拒絕一次                                                               |
-| `y`                                 | 將選取的 agent request（Needs you）標為完成；不會通知 agent，需要時用 `i` 回覆                       |
-| `Tab` / `Shift+Tab`                 | 選定同 Run 的下一筆／上一筆待處理核准                                                                |
-| `w` / `d`                           | 依序跳到等待你的 Run，再到有未讀回合的 Run（[背景通知](background-notices.md)）／展開核准細節與選項  |
-| `PgUp/PgDn`、`g/G`                  | 詳情捲動、頂端／末端；離開末端後暫停追蹤                                                             |
-| `x`                                 | 停止 Run 並檢查 worktree；乾淨則回收，有修改則提醒 commit；停止後可再次檢查                          |
-| `c` / `:commit <message>`           | 停止的 worktree：輸入訊息後 commit 全部非 ignored 修改至本機分支，再回收工作目錄                     |
-| `m` / `:map`                        | 在瀏覽器開啟所選 Run 的 [Change map](change-map.md)；footer 同時顯示網址                             |
-| `v` / `:verify`                     | 凍結所選 Run 的程式碼並在乾淨副本跑專案 Check；尚未設定時先放入建議指令（[Verify](verification.md)） |
-| `:check <command>` / `:check`       | 設定／顯示所選 Run 所屬專案的 Check 指令                                                             |
-| `:`                                 | 開啟白名單命令欄                                                                                     |
-| 輸入中 `Enter` / `Esc`              | 送出／收起並保留草稿                                                                                 |
-| 導覽中 `Esc`                        | 收起 Project、操作與說明，回工作區焦點                                                               |
-| `q` / Ctrl+C                        | 只離開 TUI，背景 Run 繼續                                                                            |
+| 模式／按鍵                    | 操作                                                                                                 |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 工作區：`j/k`、↑ / ↓          | 依畫面上的專案分組順序選下一個／上一個可見 Run                                                       |
+| 工作區：`h/l`、← / →、`1–3`   | 切換 Live／Diff／Timeline                                                                            |
+| `n` / `Enter` 或 `i`          | 開啟 New Session 選專案、分支／進入所選 idle Run，下方直接開啟輸入欄（標題轉青色）                   |
+| `s` / `?`                     | 操作／說明                                                                                           |
+| `o`                           | 左側 Workflow 欄切換 Roadmap；窄視窗開關小視窗                                                       |
+| outline 中 `[` / `]`          | 瀏覽上一個／下一個 Phase；不推進進度                                                                 |
+| outline 中 `{` / `}`          | 捲動 Task 清單                                                                                       |
+| `a` / `r`                     | 回答畫面聚焦的核准：允許一次／拒絕一次                                                               |
+| `y`                           | 將選取的 agent request（Needs you）標為完成；不會通知 agent，需要時用 `i` 回覆                       |
+| `Tab` / `Shift+Tab`           | 選定同 Run 的下一筆／上一筆待處理核准                                                                |
+| `w` / `d`                     | 依序跳到等待你的 Run，再到有未讀回合的 Run（[背景通知](background-notices.md)）／展開核准細節與選項  |
+| `PgUp/PgDn`、`g/G`            | 詳情捲動、頂端／末端；離開末端後暫停追蹤                                                             |
+| `x`                           | 停止 Run 並檢查 worktree；乾淨則回收，有修改則提醒 commit；停止後可再次檢查                          |
+| `c` / `:commit <message>`     | 停止的 worktree：輸入訊息後 commit 全部非 ignored 修改至本機分支，再回收工作目錄                     |
+| `m` / `:map`                  | 在瀏覽器開啟所選 Run 的 [Change map](change-map.md)；footer 同時顯示網址                             |
+| `v` / `:verify`               | 凍結所選 Run 的程式碼並在乾淨副本跑專案 Check；尚未設定時先放入建議指令（[Verify](verification.md)） |
+| `:check <command>` / `:check` | 設定／顯示所選 Run 所屬專案的 Check 指令                                                             |
+| `:`                           | 開啟白名單命令欄                                                                                     |
+| 輸入中 `Enter` / `Esc`        | 送出／收起並保留草稿                                                                                 |
+| 導覽中 `Esc`                  | 收起操作、說明與細節                                                                                 |
+| `q` / Ctrl+C                  | 只離開 TUI，背景 Run 繼續                                                                            |
 
 路徑、操作、說明與核准細節一次只展開一組，新要求的資訊會取代上一組。每個 Run 有自己的草稿，送出後沒有繼續改字才會清空／收起；草稿不跨 TUI 退出保存。輸入中的 jkar 都是文字；左右、Home／End、Backspace／Delete、Ctrl+A／E／U 可編輯，刪除以完整 grapheme 為單位。超過 1000 字元的輸入不接受，換行貼上轉成空格。
 
-Bracketed paste 使用獨立通道，導覽模式貼上 a／:cancel 不觸發動作。除導覽模式的 `Ctrl+w` 焦點前綴外，Ctrl／Alt／Command 組合不觸發導覽；kitty terminal 的 repeat／release 不執行 mutation。一般 terminal 沒有 key-up，因此相同 mutation key 連按會鎖住，需先換選或做另一個明確操作。每次回答後，即使下一筆核准補上，也要 Tab／換選 Run 明確選定再答。a/r 沒有對應一次性選項時不會推定其他選項；d 可看原本選項，再用 `:answer N` 明確指定。Tab 從 Project 回工作區選核准，不用來切換面板。輸入文字時不啟用焦點切換。
+Bracketed paste 使用獨立通道，導覽模式貼上 a／:cancel 不觸發動作。Ctrl／Alt／Command 組合不觸發導覽；kitty terminal 的 repeat／release 不執行 mutation。一般 terminal 沒有 key-up，因此相同 mutation key 連按會鎖住，需先換選或做另一個明確操作。每次回答後，即使下一筆核准補上，也要 Tab／換選 Run 明確選定再答。a/r 沒有對應一次性選項時不會推定其他選項；d 可看原本選項，再用 `:answer N` 明確指定。Tab 只用來選核准，不用來切換面板。
 
 命令：`new`、`use 2`（目前可見清單的編號）、`active`、`inbox`、`live`、`diff`、`timeline`、`prompt fix`、`answer 1`、`cancel`、`commit <message>`、`help`、`quit`。`g/G` 只捲動目前保留的事件視窗。這些都是工作台操作，不執行 shell。Fixture 情境包含 `fix`、`question`、`reply:名稱`、`wait`、`two-permissions`、`crash`。啟動與限制見 [TUI 操作](tui-operation.md)、[Run 生命週期](run-lifecycle.md)。
 

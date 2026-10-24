@@ -11,13 +11,12 @@ npm run tui
 
 需要 Node.js 22.16 以上與互動式 terminal。TUI 自動連接本機 `127.0.0.1:4177`；沒有服務時啟動背景服務，不需另外開一個 terminal。畫面保留 agents＋timeline，按需展開回覆、路徑和操作。
 
-- `n` 開啟 New Session：輸入 Git 專案根目錄、Enter 讀取分支，選起始分支後 Enter 建立獨立 worktree。路徑欄 `Tab` 可列資料夾並補全，用方向鍵與 Enter 選取；`Shift+Tab` 回 Agent 欄選 Fixture 測試模式。建立後 `i` 輸入需求。
+- `n` 開啟 New Session：輸入 Git 專案根目錄、Enter 讀取分支，選起始分支後 Enter 建立獨立 worktree。路徑欄 `Tab` 可列資料夾並補全，用方向鍵與 Enter 選取；`Shift+Tab` 回 Agent 欄選 Fixture 測試模式。建立後 Enter（或 `i`）輸入需求。
 - 工作區焦點下，`j/k` 切換 Run，`h/l` 或 `1–3` 切換 Live／Diff／Timeline；`PgUp/PgDn` 捲動。`w` 跳到待核准，`a/r` 允許一次／拒絕；`Tab` 選下一筆核准。
-- `p` 聚焦實際檔案樹：`j/k` 上下選取、`h/l` 收合／展開或移到父層／子項、`g/G` 到首／末項，`R` 重新整理。`[`／`]` 與 Enter 仍可使用。
-- `Ctrl+w` 後按 `h/l` 切換工作區／Project 焦點，後按 `w` 來回切換，保留展開狀態。焦點以標題與青色框線標示；Run 工作路徑顯示於底部。`s` 看操作、`?` 看按鍵、`:` 輸入白名單命令。
+- 左欄列出各專案的 agents；Run 工作路徑顯示於底部。`s` 看操作、`?` 看按鍵、`:` 輸入白名單命令。
 - `Esc` 收起回覆並保留草稿；`q`／Ctrl+C 只離開 TUI，重開可繼續處理原本的 Run。
 
-TUI 與同網址的瀏覽器共享 Run 和核准。啟動不會自動連線模型；New Session 可明確選擇本機 Codex 或可信 Fixture，不需用環境變數／JSON 指定專案。不同專案的檔案樹、路徑與 Roadmap 隨所選 Run 切換，也可選之前保存的分支接續程式碼。詳見 [New Session 操作](docs/session-creation.md) 與 [本機 Codex 模式](docs/local-execution.md)。本機 Git 專案使用每 Run 的獨立 worktree／分支與 CLI home，仍不是 OS sandbox。`x` 停止後回收乾淨 worktree；有修改則顯示 `Commit required`，按 `c` 輸入訊息或用 `:commit <message>`，保存至本機分支後回收目錄，不自動 push。詳見 [worktree 操作](docs/worktrees.md)。選取有本機 worktree 的 Run 按 `m`（或 `:map`），會在瀏覽器開啟 [Change map](docs/change-map.md)：從按鍵經 HTTP route、模組 Interface 到被修改函式的 flow，以及逐函式 diff；flow 為靜態推得，不代表 review 或驗證。Run／事件／核准只保留在背景服務的有界記憶體；不保存或查閱過去 Run，服務重啟從空白開始。草稿只保留在當次 TUI。停止服務：`npm run daemon:stop`；只連線不自動啟動：`npm run tui -- --connect`。服務 log 在 `.workbench/daemon-4177.log`。詳見 [Run 生命週期與重啟限制](docs/run-lifecycle.md)。
+TUI 與同網址的瀏覽器共享 Run 和核准。啟動不會自動連線模型；New Session 可明確選擇本機 Codex 或可信 Fixture，不需用環境變數／JSON 指定專案。不同專案的路徑與 Roadmap 隨所選 Run 切換，也可選之前保存的分支接續程式碼。詳見 [New Session 操作](docs/session-creation.md) 與 [本機 Codex 模式](docs/local-execution.md)。本機 Git 專案使用每 Run 的獨立 worktree／分支與 CLI home，仍不是 OS sandbox。`x` 停止後回收乾淨 worktree；有修改則顯示 `Commit required`，按 `c` 輸入訊息或用 `:commit <message>`，保存至本機分支後回收目錄，不自動 push。詳見 [worktree 操作](docs/worktrees.md)。選取有本機 worktree 的 Run 按 `m`（或 `:map`），會在瀏覽器開啟 [Change map](docs/change-map.md)：從按鍵經 HTTP route、模組 Interface 到被修改函式的 flow，以及逐函式 diff；flow 為靜態推得，不代表 review 或驗證。Run／事件／核准只保留在背景服務的有界記憶體；不保存或查閱過去 Run，服務重啟從空白開始。草稿只保留在當次 TUI。停止服務：`npm run daemon:stop`；只連線不自動啟動：`npm run tui -- --connect`。服務 log 在 `.workbench/daemon-4177.log`。詳見 [Run 生命週期與重啟限制](docs/run-lifecycle.md)。
 
 可用 `WORKBENCH_PORT=4180 npm run tui` 選擇另一個 port；停止時使用同一個 `WORKBENCH_PORT`。TUI 不會替換已存在的服務；先前的 M0 服務可連線，但若不支援 shutdown，仍需回原服務的 terminal 用 Ctrl+C 停止。前景 `npm run ui`／`npm run daemon` 的 Ctrl+C 也會清理其 Runs。
 

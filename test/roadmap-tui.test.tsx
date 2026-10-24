@@ -128,7 +128,6 @@ test('Workflow stays separate from content tabs, fits terminal cells and never i
             connected
             busy={false}
             note="Roadmap ready"
-            project={false}
             options={false}
             help={false}
             details={false}

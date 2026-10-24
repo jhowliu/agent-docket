@@ -4,14 +4,13 @@ import { useState } from 'react';
 import { Box, Text, renderToString } from 'ink';
 import { render } from 'ink-testing-library';
 import stringWidth from 'string-width';
-import { mkdtemp, rm, mkdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createWebWorkbench } from '../src/app/web-workbench.js';
 import { createWorkbenchClient } from '../src/app/workbench-client.js';
 import type { WorkbenchClient } from '../src/app/workbench-client.js';
 import type { WorkbenchState } from '../src/app/workbench-protocol.js';
-import { stateSchema } from '../src/app/workbench-protocol.js';
 import { WorkbenchApp } from '../src/app/tui-app.js';
 import { WorkbenchScreen } from '../src/app/tui-view.js';
 import { PromptInput } from '../src/app/tui-input.js';
@@ -223,7 +222,8 @@ test('Ink navigation preserves independent drafts and never interprets typed tex
   await frameHas(ui, 'Reply · Enter', false);
   ui.stdin.write('k');
   await frameHas(ui, '> Run 1');
-  ui.stdin.write('i');
+  // Enter on the selected Run opens its reply like i, with its draft kept.
+  ui.stdin.write('\r');
   await frameHas(ui, '中文jkar');
   ui.stdin.write('\r');
   await frameHas(ui, 'Reply · Enter', false);
@@ -273,13 +273,8 @@ test('Ink approval shortcuts target the focused request; paste and repeats canno
     ui.cleanup();
   });
   await frameHas(ui, 'APPROVAL 1/2');
-  ui.stdin.write('p');
-  await frameHas(ui, 'hjkl · Enter');
-  ui.stdin.write(']');
-  await new Promise((done) => setTimeout(done, 20));
   ui.stdin.write('s');
   await frameHas(ui, 'i prompts:');
-  assert.ok(!ui.lastFrame()?.includes('hjkl · Enter'));
   ui.stdin.write('?');
   await frameHas(ui, 'PgUp/PgDn scroll');
   ui.stdin.write('d');
@@ -308,15 +303,9 @@ test('Ink approval shortcuts target the focused request; paste and repeats canno
       .length,
     2,
   );
-  ui.stdin.write('\u0017');
-  await frameHas(ui, 'Focus · h Project');
-  ui.stdin.write('h');
-  await frameHas(ui, 'Project · focus');
-  ui.stdin.write('\u0017');
-  await frameHas(ui, 'Focus · h Project');
-  ui.stdin.write('l');
-  await frameHas(ui, 'Workspace focused');
-  ui.stdin.write('a'); // Switching pane focus cannot arm another approval.
+  ui.stdin.write('2');
+  await frameHas(ui, '2 Diff');
+  ui.stdin.write('a'); // Switching tabs cannot arm another approval.
   await frameHas(ui, 'Press Tab to select');
   assert.equal(
     (await client.poll()).attention.filter((item) => item.status === 'pending')
@@ -504,7 +493,6 @@ test('Ink frames fit terminal cells with long CJK, diff and all optional control
             connected
             busy={false}
             note="Ready"
-            project={expanded}
             options={expanded}
             help={expanded}
             details={expanded}
@@ -536,205 +524,17 @@ test('Ink frames fit terminal cells with long CJK, diff and all optional control
   }
 });
 
-test('Project folders expand, refresh and follow the selected Run; workspace stays in the footer', async (t) => {
-  const app = createWebWorkbench(origin);
-  const delayed: { release?: () => void } = {};
-  let delayRun: string | null = null;
-  const client = createWorkbenchClient(origin, async (request) => {
-    const url = new URL(request.url);
-    if (
-      url.pathname === '/api/directory' &&
-      url.searchParams.get('runId') === delayRun
-    )
-      await new Promise<void>((resolve) => {
-        delayed.release = resolve;
-      });
-    return app.fetch(request);
-  });
-  await client.connect();
-  const one = await client.command({ kind: 'start' });
-  const two = await client.command({ kind: 'start' });
-  assert.ok('runId' in one && 'runId' in two);
-  const initial = await client.poll();
-  const first = initial.runs.find((run) => run.id === one.runId);
-  const second = initial.runs.find((run) => run.id === two.runId);
-  assert.ok(first && second);
-  await mkdir(join(first.environment.location, 'constructor'));
-  await writeFile(
-    join(first.environment.location, 'constructor', 'nested.ts'),
-    'export {};',
-  );
-  await writeFile(join(first.environment.location, 'aaa-one.txt'), 'one');
-  await writeFile(join(second.environment.location, 'aaa-two.txt'), 'two');
-  const ui = render(
-    <WorkbenchApp client={client} initial={initial} pollInterval={25} />,
-  );
-  t.after(async () => {
-    delayed.release?.();
-    ui.unmount();
-    ui.cleanup();
-    await app.close();
-  });
-  await frameHas(ui, 'aaa-one.txt');
-  await frameHas(ui, 'Run 1 · fixture');
-  ui.stdin.write('p');
-  await frameHas(ui, 'hjkl · Enter');
-  ui.stdin.write(']');
-  await new Promise((done) => setTimeout(done, 20));
-  ui.stdin.write('\r');
-  await frameHas(ui, 'nested.ts');
-  await writeFile(join(first.environment.location, 'aaa-new.txt'), 'new');
-  ui.stdin.write('R');
-  await frameHas(ui, 'aaa-new.txt');
-  delayRun = one.runId;
-  ui.stdin.write('R');
-  await until(() => typeof delayed.release === 'function');
-  ui.stdin.write('\u0017');
-  await frameHas(ui, 'Focus · h Project');
-  ui.stdin.write('l');
-  await frameHas(ui, 'Workspace focused');
-  ui.stdin.write('j');
-  await frameHas(ui, 'aaa-two.txt');
-  await frameHas(ui, 'Run 2 · fixture');
-  delayed.release?.();
-  await new Promise((done) => setTimeout(done, 40));
-  assert.ok(!ui.lastFrame()?.includes('aaa-one.txt'));
-  assert.ok(ui.lastFrame()?.includes('aaa-two.txt'));
-  assert.doesNotMatch(ui.lastFrame() ?? '', /Source ·|Workspace.*Source/);
-  assert.equal((await client.poll()).runs.length, 2);
-});
-
-test('Vim navigation follows pane focus without switching Runs or views from Project', async (t) => {
+test('Vim keys move between Runs and views; typed text stays text while replying', async (t) => {
   const app = createWebWorkbench(origin);
   const client = createWorkbenchClient(origin, (request) => app.fetch(request));
   await client.connect();
-  const one = await client.command({ kind: 'start' });
   await client.command({ kind: 'start' });
-  assert.ok('runId' in one);
-  const initial = await client.poll();
-  const first = initial.runs.find((run) => run.id === one.runId);
-  assert.ok(first);
-  await mkdir(join(first.environment.location, 'alpha', 'empty'), {
-    recursive: true,
-  });
-  await writeFile(
-    join(first.environment.location, 'alpha', 'child.ts'),
-    'export {};',
-  );
-  const ui = render(
-    <WorkbenchApp client={client} initial={initial} pollInterval={25} />,
-  );
-  t.after(async () => {
-    ui.unmount();
-    ui.cleanup();
-    await app.close();
-  });
-  const selectedRow = async (expression: RegExp) => {
-    await until(() => expression.test(ui.lastFrame() ?? ''));
-  };
-  const key = async (value: string) => {
-    ui.stdin.write(value);
-    await new Promise((done) => setTimeout(done, 30));
-  };
-  const focus = async (value: string) => {
-    await key('\u0017');
-    await frameHas(ui, 'Focus · h Project');
-    await key(value);
-  };
-  await frameHas(ui, 'alpha/');
-  await key('2');
-  await frameHas(ui, 'No file changes yet');
-  await key('p');
-  await frameHas(ui, 'Project · focus');
-  await key('j');
-  await selectedRow(/>\s+> alpha\//);
-  await key('l');
-  await frameHas(ui, 'child.ts');
-  await selectedRow(/>\s+v alpha\//);
-  await key('l');
-  await selectedRow(/>\s+> empty\//);
-  await key('l');
-  await frameHas(ui, 'Empty folder');
-  await key('j'); // Status rows are skipped.
-  await selectedRow(/>\s+child\.ts/);
-  await key('h');
-  await selectedRow(/>\s+v alpha\//);
-  await key('h');
-  await frameHas(ui, 'child.ts', false);
-  await key('g');
-  await key('l'); // At the root, l enters its first child.
-  await selectedRow(/>\s+> alpha\//);
-  await key('G');
-  await selectedRow(/>\s+token\.mjs/);
-  await key('\u001b[A'); // Arrows follow the same focus as hjkl.
-  await selectedRow(/>\s+README\.md/);
-  await key('\u001b[D');
-  await key('\u001b[C');
-  await selectedRow(/>\s+> alpha\//);
-  await key('\u001b[C');
-  await frameHas(ui, 'child.ts');
-  await frameHas(ui, 'Run 1 · fixture');
-  await frameHas(ui, 'No file changes yet');
-  assert.doesNotMatch(ui.lastFrame() ?? '', /^Run 2 · fixture/m);
-
-  // Project is the left pane: Ctrl+W l focuses the workspace, h returns.
-  await focus('l');
-  await frameHas(ui, 'Project · p focus');
-  await key('h'); // Workspace h/l still changes tabs.
-  await frameHas(ui, 'i to prompt · s for fixture scenarios');
-  await focus('h');
-  await selectedRow(/>\s+v alpha\//); // Expansion and selection survive focus changes.
-  await key('h');
-  await focus('w');
-  await frameHas(ui, 'Workspace focused');
-  await key('j');
-  await frameHas(ui, 'Run 2 · fixture');
-  await focus('w');
-  await frameHas(ui, 'Project · focus');
-  await frameHas(ui, 'alpha/', false);
-  await focus('x'); // An invalid window command cannot cancel a Run.
-  await frameHas(ui, 'Focus unchanged');
-  await frameHas(ui, 'Project · focus');
-  await key('\t');
-  await frameHas(ui, 'Project · p focus');
-  await key('p');
-  await frameHas(ui, 'Project · focus');
-  await key('\u001b');
-  await frameHas(ui, 'Project · p browse');
-  await key('k');
-  await frameHas(ui, 'Run 1 · fixture');
-  await key('p');
-  await key('i');
-  await frameHas(ui, 'Reply · Enter');
-  await key('hjkl');
-  await frameHas(ui, 'hjkl');
-  await key('\u0017'); // Pane switching is inactive while editing text.
-  await key('l');
-  await frameHas(ui, 'hjkll');
-  await key('\u001b');
-  await frameHas(ui, 'Reply · Enter', false);
-  assert.equal((await client.poll()).runs.length, 2);
-});
-
-test('older daemons retain Run controls without unsupported folder requests', async (t) => {
-  const app = createWebWorkbench(origin);
-  let folderRequests = 0;
-  const client = createWorkbenchClient(origin, async (request) => {
-    const url = new URL(request.url);
-    if (url.pathname === '/api/directory') folderRequests++;
-    const response = await app.fetch(request);
-    if (url.pathname !== '/api/state') return response;
-    const snapshot = stateSchema.parse(await response.json());
-    delete snapshot.features;
-    return Response.json(snapshot);
-  });
-  await client.connect();
   await client.command({ kind: 'start' });
   const ui = render(
     <WorkbenchApp
       client={client}
       initial={await client.poll()}
-      pollInterval={20}
+      pollInterval={25}
     />,
   );
   t.after(async () => {
@@ -742,11 +542,28 @@ test('older daemons retain Run controls without unsupported folder requests', as
     ui.cleanup();
     await app.close();
   });
-  await frameHas(ui, 'New server needed');
-  ui.stdin.write('p');
-  await frameHas(ui, 'Project · focus');
-  ui.stdin.write('R');
-  await frameHas(ui, 'New server needed');
-  assert.equal(folderRequests, 0);
-  assert.equal((await client.poll()).runs[0]?.state.kind, 'idle');
+  const key = async (value: string) => {
+    ui.stdin.write(value);
+    await new Promise((done) => setTimeout(done, 30));
+  };
+  await frameHas(ui, '> Run 1');
+  await key('2');
+  await frameHas(ui, 'No file changes yet');
+  await key('h');
+  await frameHas(ui, 'Enter to prompt · s for fixture scenarios');
+  await key('j');
+  await frameHas(ui, '> Run 2');
+  await frameHas(ui, 'Run 2 · fixture');
+  await key('k');
+  await frameHas(ui, '> Run 1');
+  await key('i');
+  await frameHas(ui, 'Reply · Enter');
+  await key('hjkl');
+  await frameHas(ui, 'hjkl');
+  await key('\u0017'); // Ctrl+W is not a command while editing text.
+  await key('l');
+  await frameHas(ui, 'hjkll');
+  await key('\u001b');
+  await frameHas(ui, 'Reply · Enter', false);
+  assert.equal((await client.poll()).runs.length, 2);
 });

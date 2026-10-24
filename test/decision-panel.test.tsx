@@ -61,7 +61,9 @@ test('the decision shows what it acts on, its keys and the Run state in the foot
     ui.cleanup();
   });
   // With no recent action, the footer describes the selected Run.
-  await until(() => !!ui.lastFrame()?.includes('Idle · i message · n new Run'));
+  await until(
+    () => !!ui.lastFrame()?.includes('Idle · Enter message · n new Run'),
+  );
   await client.command({
     kind: 'prompt',
     runId: started.runId,
@@ -140,7 +142,6 @@ test('short terminals keep the decision to two rows without losing the subject o
           connected
           busy={false}
           note="Codex is working · x stop · 1 Live"
-          project={false}
           options={false}
           help={false}
           details={false}

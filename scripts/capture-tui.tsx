@@ -1,15 +1,12 @@
 import { mkdir, writeFile } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { renderToString } from 'ink';
 import stringWidth from 'string-width';
 import { createWebWorkbench } from '../src/app/web-workbench.js';
 import { createWorkbenchClient } from '../src/app/workbench-client.js';
 import { WorkbenchScreen, workbenchMainWidth } from '../src/app/tui-view.js';
-import type { PaneFocus } from '../src/app/tui-view.js';
 import { PromptInput } from '../src/app/tui-input.js';
-import type { TreeRow, ProjectTreeView } from '../src/app/tui-project.js';
-import type { RunId } from '../src/execution/index.js';
 
 const escape = (text: string) =>
   text
@@ -157,52 +154,6 @@ try {
     state = await client.poll();
   }
   const directory = resolve('.impeccable/review/tui');
-  // Owned capture fixture only: create real folders to exercise the read-only tree.
-  for (const run of state.runs) {
-    await mkdir(join(run.environment.location, 'src', 'tasks'), {
-      recursive: true,
-    });
-    await mkdir(join(run.environment.location, 'test'), { recursive: true });
-    await writeFile(
-      join(run.environment.location, 'src', 'main.ts'),
-      'export {};',
-    );
-    await writeFile(
-      join(run.environment.location, 'src', 'tasks', 'work.ts'),
-      'export {};',
-    );
-    await writeFile(
-      join(run.environment.location, 'test', 'work.test.ts'),
-      'export {};',
-    );
-  }
-  async function treeFor(
-    runId: RunId,
-    expand: boolean,
-  ): Promise<ProjectTreeView> {
-    const listing = await client.directory(runId);
-    if (listing.kind !== 'ready')
-      return { rows: [], selected: 0, note: listing.reason };
-    const rows: TreeRow[] = [
-      { path: '', name: 'repo', depth: 0, kind: 'directory', expanded: true },
-    ];
-    for (const entry of listing.entries) {
-      const expanded = expand && entry.kind === 'directory';
-      rows.push({ ...entry, depth: 1, expanded });
-      if (expanded) {
-        const children = await client.directory(runId, entry.path);
-        if (children.kind === 'ready')
-          rows.push(
-            ...children.entries.map((child) => ({
-              ...child,
-              depth: 2,
-              expanded: false,
-            })),
-          );
-      }
-    }
-    return { rows, selected: expand ? 2 : 0, note: '' };
-  }
   await mkdir(directory, { recursive: true });
   await writeFile(
     resolve(directory, 'browser-state.json'),
@@ -213,23 +164,16 @@ try {
     rows: number;
     outline?: boolean;
     composing?: boolean;
-    project?: boolean;
-    focus?: PaneFocus;
     direct?: boolean;
   }[] = [
     { columns: 120, rows: 36, outline: false, composing: false },
     { columns: 120, rows: 36, outline: true, composing: false },
-    { columns: 120, rows: 36, project: true },
     { columns: 80, rows: 24, outline: false, composing: false },
     { columns: 80, rows: 24, outline: true, composing: false },
-    { columns: 80, rows: 24, project: true },
-    { columns: 80, rows: 24, project: true, focus: 'workspace' },
     { columns: 80, rows: 24, direct: true },
     { columns: 80, rows: 24, outline: false, composing: true },
     { columns: 60, rows: 20, outline: false, composing: false },
     { columns: 60, rows: 20, outline: true, composing: false },
-    { columns: 60, rows: 20, project: true },
-    { columns: 60, rows: 20, project: true, focus: 'workspace' },
     { columns: 60, rows: 20, outline: false, composing: true },
   ];
   for (const {
@@ -237,8 +181,6 @@ try {
     rows,
     outline = false,
     composing = false,
-    project = false,
-    focus = project ? 'project' : 'workspace',
     direct = false,
   } of captures) {
     const selectedId = direct
@@ -262,9 +204,6 @@ try {
         connected
         busy={false}
         note={composing ? 'Last message accepted' : 'Last response accepted'}
-        project={project || (composing && columns < 80)}
-        focus={focus}
-        tree={await treeFor(selectedId, project)}
         options={false}
         help={false}
         details={false}
@@ -296,7 +235,7 @@ try {
       />,
       { columns },
     );
-    const name = `${columns}x${rows}${project ? '-project' + (focus === 'workspace' ? '-unfocused' : '') : outline ? '-roadmap' : direct ? '-direct' : composing ? (columns >= 80 ? '-reply' : '-direct-reply') : ''}`;
+    const name = `${columns}x${rows}${outline ? '-roadmap' : direct ? '-direct' : composing ? (columns >= 80 ? '-reply' : '-direct-reply') : ''}`;
     await writeFile(resolve(directory, name + '.ansi'), output);
     await writeFile(
       resolve(directory, name + '.txt'),

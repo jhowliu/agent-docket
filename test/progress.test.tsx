@@ -236,7 +236,6 @@ test('Timeline wraps the full brief report at 60/80/120 columns while ordinary c
         connected
         busy={false}
         note="Replay"
-        project={false}
         options={false}
         help={false}
         details={false}
@@ -255,6 +254,13 @@ test('Timeline wraps the full brief report at 60/80/120 columns while ordinary c
     assert.ok(reading.includes(summary.replace(/\s/gu, '')), output);
     assert.ok(output.includes('Progress'), output);
     assert.ok(!output.includes('Ordinary conversation'), output);
-    assert.ok(!main.includes('…'), output);
+    // The Run's title row may be cut; the framed report never is.
+    assert.ok(
+      main
+        .split('\n')
+        .filter((line) => line.startsWith('│'))
+        .every((line) => !line.includes('…')),
+      output,
+    );
   }
 });

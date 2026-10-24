@@ -3,6 +3,7 @@ import type { RunId } from '../execution/index.js';
 import type { WorkbenchState } from './workbench-protocol.js';
 import { terminalText } from './tui-input.js';
 import { checkEnded } from './tui-timeline.js';
+import { latestOutcomes } from './tui-outcome.js';
 import { trackedWork } from './workbench-work.js';
 
 /** A background Run's change worth telling the person about; lower rank is more urgent. */
@@ -83,11 +84,12 @@ export function notices(
         text:
           item.kind === 'permission'
             ? 'needs approval'
-            : `asks: ${terminalText(item.title)}`,
+            : `${item.request === 'question' ? 'asks' : 'is blocked'}: ${terminalText(item.title)}`,
         color: 'yellow',
         attentionId: item.id,
       });
   const since = lastSequence(previous);
+  const outcomes = latestOutcomes(next.events, next.attention);
   for (const event of next.events) {
     if (event.sequence <= since) continue;
     const { runId } = event;
@@ -107,14 +109,35 @@ export function notices(
         text: ended.label.toLowerCase(),
         color: ended.color,
       });
-    } else if (event.type === 'turn.end')
-      found.push({
-        runId,
-        rank: 5,
-        text: 'finished a turn',
-        color: 'magenta',
-        turn: true,
-      });
+    } else if (event.type === 'turn.end') {
+      // Worded by what the agent declared; an open request already has its notice.
+      const outcome = outcomes.get(runId);
+      found.push(
+        outcome?.kind === 'blocked' || outcome?.kind === 'question'
+          ? {
+              runId,
+              rank: 1,
+              text: `${outcome.kind === 'question' ? 'asks' : 'is blocked'}: ${outcome.title}`,
+              color: 'yellow',
+              turn: true,
+            }
+          : outcome?.kind === 'finished'
+            ? {
+                runId,
+                rank: 5,
+                text: 'reports finished',
+                color: 'green',
+                turn: true,
+              }
+            : {
+                runId,
+                rank: 5,
+                text: 'ended a turn',
+                color: 'magenta',
+                turn: true,
+              },
+      );
+    }
   }
   const urgent = new Map<RunId, Notice>();
   for (const notice of found) {

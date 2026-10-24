@@ -28,7 +28,7 @@ import type {
 import { createWebWorkbench } from '../src/app/web-workbench.js';
 import { createWorkbenchClient } from '../src/app/workbench-client.js';
 import { WorkbenchApp } from '../src/app/tui-app.js';
-import { WorkbenchScreen } from '../src/app/tui-view.js';
+import { WorkbenchScreen, workbenchMainWidth } from '../src/app/tui-view.js';
 import type { WorkbenchState } from '../src/app/workbench-protocol.js';
 
 async function until(check: () => boolean | Promise<boolean>) {
@@ -296,34 +296,42 @@ test('Ink groups Runs by project, puts the project waiting on an approval first 
     ui.unmount();
     ui.cleanup();
   });
+  // The left column: spaces (a glyph, the project, its next action beneath),
+  // then agents in the same order.
+  const left = (frame: string) =>
+    frame.split('\n').map((row) => row.slice(0, 100 - workbenchMainWidth(100)));
   const rowOf = (text: string) =>
-    (ui.lastFrame() ?? '').split('\n').findIndex((row) => row.includes(text));
+    left(ui.lastFrame() ?? '').findIndex((row) => row.includes(text));
+  const space = (name: string, frame = ui.lastFrame() ?? '') =>
+    left(frame).findIndex((row) => new RegExp(`^. ${name}\\b`).test(row));
   const frame = (text: string) =>
     until(() => rowOf(text) >= 0).catch(() => {
       throw new Error(`Expected ${text}\n${ui.lastFrame()}`);
     });
   // Equal next actions keep launch order.
-  await frame('alpha · next: prompt Run 1');
-  await frame('beta · next: prompt Run 2');
-  assert.ok(rowOf('alpha · next') < rowOf('beta · next'), ui.lastFrame());
-  assert.equal(rowOf('> Run 1'), rowOf('alpha · next') + 1, ui.lastFrame());
+  await frame('prompt Run 1');
+  await frame('prompt Run 2');
+  assert.ok(space('alpha') < space('beta'), ui.lastFrame());
+  assert.equal(rowOf('prompt Run 1'), space('alpha') + 1, ui.lastFrame());
+  assert.ok(rowOf('> Run 1') < rowOf('Run 2 ·'), ui.lastFrame());
   await client.command({
     kind: 'prompt',
     runId: beta,
     text: 'command-permission',
   });
-  await frame('beta · next: approve Run 2');
-  assert.ok(rowOf('beta · next') < rowOf('alpha · next'), ui.lastFrame());
-  assert.equal(rowOf('Run 2 ·'), rowOf('beta · next') + 1, ui.lastFrame());
+  await frame('approve Run 2');
+  assert.ok(space('beta') < space('alpha'), ui.lastFrame());
+  assert.equal(rowOf('approve Run 2'), space('beta') + 1, ui.lastFrame());
+  assert.ok(rowOf('Run 2 ·') < rowOf('> Run 1'), ui.lastFrame());
   // Run 1 is now last in the roster; k moves up the grouped order to Run 2.
   ui.stdin.write('j');
   await frame('> Run 1');
   ui.stdin.write('k');
   await frame('> Run 2');
-  await frame('APPROVAL 1/1');
+  await until(() => (ui.lastFrame() ?? '').includes('APPROVAL 1/1'));
   ui.stdin.write('a');
-  await frame('alpha · next: prompt Run 1');
-  await until(() => rowOf('alpha · next') < rowOf('beta · next'));
+  await frame('prompt Run 1');
+  await until(() => space('alpha') < space('beta'));
   await frame('> Run 2');
   for (const row of (ui.lastFrame() ?? '').split('\n'))
     assert.ok(stringWidth(row) <= 100, row);
@@ -345,7 +353,6 @@ test('Ink groups Runs by project, puts the project waiting on an approval first 
         connected
         busy={false}
         note=""
-        project={false}
         options={false}
         help={false}
         details={false}
@@ -358,20 +365,19 @@ test('Ink groups Runs by project, puts the project waiting on an approval first 
       { columns: 100 },
     );
   let output = screen(older satisfies WorkbenchState);
-  assert.doesNotMatch(output, /next: /);
-  const rows = output.split('\n');
-  const row = (text: string) => rows.findIndex((line) => line.includes(text));
-  // Each header leads with its most urgent Run's icon; both are idle here.
+  assert.doesNotMatch(output, /next: |prompt Run/);
+  // Spaces still lead with each project's most urgent glyph; both are idle.
   assert.ok(
-    row('│ - alpha') >= 0 && row('│ - beta') > row('│ - alpha'),
+    space('alpha', output) >= 0 &&
+      space('beta', output) > space('alpha', output),
     output,
   );
-  assert.equal(row('> Run 1'), row('│ - alpha') + 1, output);
-  assert.equal(row('Run 2 ·'), row('│ - beta') + 1, output);
-  // Without projects either, the roster stays a flat launch-order list.
+  assert.match(left(output)[space('alpha', output)] ?? '', /^○ alpha/);
+  assert.ok(output.indexOf('> Run 1') < output.indexOf('Run 2 ·'), output);
+  // Without projects either, the agents stay a flat launch-order list.
   const { projects, ...oldest } = older;
   assert.ok(projects);
   output = screen(oldest satisfies WorkbenchState);
-  assert.doesNotMatch(output, /│ - alpha|│ - beta/);
+  assert.doesNotMatch(output, /^spaces/m);
   assert.ok(output.indexOf('> Run 1') < output.indexOf('Run 2 ·'), output);
 });

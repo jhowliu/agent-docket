@@ -21,6 +21,7 @@ export function NewSession({
   client,
   options,
   initialPath,
+  base = initialPath,
   width,
   maxHeight,
   enabled,
@@ -31,6 +32,8 @@ export function NewSession({
   client: WorkbenchClient;
   options: NonNullable<WorkbenchState['sessionOptions']>;
   initialPath: string;
+  /** Relative paths and folder completion resolve from here: the TUI's launch folder. */
+  base?: string;
   width: number;
   /** Most rows the modal offers; the branch list grows into them. */
   maxHeight: number;
@@ -96,7 +99,7 @@ export function NewSession({
     const epoch = ++generation.current;
     try {
       if (preset.kind === 'local' && !project) {
-        const expanded = resolveProjectPath(path, initialPath);
+        const expanded = resolveProjectPath(path, base);
         const inspected = await client.project(expanded);
         if (epoch !== generation.current) return;
         setProject(inspected);
@@ -405,7 +408,7 @@ export function NewSession({
               <FolderInput
                 client={client}
                 value={path}
-                base={initialPath}
+                base={base}
                 width={width}
                 active={inputActive}
                 supported={folderCompletion}
