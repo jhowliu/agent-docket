@@ -194,6 +194,37 @@ test('busy prompts reject steering; cancellation unblocks a long-running turn', 
   assert.equal((await prompt).stopReason, 'cancelled');
 });
 
+test('a turn is interrupted only after the agent goes quiet, never while it works or waits on the person', async (t) => {
+  const attention = createAttention(),
+    runtime = createExecution({ attention, idleTurnMs: 300 });
+  t.after(() => runtime.close());
+  const run = await runtime.start({ provider: 'fixture' });
+  // Active for three times the idle limit.
+  assert.deepEqual(await runtime.prompt(run.id, 'busy:900'), {
+    stopReason: 'end_turn',
+  });
+  // A permission decision the person takes longer than the limit to make.
+  const asked = runtime.prompt(run.id, 'command-permission');
+  const decision = await waiting(attention, run.id);
+  await new Promise((done) => setTimeout(done, 700));
+  attention.answer(decision.id, 'choice-0');
+  assert.deepEqual(await asked, { stopReason: 'end_turn' });
+  assert.equal(runtime.snapshot(run.id).state.kind, 'idle');
+  // Quiet past the limit.
+  await assert.rejects(
+    runtime.prompt(run.id, 'wait'),
+    /No agent activity for 0.3 seconds/,
+  );
+  assert.deepEqual(runtime.snapshot(run.id).state, {
+    kind: 'interrupted',
+    reason: 'No agent activity for 0.3 seconds',
+  });
+  assert.throws(
+    () => createExecution({ attention, idleTurnMs: 50 }),
+    /idleTurnMs must be between 100 and 86400000/,
+  );
+});
+
 test('plain-text questions accept a new prompt; client filesystem callbacks remain unsupported', async (t) => {
   const attention = createAttention(),
     runtime = createExecution({ attention });

@@ -187,6 +187,10 @@ type Slot = {
   check: { abort: AbortController; task: Promise<CheckResult> } | null;
   /** The person cancelled it or saved its changes: removed once nothing is left to save. */
   dismissed: boolean;
+  /** When the agent last did something in the current turn. */
+  activeAt: number;
+  /** Permission requests waiting on the person; the turn's idle clock stops meanwhile. */
+  awaiting: number;
 };
 const terminal = (state: RunState) =>
   ['cancelled', 'closed', 'failed', 'interrupted'].includes(state.kind);
@@ -212,6 +216,10 @@ const withTree = (
 const errorText = (error: unknown) =>
   safeText(error instanceof Error ? error.message : String(error));
 const AUTO_COMMIT = 'Save the work of a cancelled Run (Agent Workbench)';
+const duration = (ms: number) =>
+  ms % 60_000 === 0
+    ? `${ms / 60_000} minute${ms === 60_000 ? '' : 's'}`
+    : `${ms / 1000} seconds`;
 async function deadline<T>(task: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -269,6 +277,13 @@ export function createExecution(options: ExecutionOptions): Execution {
   const maxEvents = options.maxEvents ?? 2000;
   if (!Number.isInteger(maxEvents) || maxEvents < 5 || maxEvents > 10000)
     throw new Error('maxEvents must be between 5 and 10000');
+  const idleTurnMs = options.idleTurnMs ?? 10 * 60_000;
+  if (
+    !Number.isInteger(idleTurnMs) ||
+    idleTurnMs < 100 ||
+    idleTurnMs > 24 * 60 * 60_000
+  )
+    throw new Error('idleTurnMs must be between 100 and 86400000');
   const slots = new Map<RunId, Slot>();
   const listeners = new Set<(event: RunEvent) => void>();
   const journal: RunEvent[] = [];
@@ -472,6 +487,7 @@ export function createExecution(options: ExecutionOptions): Execution {
       });
       return;
     }
+    slot.activeAt = Date.now();
     const update = notification.update;
     if (
       update.sessionUpdate === 'agent_message_chunk' &&
@@ -584,6 +600,8 @@ export function createExecution(options: ExecutionOptions): Execution {
       treeEpoch: 0,
       check: null,
       dismissed: false,
+      activeAt: 0,
+      awaiting: 0,
     };
     slots.set(id, slot);
     emit(slot, { type: 'run.state', state: { kind: 'starting' } });
@@ -606,16 +624,18 @@ export function createExecution(options: ExecutionOptions): Execution {
       ) {
         slot.progressTask = createProgressChannel({
           report: (summary, finished) => {
-            if (slot.snapshot.state.kind === 'running')
-              emit(slot, {
-                type: 'agent.progress',
-                summary: safeText(summary),
-                ...(finished ? { finished: true as const } : {}),
-              });
+            if (slot.snapshot.state.kind !== 'running') return;
+            slot.activeAt = Date.now();
+            emit(slot, {
+              type: 'agent.progress',
+              summary: safeText(summary),
+              ...(finished ? { finished: true as const } : {}),
+            });
           },
           // The agent asked the person to act or answer; attention keeps it past the turn.
           request: (request) => {
             if (slot.snapshot.state.kind !== 'running') return;
+            slot.activeAt = Date.now();
             try {
               attention.ask({
                 runId: slot.snapshot.id,
@@ -706,6 +726,7 @@ export function createExecution(options: ExecutionOptions): Execution {
                 'Permission request cancelled by adapter',
               );
             signal.addEventListener('abort', aborted, { once: true });
+            slot.awaiting++;
             try {
               const decision = await request.decision;
               if (
@@ -719,6 +740,8 @@ export function createExecution(options: ExecutionOptions): Execution {
               if (!optionId) return { outcome: { outcome: 'cancelled' } };
               return { outcome: { outcome: 'selected', optionId } };
             } finally {
+              slot.awaiting--;
+              slot.activeAt = Date.now();
               signal.removeEventListener('abort', aborted);
             }
           },
@@ -783,6 +806,24 @@ export function createExecution(options: ExecutionOptions): Execution {
     if (slot.snapshot.worktree) recordTree(slot, undefined);
     return { slot, epoch: slot.epoch };
   }
+  /**
+   * Settles with the turn, or rejects once the agent has done nothing for
+   * `idleTurnMs`. A permission decision the person owes stops the clock.
+   */
+  function whileActive<T>(slot: Slot, task: Promise<T>): Promise<T> {
+    slot.activeAt = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const idle = new Promise<never>((_, reject) => {
+      const check = () => {
+        if (slot.awaiting > 0) slot.activeAt = Date.now();
+        const left = slot.activeAt + idleTurnMs - Date.now();
+        if (left > 0) timer = setTimeout(check, left);
+        else reject(new Error(`No agent activity for ${duration(idleTurnMs)}`));
+      };
+      timer = setTimeout(check, idleTurnMs);
+    });
+    return Promise.race([task, idle]).finally(() => clearTimeout(timer));
+  }
   async function runPrompt(
     slot: Slot,
     text: string,
@@ -810,7 +851,7 @@ export function createExecution(options: ExecutionOptions): Execution {
         },
       );
       slot.promptTask = task;
-      const result = await deadline(task, 10 * 60_000);
+      const result = await whileActive(slot, task);
       await slot.progress?.endTurn();
       if (epoch !== slot.epoch) return { stopReason: 'cancelled' };
       attention.invalidate(id, 'Prompt turn ended');

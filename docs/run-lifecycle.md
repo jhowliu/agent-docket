@@ -18,6 +18,8 @@ Crash-time OS processes and workspaces are not automatically reconciled or reape
 
 `execution.submit()` confirms acceptance into the current process, not durable storage or provider delivery. There is no `historyFile`, `historyDirectory`, archive flag, Run paging or history API. `:history`, `:older`, `:latest` and `:older-runs` are removed. `PgUp/PgDn` and `g/G` scroll only retained events.
 
+A prompt turn has no length limit while the agent is active. After 10 minutes with no session update, progress report or agent request, the turn is interrupted (`Run interrupted · No agent activity for 10 minutes`) and its adapter is stopped (2026-10-26; before, every turn ended 10 minutes after its prompt). Time waiting on a permission decision does not count. A tool that runs longer than 10 minutes without reporting anything still counts as quiet. `ExecutionOptions.idleTurnMs` sets the limit; the app keeps the default.
+
 The app allows four active Runs and 64 newly created Runs per daemon process. Stopped Runs with a commit-required/retained worktree remain actionable in the current roster until collection succeeds. Terminal snapshots remain in that bounded process-local roster for lifecycle checks, without a past-Run browsing mode. The live event window is at most 2,000 events; approval receipts retain at most 500 in memory. Reaching an expired event cursor requires a fresh snapshot, not a disk replay.
 
 Existing `.workbench/history/` files are left untouched and are no longer used. `WORKBENCH_HISTORY_DIRECTORY` has no effect. Existing running daemons keep their already-loaded code; restarting the TUI alone does not upgrade a daemon. No running user daemon is automatically stopped or replaced.

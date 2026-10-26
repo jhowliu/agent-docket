@@ -166,6 +166,15 @@ const app = agent({ name: 'workbench-fixture' })
       }
       return { stopReason: abort.signal.aborted ? 'cancelled' : 'end_turn' };
     }
+    // busy:<ms> keeps streaming for that long, a turn that is long but active.
+    if (/^busy:\d+$/.test(text)) {
+      const end = Date.now() + Math.min(60_000, Number(text.slice(5)));
+      while (Date.now() < end && !abort.signal.aborted) {
+        await message('.');
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      }
+      return { stopReason: abort.signal.aborted ? 'cancelled' : 'end_turn' };
+    }
     if (text === 'wait') {
       await message('Fixture is waiting for cancellation.');
       if (!abort.signal.aborted)

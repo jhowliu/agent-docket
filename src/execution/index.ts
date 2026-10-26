@@ -196,6 +196,13 @@ export interface Execution {
 export type ExecutionOptions = Readonly<{
   attention: Attention;
   maxEvents?: number;
+  /**
+   * A prompt turn is interrupted (`No agent activity for 10 minutes`) after
+   * this long without agent activity: session updates, progress reports or
+   * agent requests. A permission decision the person owes stops the clock.
+   * There is no limit on an active turn. Default 10 minutes; 100 ms to 24 h.
+   */
+  idleTurnMs?: number;
 }>;
 export {
   runIdSchema,
