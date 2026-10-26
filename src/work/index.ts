@@ -14,11 +14,13 @@ import type {
   projectOverviewSchema,
   runVerificationSchema,
   stageSchema,
+  taskFlowSchema,
   workCommandSchema,
   workSnapshotSchema,
   projectWorkSchema,
 } from './internal/contract.js';
 
+export type TaskFlow = z.infer<typeof taskFlowSchema>;
 export type Stage = z.infer<typeof stageSchema>;
 export type WorkPlan = z.infer<typeof planSchema>;
 export type WorkCommand = z.infer<typeof workCommandSchema>;
@@ -67,9 +69,32 @@ export interface ProjectWorkspaces {
   /**
    * Checks the Run's current code with its project's command, bound to the
    * Task spec revision the Run tracks (none in Direct mode). Resolves once the
-   * check has started. Without a command, rejects with CheckRequired.
+   * check has started. Without a command, rejects with CheckRequired. A pass
+   * on a tracked Task in Development moves it to Human Review.
    */
   verify(runId: RunId): Promise<void>;
+  /**
+   * Task flows in progress. When the agent of a Run tracking a confirmed Task
+   * in Development (or back from Human Review) ends a turn reporting finished,
+   * with no open request and a worktree, its checks start by themselves.
+   * Failed checks go back to the agent as a prompt at most twice; then, or
+   * when checks cannot run, the flow stops for the person (next action
+   * `checks`). A pass moves the Task to Human Review (next action `accept`).
+   * The person's own prompt resets the count. Process memory only.
+   */
+  flows(): readonly TaskFlow[];
+  /**
+   * Human Review accepts the Run's Task. Only with checks passing on exactly
+   * the Run's current code and Task spec; otherwise rejects and changes
+   * nothing. Accepting again is a no-op; any later spec or stage change
+   * reopens the Task. Not a delivery: nothing is committed or pushed.
+   */
+  accept(runId: RunId): Promise<void>;
+  /**
+   * Human Review sends the Task back to Development and the person's text to
+   * the agent as its next prompt. Only during Human Review.
+   */
+  requestChanges(runId: RunId, text: string): Promise<void>;
   /**
    * Latest verification per Run against its current code and spec, using the
    * plans from the last snapshot(). Never passes a review or finishes a Task.
@@ -108,7 +133,7 @@ export type ProjectWorkspacesOptions = Readonly<{
   directory?: string;
   execution: Pick<
     Execution,
-    'snapshot' | 'submit' | 'list' | 'start' | 'launch'
+    'snapshot' | 'submit' | 'list' | 'start' | 'launch' | 'subscribe'
   >;
   attention: Pick<Attention, 'list'>;
   evidence: Evidence;
@@ -121,6 +146,7 @@ export {
   projectOverviewSchema,
   runVerificationSchema,
   stageSchema,
+  taskFlowSchema,
   workCommandSchema,
   workSnapshotSchema,
   projectWorkSchema,

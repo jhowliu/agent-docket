@@ -15,6 +15,7 @@ import {
   projectOverviewSchema,
   projectCheckSchema,
   runVerificationSchema,
+  taskFlowSchema,
 } from '../work/index.js';
 
 const runId = runIdSchema;
@@ -135,6 +136,15 @@ export const commandSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('complete-request'), id: attentionId }).strict(),
   // Freezes the Run's code and runs its project's check on it.
   z.object({ kind: z.literal('verify'), runId }).strict(),
+  // Human Review: accept the Run's Task on passing checks, or send it back.
+  z.object({ kind: z.literal('accept'), runId }).strict(),
+  z
+    .object({
+      kind: z.literal('request-changes'),
+      runId,
+      text: z.string().trim().min(1).max(4000),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal('set-check'),
@@ -162,6 +172,7 @@ export const stateSchema = z.object({
   overview: z.array(projectOverviewSchema).max(65).optional(),
   checks: z.array(projectCheckSchema).max(65).optional(),
   verifications: z.array(runVerificationSchema).max(64).optional(),
+  flows: z.array(taskFlowSchema).max(64).optional(),
   defaultProjectId: projectWorkSchema.shape.id.optional(),
   sessionOptions: sessionOptionsSchema.optional(),
   features: z
@@ -172,6 +183,7 @@ export const stateSchema = z.object({
       projectInitialization: z.boolean().optional(),
       changeMap: z.boolean().optional(),
       verify: z.boolean().optional(),
+      flow: z.boolean().optional(),
     })
     .optional(),
   launch: z

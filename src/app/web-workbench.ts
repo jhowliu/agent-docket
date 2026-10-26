@@ -209,6 +209,7 @@ export function createWebWorkbench(
         overview: work.overview(),
         checks: work.checks(),
         verifications: work.verifications(),
+        flows: work.flows(),
         defaultProjectId,
         sessionOptions,
         features: {
@@ -218,6 +219,7 @@ export function createWebWorkbench(
           projectInitialization: true,
           changeMap: true,
           verify: true,
+          flow: true,
         },
         launch: {
           provider: launch.provider,
@@ -483,6 +485,14 @@ export function createWebWorkbench(
           } finally {
             launchPending = false;
           }
+        }
+        if (command.kind === 'accept') {
+          await work.accept(command.runId);
+          return json({ result: 'accepted' }, 202);
+        }
+        if (command.kind === 'request-changes') {
+          await work.requestChanges(command.runId, command.text);
+          return json({ result: 'accepted' }, 202);
         }
         if (command.kind === 'set-check') {
           await work.setCheck(command.projectId, command.command);

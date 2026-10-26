@@ -87,16 +87,18 @@ export function createEvidence(options: EvidenceOptions): Evidence {
           result: null,
         };
         latest.set(runId, verification);
-        void finished.then(
+        const settled = finished.then(
           (result) => {
-            if (latest.get(runId) === verification)
-              latest.set(runId, { ...verification, result });
+            const done = { ...verification, result };
+            if (latest.get(runId) === verification) latest.set(runId, done);
+            return done;
           },
           () => {
             if (latest.get(runId) === verification) latest.delete(runId);
+            return null;
           },
         );
-        return verification;
+        return { verification, settled };
       } finally {
         starting.delete(runId);
       }

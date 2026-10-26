@@ -37,7 +37,7 @@ Choose a port supported by HTTP Fetch, such as 4177, 4180 or 4182, and available
 4. 左欄仿 herdr：上半是 `spaces`（每個專案一個狀態符號、粗體名稱，下一行是下一步），下半是 `agents`（多個專案時依專案分組，每組上方一條灰色 `專案名 ───` 標籤；每個 Run 兩行：`Run N · 標題`，下一行是狀態 · provider），選中的 Run 整列淡色底；追蹤中的 Task 在底部顯示 Workflow。檔案樹已於 2026-10-24 移除。Run 工作目錄與 worktree 分支顯示於底部。`x` 或 `:cancel` 停止 Run 並讓核准失效；乾淨 worktree 回收後從名單移除，有修改則保留 `Commit required`，用 `c`／`:commit <message>` 保存至本機分支後回收。
 5. `q` 離開後重開 `npm run tui`，等待中的請求仍在。
 
-`v` 會把所選 Run 的程式碼凍結成 Candidate，並在乾淨副本執行專案的 Check（先用 `:check npm ci && npm test` 設定）；footer 顯示結果是否仍適用目前程式碼與需求。詳見 [Candidate and Verify](verification.md)。
+`v` 會把所選 Run 的程式碼凍結成 Candidate，並在乾淨副本執行專案的 Check（先用 `:check npm ci && npm test` 設定）；footer 顯示結果是否仍適用目前程式碼與需求。詳見 [Candidate and Verify](verification.md)。追蹤已確認 Task 的 Run 回報 finished 後會自動 Verify：通過進 Human Review（`:accept`／`:changes <意見>`），失敗把結果送回 agent，最多兩次後停下等你。詳見 [Task flow](task-flow.md)。
 
 Run 名單依專案分組，每組第一行寫專案名、下一步與目前 Phase；需要你處理的 Run 排在前面，其餘維持啟動順序。詳見 [Project overview](project-overview.md)。
 

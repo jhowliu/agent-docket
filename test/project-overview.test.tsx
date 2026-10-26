@@ -83,6 +83,7 @@ function fakeExecution() {
         return run;
       },
       submit() {},
+      subscribe: () => () => {},
       async start(input: { label?: string }) {
         launched.push(input.label ?? 'start');
         const run = runs.at(-1);

@@ -83,6 +83,6 @@ Validation on 2026-10-20: build/typecheck and diff checks passed; 75 non-listene
 
 ## Remaining workflow work
 
-This slice tracks the working stage. It does not execute an independent Agent Review, record Candidate-bound evidence, accept a Task, complete a Phase or automatically hand off to the next Run. Later-stage labels remain unverified; moving a label is not a passed review. These production gates need the independent Review/check execution slice before Human Review acceptance is enabled.
+Since 2026-10-25 a finished report on a confirmed Task starts its checks, a pass moves it to Human Review and `:accept` / `:changes` close the loop; see [Task flow](task-flow.md). This slice tracks the working stage. It does not execute an independent Agent Review, record Candidate-bound evidence, accept a Task, complete a Phase or automatically hand off to the next Run. Later-stage labels remain unverified; moving a label is not a passed review. These production gates need the independent Review/check execution slice before Human Review acceptance is enabled.
 
 The proposed agent tool that recommends a Roadmap is also not implemented. Manual opt-in works now; a future proposal must remain a draft until the user adopts it. Real provider/account acceptance and container isolation remain separate open work.

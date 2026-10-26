@@ -37,7 +37,8 @@ const taskSchema = z
       })
       .strict(),
     stage: stageSchema,
-    status: z.enum(['planned', 'active']),
+    /** `accepted` only through Human Review on passing evidence; any later change reopens it. */
+    status: z.enum(['planned', 'active', 'accepted']),
   })
   .strict()
   .refine(
@@ -184,11 +185,16 @@ export const projectWorkSchema = z
   })
   .strict();
 
-/** Most urgent first. Through `worktree` each kind asks something of the person. */
+/**
+ * Most urgent first. Through `worktree` each kind asks something of the person:
+ * `checks` when automatic checks stopped for them, `accept` for Human Review.
+ */
 export const nextActionSchema = z.enum([
   'approve',
   'respond',
   'sign-in',
+  'checks',
+  'accept',
   'commit',
   'worktree',
   'prompt',
@@ -213,6 +219,21 @@ export const runVerificationSchema = z
     command: z.string().min(1).max(1000),
     candidate: z.string().regex(/^[a-f0-9]{40,64}$/),
     status: z.enum(['running', 'passed', 'failed', 'stale', 'unconfirmed']),
+    reason: z.string().max(400),
+  })
+  .strict();
+/**
+ * A tracked Task's automatic step after its agent reported finished:
+ * `verifying` its Candidate, `fixing` after failed checks were sent back, or
+ * `stopped` for the person. Process memory only, like verifications.
+ */
+export const taskFlowSchema = z
+  .object({
+    runId: runIdSchema,
+    taskId: id('task'),
+    step: z.enum(['verifying', 'fixing', 'stopped']),
+    /** Failed checks sent back to the agent so far. */
+    attempts: z.number().int().min(0).max(2),
     reason: z.string().max(400),
   })
   .strict();

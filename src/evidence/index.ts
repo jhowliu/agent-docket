@@ -31,12 +31,18 @@ export type Assessment = Readonly<{
 export interface Evidence {
   /**
    * Freezes the Run's code as a Candidate and starts the check on it; resolves
-   * once started. One per Run at a time. Only the latest verification of each
-   * Run is kept, in memory for this process.
+   * once started. `settled` resolves with the finished verification, or null
+   * when the check could not report. One per Run at a time. Only the latest
+   * verification of each Run is kept, in memory for this process.
    */
   verify(
     input: Readonly<{ runId: RunId; command: string; spec: SpecRef }>,
-  ): Promise<Verification>;
+  ): Promise<
+    Readonly<{
+      verification: Verification;
+      settled: Promise<Verification | null>;
+    }>
+  >;
   /** The latest verification judged against the Run's current code and spec. */
   assess(
     runId: RunId,

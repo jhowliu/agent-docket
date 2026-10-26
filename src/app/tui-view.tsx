@@ -92,11 +92,28 @@ type RunStatus = Readonly<{
  * blue working, magenta new to you, gray quiet. `unread` is this client's view
  * of a turn; `outcome` is what the agent declared when its latest turn ended.
  */
+/** Where a Run's Task flow stands, from work's flows and next actions. */
+type FlowView = Readonly<{
+  step: 'verifying' | 'fixing' | 'stopped' | 'review';
+  attempts: number;
+  reason: string;
+}>;
+const NO_FLOWS: ReadonlyMap<RunId, FlowView> = new Map();
+export function flowViews(state: WorkbenchState): ReadonlyMap<RunId, FlowView> {
+  const views = new Map<RunId, FlowView>();
+  for (const flow of state.flows ?? []) views.set(flow.runId, flow);
+  for (const project of state.overview ?? [])
+    for (const run of project.runs)
+      if (run.next === 'accept')
+        views.set(run.runId, { step: 'review', attempts: 0, reason: '' });
+  return views;
+}
 function runStatus(
   run: RunSnapshot,
   pending: readonly AttentionItem[],
   unread: boolean,
   outcome?: TurnOutcome,
+  flow?: FlowView,
 ): RunStatus {
   const own = pending.filter((item) => item.runId === run.id);
   const count = own.length > 1 ? ` (${own.length})` : '';
@@ -143,6 +160,38 @@ function runStatus(
           color: 'yellow',
           rank: 0,
         };
+  if (run.state.kind === 'idle' && flow?.step === 'stopped')
+    return {
+      label: `Checks · ${flow.reason}`,
+      short: 'Checks',
+      icon: '◉',
+      color: 'yellow',
+      rank: 0,
+    };
+  if (run.state.kind === 'idle' && flow?.step === 'review')
+    return {
+      label: 'Human Review · checks passed',
+      short: 'Review',
+      icon: '◉',
+      color: 'yellow',
+      rank: 0,
+    };
+  if (run.state.kind === 'idle' && flow?.step === 'verifying')
+    return {
+      label: 'Verifying',
+      short: 'Verifying',
+      icon: '●',
+      color: 'blue',
+      rank: 3,
+    };
+  if (run.state.kind === 'running' && flow?.step === 'fixing')
+    return {
+      label: `Fixing failed checks (${flow.attempts} of 2)`,
+      short: 'Fixing',
+      icon: '●',
+      color: 'blue',
+      rank: 3,
+    };
   const label = states[run.state.kind];
   const short = label;
   switch (run.state.kind) {
@@ -289,6 +338,12 @@ function nextText(
     }
     case 'sign-in':
       return `next: sign in ${run}`;
+    case 'checks':
+      return `next: ${run} checks need you`;
+    case 'accept': {
+      const task = trackedWork(state, id)?.task.title;
+      return `next: review ${run}${task ? ` · ${terminalText(task)}` : ''}`;
+    }
     case 'commit':
       return `next: commit ${run}`;
     case 'worktree':
@@ -328,7 +383,15 @@ function groupHeader(state: WorkbenchState, group: RosterGroup) {
     next: nextText(state, group.next),
     urgent:
       next !== undefined &&
-      ['approve', 'respond', 'sign-in', 'commit', 'worktree'].includes(next),
+      [
+        'approve',
+        'respond',
+        'sign-in',
+        'checks',
+        'accept',
+        'commit',
+        'worktree',
+      ].includes(next),
   };
 }
 function eventSummary(event: RunEvent): string {
@@ -891,10 +954,17 @@ function mostUrgent(
   pending: readonly AttentionItem[],
   unread: ReadonlySet<RunId>,
   outcomes: ReadonlyMap<RunId, TurnOutcome>,
+  flows: ReadonlyMap<RunId, FlowView> = NO_FLOWS,
 ): RunStatus | undefined {
   return runs
     .map((run) =>
-      runStatus(run, pending, unread.has(run.id), outcomes.get(run.id)),
+      runStatus(
+        run,
+        pending,
+        unread.has(run.id),
+        outcomes.get(run.id),
+        flows.get(run.id),
+      ),
     )
     .reduce<
       RunStatus | undefined
@@ -918,6 +988,7 @@ function SidebarList({
   pending,
   unread,
   outcomes,
+  flows,
   navigating,
   filter,
   empty,
@@ -931,6 +1002,7 @@ function SidebarList({
   pending: readonly AttentionItem[];
   unread: ReadonlySet<RunId>;
   outcomes: ReadonlyMap<RunId, TurnOutcome>;
+  flows: ReadonlyMap<RunId, FlowView>;
   navigating: boolean;
   filter: Filter;
   empty: string;
@@ -1021,7 +1093,13 @@ function SidebarList({
           </Box>
           {spaces.slice(0, spaceCount).map((group) => {
             const header = groupHeader(state, group);
-            const rollup = mostUrgent(group.runs, pending, unread, outcomes);
+            const rollup = mostUrgent(
+              group.runs,
+              pending,
+              unread,
+              outcomes,
+              flows,
+            );
             return (
               <Box
                 key={group.project?.id}
@@ -1064,6 +1142,7 @@ function SidebarList({
             pending,
             unread.has(run.id),
             outcomes.get(run.id),
+            flows.get(run.id),
           );
           return (
             <Box
@@ -1183,6 +1262,7 @@ export function WorkbenchScreen(props: ScreenProps) {
     () => latestOutcomes(state.events, state.attention),
     [state.events, state.attention],
   );
+  const flows = useMemo(() => flowViews(state), [state]);
   const ownPending = pending.filter((item) => item.runId === selectedId);
   const tracked = trackedWork(state, selectedId);
   const plan = state.work?.kind === 'ready' ? state.work.plan : null;
@@ -1405,6 +1485,7 @@ export function WorkbenchScreen(props: ScreenProps) {
       'm / :map open the Run’s Change map in the browser',
       'v verify: freeze the Run’s code, run the project check on a clean copy',
       ':check <command> sets the check · :check shows it',
+      'Human Review: :accept on passing checks · :changes <what to fix>',
     );
   // Bound every optional region to leave a readable timeline at the minimum size.
   const extras = disclosures.filter(Boolean).slice(0, extraCapacity);
@@ -1512,7 +1593,14 @@ export function WorkbenchScreen(props: ScreenProps) {
       ? counts
       : '';
   const selectedStatus =
-    selected && runStatus(selected, pending, false, outcomes.get(selected.id));
+    selected &&
+    runStatus(
+      selected,
+      pending,
+      false,
+      outcomes.get(selected.id),
+      flows.get(selected.id),
+    );
   // Typing to the selected Run: its title takes the focus color from the roster.
   const replying = props.mode === 'reply';
   const tabNames = views.map(
@@ -1568,6 +1656,7 @@ export function WorkbenchScreen(props: ScreenProps) {
                 pending,
                 unread,
                 outcomes,
+                flows,
               );
               return (
                 <Box
@@ -1595,6 +1684,7 @@ export function WorkbenchScreen(props: ScreenProps) {
               pending,
               unread.has(run.id),
               outcomes.get(run.id),
+              flows.get(run.id),
             );
             // The left column is narrow; the Run title on the right spells it out.
             const label = sidebar ? status.short : status.label;
@@ -1653,6 +1743,7 @@ export function WorkbenchScreen(props: ScreenProps) {
                 pending={pending}
                 unread={unread}
                 outcomes={outcomes}
+                flows={flows}
                 navigating={navigating}
                 filter={filter}
                 empty={empty}

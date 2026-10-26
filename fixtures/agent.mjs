@@ -48,7 +48,13 @@ const app = agent({ name: 'workbench-fixture' })
       });
     // Codex dispatches slash commands from the first prompt block.
     const first = params.prompt[0];
-    const text = first?.type === 'text' ? first.text : '';
+    const typed = first?.type === 'text' ? first.text : '';
+    // --finish-feedback: what the workbench sends back is answered as fixed.
+    const text =
+      process.argv.includes('--finish-feedback') &&
+      typed.startsWith('Workbench ')
+        ? 'done:Fixed what the workbench reported.'
+        : typed;
     if (text === 'task-context') {
       await message(
         params.prompt

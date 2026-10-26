@@ -65,7 +65,7 @@ export function parseWorkSnapshot(value) {
           taskIds.has(task.id) ||
           !plain(task.title, 120) ||
           !stages.includes(task.stage) ||
-          !['planned', 'active'].includes(task.status) ||
+          !['planned', 'active', 'accepted'].includes(task.status) ||
           !task.spec ||
           !Number.isSafeInteger(task.spec.revision) ||
           task.spec.revision < 1 ||

@@ -12,6 +12,7 @@ import { PromptInput, terminalText } from './tui-input.js';
 import {
   WorkbenchScreen,
   cursorRow,
+  flowViews,
   visibleRuns,
   workbenchMainWidth,
   workspaceNeedsAction,
@@ -70,13 +71,20 @@ function stateHint(
     run.worktree.status.kind !== 'removed'
       ? ' · m changes'
       : '';
+  const flow = flowViews(state).get(run.id);
+  if (run.state.kind === 'idle' && flow?.step === 'stopped')
+    return `Checks need you: ${flow.reason} · Enter tell the agent · v re-run`;
+  if (run.state.kind === 'idle' && flow?.step === 'review')
+    return `Human Review · checks passed · :accept or :changes <what to fix>${changes}`;
   const checks = verificationHint(
     state.verifications?.find((item) => item.runId === run.id),
   );
   if (checks && run.state.kind !== 'running') return checks;
   switch (run.state.kind) {
     case 'running':
-      return `${AGENT_NAMES[run.provider]} is working · x stop · 1 Live`;
+      return flow?.step === 'fixing'
+        ? `${AGENT_NAMES[run.provider]} is fixing failed checks (${flow.attempts} of 2) · x stop · 1 Live`
+        : `${AGENT_NAMES[run.provider]} is working · x stop · 1 Live`;
     case 'starting':
       return 'Starting the agent…';
     case 'cancelling':
@@ -433,6 +441,10 @@ export function WorkbenchApp({
         setNote('Message accepted · watch Timeline');
       else if (command.kind === 'verify')
         setNote('Checks started on a frozen copy · watch Timeline');
+      else if (command.kind === 'accept')
+        setNote('Task accepted · nothing was committed or pushed');
+      else if (command.kind === 'request-changes')
+        setNote('Back to Development · your notes went to the agent');
       else if (command.kind === 'set-check')
         setNote('Check saved for this project · v verifies the selected Run');
       else if (command.kind === 'authenticate')
@@ -701,6 +713,24 @@ export function WorkbenchApp({
       verify();
       return;
     }
+    if ((name === 'accept' && !argument) || name === 'changes') {
+      if (!selected) setNote('Select a Run to review its Task');
+      else if (!snapshot.features?.flow)
+        setNote('Human Review needs an updated server; start a new daemon');
+      else if (name === 'accept')
+        void execute({ kind: 'accept', runId: selected.id });
+      else if (!argument)
+        setNote(
+          'Use :changes <what to fix> to send the Task back to Development',
+        );
+      else
+        void execute({
+          kind: 'request-changes',
+          runId: selected.id,
+          text: argument,
+        });
+      return;
+    }
     if (name === 'help' && !argument) {
       setOptions(false);
       setDetails(false);
@@ -804,12 +834,17 @@ export function WorkbenchApp({
     } else if (input === 'w') {
       // Runs waiting on the person first, then Runs with an unread turn.
       const outcomes = latestOutcomes(state.events, state.attention);
+      const flows = flowViews(state);
       const asking = (run: RunSnapshot) => {
         const outcome = outcomes.get(run.id);
+        const flow = flows.get(run.id)?.step;
         return (
           state.attention.some(
             (item) => item.status === 'pending' && item.runId === run.id,
           ) ||
+          // Checks stopped for the person, or a Task due for Human Review.
+          (run.state.kind === 'idle' &&
+            (flow === 'stopped' || flow === 'review')) ||
           // Marked done but not yet replied to: the agent is still stuck.
           (run.state.kind === 'idle' &&
             (outcome?.kind === 'blocked' || outcome?.kind === 'question') &&

@@ -25,6 +25,8 @@
 | `m` / `:map`                   | 在瀏覽器開啟所選 Run 的 [Change map](change-map.md)；footer 同時顯示網址                              |
 | `v` / `:verify`                | 凍結所選 Run 的程式碼並在乾淨副本跑專案 Check；尚未設定時先放入建議指令（[Verify](verification.md)）  |
 | `:check <command>` / `:check`  | 設定／顯示所選 Run 所屬專案的 Check 指令                                                              |
+| `:accept`                      | Human Review：Check 在目前程式碼與需求上通過時接受 Task（[Task flow](task-flow.md)）                  |
+| `:changes <what to fix>`       | Human Review：把 Task 退回 Development，並把修改意見送給 agent                                        |
 | `:`                            | 開啟白名單命令欄                                                                                      |
 | 輸入中 `Enter` / `Esc`         | 送出／收起並保留草稿                                                                                  |
 | 導覽中 `Esc`                   | 收起操作、說明與細節                                                                                  |

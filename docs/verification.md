@@ -67,5 +67,5 @@ Gaps:
 - No per-Task or multiple named checks.
 - No agent-proposed checks and no independent Agent Review.
 - Hand edits between turns are detected late.
-- `next:` does not suggest verifying yet.
+- Since 2026-10-25 a tracked Task's finished report starts checks by itself and a pass moves it to Human Review; see [Task flow](task-flow.md).
 - Not tested with a real Codex Run or a slow real install.
