@@ -32,6 +32,20 @@ async function until<T>(
   }
   throw new Error('Native launch condition timed out');
 }
+/** A cancelled Run leaves the list once its worktree is removed. */
+function removed(execution: ReturnType<typeof createExecution>, id: string) {
+  assert.ok(!execution.list().some((run) => run.id === id));
+  assert.ok(
+    execution
+      .events()
+      .some(
+        (event) =>
+          event.runId === id &&
+          event.type === 'diagnostic' &&
+          event.message.startsWith('Worktree removed. Local branch kept:'),
+      ),
+  );
+}
 const observationSchema = z.object({
   home: z.string(),
   codexHome: z.string(),
@@ -88,7 +102,7 @@ async function setup() {
   return { directory, source, launch };
 }
 
-test('local Runs have separate Git worktrees/private homes and retain uncommitted edits on cancellation', async (t) => {
+test('local Runs have separate Git worktrees/private homes and cancellation commits uncommitted edits to the Run branch', async (t) => {
   const { directory, source, launch } = await setup();
   const attention = createAttention(),
     execution = createExecution({ attention });
@@ -158,12 +172,14 @@ test('local Runs have separate Git worktrees/private homes and retain uncommitte
   attention.answer(item.id, 'choice-0');
   await prompt;
   await Promise.all([execution.cancel(one.id), execution.cancel(one.id)]);
-  assert.equal(
-    execution.snapshot(one.id).worktree?.status.kind,
-    'commit-required',
-  );
+  removed(execution, one.id);
+  assert.ok(one.worktree);
   assert.match(
-    await readFile(join(one.environment.location, 'token.mjs'), 'utf8'),
+    execFileSync(
+      'git',
+      ['-C', source, 'show', `${one.worktree.branch}:token.mjs`],
+      { encoding: 'utf8' },
+    ),
     /expiry <= now/,
   );
   assert.equal(await readFile(join(source, 'token.mjs'), 'utf8'), before);
@@ -263,7 +279,7 @@ test('native cancellation stops its process group, including ordinary descendant
   for (const pid of descendants)
     assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
   await assert.rejects(access(run.environment.location));
-  assert.equal(execution.snapshot(run.id).worktree?.status.kind, 'removed');
+  removed(execution, run.id);
 });
 
 test('a Rust worktree checks out committed source without copying ignored build artifacts', async (t) => {
@@ -329,7 +345,7 @@ test('a denied process-group liveness probe is retried, while persistent uncerta
   remaining = 1;
   await execution.cancel(first.id);
   assert.equal(denied, 1);
-  assert.equal(execution.snapshot(first.id).worktree?.status.kind, 'removed');
+  removed(execution, first.id);
   await assert.rejects(access(first.environment.location));
 
   const second = await execution.start(launch);
@@ -346,7 +362,7 @@ test('a denied process-group liveness probe is retried, while persistent uncerta
   );
   remaining = 0;
   await execution.cancel(second.id);
-  assert.equal(execution.snapshot(second.id).worktree?.status.kind, 'removed');
+  removed(execution, second.id);
 });
 
 test('configured workbench starts local Runs without accepting executable settings from clients', async (t) => {
@@ -381,7 +397,12 @@ test('configured workbench starts local Runs without accepting executable settin
   );
   await client.command({ kind: 'cancel', runId: accepted.runId });
   const closed = await client.poll();
-  assert.equal(closed.runs[0]?.state.kind, 'cancelled');
+  assert.equal(closed.runs.length, 0);
+  assert.ok(
+    closed.events.some(
+      (event) => event.type === 'run.state' && event.state.kind === 'cancelled',
+    ),
+  );
   assert.match(JSON.stringify(closed.events), /no OS isolation/);
   assert.doesNotMatch(JSON.stringify(closed), /"adapter"|"authFile"/);
 });
@@ -430,12 +451,10 @@ test('cancelling accepted local startup collects a clean worktree and leaves no 
     execution.cancel(accepted.id),
     execution.cancel(accepted.id),
   ]);
-  const stopped = execution.snapshot(accepted.id);
-  assert.equal(stopped.state.kind, 'cancelled');
-  assert.equal(stopped.environment.kind, 'local');
-  assert.notEqual(stopped.environment.location, 'pending');
-  await assert.rejects(access(stopped.environment.location));
-  assert.equal(stopped.worktree?.status.kind, 'removed');
+  removed(execution, accepted.id);
+  if (launch.worker.transport !== 'local')
+    throw new Error('Expected local launch');
+  assert.deepEqual(await readdir(launch.worker.workspaceRoot), []);
   assert.equal(
     attention.list(accepted.id).filter((item) => item.status === 'pending')
       .length,

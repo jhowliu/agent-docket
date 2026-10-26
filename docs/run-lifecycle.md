@@ -10,7 +10,7 @@
 - `npm run daemon:stop` explicitly stops the daemon and attempts to cancel and clean up its managed Runs. This affects active work. Use the same `WORKBENCH_PORT` as the running service.
 - Starting a new daemon after a stop, crash or computer restart begins with empty Run, event and approval state. Old Sessions and permission callbacks are not restored. The client clears old request focus and never automatically replays an ambiguous mutation.
 
-Crash-time OS processes and workspaces are not automatically reconciled or reaped. Empty workbench state does not prove those resources were cleaned up. Local Git directory-source worktrees are collected after confirmed stop when clean; unsaved changes remain actionable until committed. Branches survive worktree removal. Legacy fixture/HTTPS copies keep their previous retention behavior; see [worktrees](worktrees.md) and [local execution](local-execution.md).
+Crash-time OS processes and workspaces are not automatically reconciled or reaped. Empty workbench state does not prove those resources were cleaned up. Cancelling a Run (`x`) commits what its local Git worktree still holds to the Run's branch, collects the worktree and removes the Run from the daemon (2026-10-26); a worktree Git will not remove stays on disk, and a failed commit keeps the Run as **Commit required**. Runs that ended on their own stay listed until `x` or a commit. Branches survive worktree removal. Legacy fixture/HTTPS copies keep their previous retention behavior; see [worktrees](worktrees.md) and [local execution](local-execution.md).
 
 ## Interfaces and limits
 

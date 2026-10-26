@@ -205,12 +205,8 @@ test('New Session starts from saved local branches and keeps project plans, prom
     join(run.environment.location, 'next.txt'),
     'Next phase code',
   );
+  // Cancelling commits the work to the Run branch, so a new Session continues it.
   await client.command({ kind: 'cancel', runId: one.runId });
-  await client.command({
-    kind: 'commit-workspace',
-    runId: one.runId,
-    message: 'Save next phase',
-  });
   const branch = (await client.project(a)).branches.find(
     (branch) => branch.name === run.worktree?.branch,
   );

@@ -8,16 +8,19 @@ The worktree lives at `workspaceRoot/run-…/repo`. Its branch and actual path a
 
 ## Close and save
 
-1. Press `x` or use `:cancel`. Execution invalidates approvals and stops its managed process group before checking Git.
-2. With no staged, unstaged or untracked changes, execution removes the registered worktree using Git without `--force`. The local branch remains, including any unmerged commits.
-3. With changes, the stopped Run stays in the current roster as **Commit required**. Its files remain available. Press `c`, enter a commit message after `commit `, then Enter. Alternatively use `:commit <message>`.
-4. The explicit commit action stages all non-ignored changes, including new files, and commits to that worktree's branch. After a successful commit and another cleanliness check, it removes the worktree. It does not merge, push or delete the branch.
+2026-10-26 the user asked for cancel to remove the Run directly, and chose to commit what it still holds rather than keep asking for `:commit`, and to drop Runs whose worktree Git will not remove while leaving the folder.
 
-You can also commit manually in the displayed path, then use `x` / `:cancel` again to recheck and remove it. In the browser, **Commit and close** opens the existing command field; supply the commit message and submit. The text CLI supports `commit <message>` after `cancel`.
+1. Press `x` or use `:cancel` (ended Runs too). Execution invalidates approvals and stops its managed process group before checking Git.
+2. With staged, unstaged or untracked changes, execution stages all non-ignored files and commits them to the Run's own branch as `Save the work of a cancelled Run (Agent Workbench)`.
+3. Execution removes the clean worktree using Git without `--force` and removes the Run from the list. The local branch remains, including any unmerged commits; press `n` and choose it as the starting branch to continue. The receipt names it: `Run removed · its work is on workbench/run-…`.
+4. A worktree Git will not remove (locked, ownership or branch changed, invalid metadata) stays on disk untouched and the Run still leaves the list: `Run removed · its worktree stays on disk for you: <path>`. Clean it up with Git yourself (`git worktree remove`). Changes in a worktree on another branch are never committed.
+5. If the commit fails (signing, identity), the Run stays as **Commit required** with `Automatic commit failed: …` in Live. Fix the cause and press `x` again, or `c` / `:commit <message>` to commit with your own message.
 
-After collection, the TUI/browser receipt shows the full saved branch name, even after the Run leaves the roster. Find the branch in the source project's Git repository; its commit remains available for later review or integration.
+`c` / `:commit <message>` also works on a Run that ended on its own (failed, interrupted) with changes. It commits to that branch, removes the worktree and then the Run. It does not merge, push or delete the branch. In the browser, the cancel button reads **Remove Run** on ended Runs and **Commit and close** opens the command field. The text CLI supports `commit <message>`.
 
-The operator's Git identity and signing configuration apply. A failed commit preserves the worktree and can be retried. Automated Git operations disable hooks. Locked worktrees, changed ownership/branches, invalid metadata or failed removal are retained with a reason. There is no force-discard action in this slice. Ignored dependency/build output is discarded with a clean worktree; use Git to save files that must survive removal.
+A Run that ended on its own stays listed, showing why, until `x` or a commit. Removed Runs are gone from the daemon: no Timeline, no `:inbox`, no Change map; their journaled events age out.
+
+The operator's Git identity and signing configuration apply. A failed commit preserves the worktree and can be retried. Automated Git operations disable hooks. There is no force-discard action. Ignored dependency/build output is discarded with a clean worktree; use Git to save files that must survive removal.
 
 `q` / Ctrl+C in the TUI only detaches and does not collect an active worktree. Stopping the daemon performs the same stop/collect check, preserving unsaved work. No extra worktree-count limit or count setting was added; existing Run limits are unchanged.
 
@@ -29,9 +32,9 @@ Run conversations and decisions remain process-local; worktrees and Git branches
 
 ## Module map and Interface
 
-- `execution/index.ts`: optional `RunSnapshot.worktree` reports branch/path/base revision and active, commit-required, retained or removed status. `cancel` stops and attempts collection. `commitWorkspace(runId, message)` explicitly saves a stopped owned worktree and collects it; retries after successful removal have no further side effect.
+- `execution/index.ts`: optional `RunSnapshot.worktree` reports branch/path/base revision and active, commit-required, retained or removed status. `cancel` stops, commits what the worktree holds to the Run branch, collects it and removes the Run, returning its last snapshot; a worktree Git will not remove stays on disk, and a failed commit keeps the Run. `commitWorkspace(runId, message)` explicitly saves a stopped owned worktree, collects it and removes the Run; a repeated call after removal throws without side effect. `work` forgets removed Runs (project Run IDs, verifications, flows, Task bindings) on its next read.
 - `execution/internal/worktree.ts`: Git creation, source-root validation, ownership/branch checks, change detection, serialized commit/collection and non-forced registration removal.
 - `execution/internal/local.ts`: private home/login, adapter process and process-group shutdown; `runtime.ts` orders shutdown before collection and owns Run snapshots/diagnostics.
 - App transports: authenticated `commit-workspace` command accepts only a Run ID and bounded message. No client-supplied checkout path, shell command or adapter configuration. TUI/browser render domain state and forward actions.
 
-Public tests use real Git repositories and owned deterministic ACP subprocesses. They cover parallel checkouts, source edits left untouched, staged/binary/untracked changes, explicit and external commits, retries, signing failures, locks/branch changes, startup cancellation and the Ink close/commit flow. Real-model validation is recorded separately in [Codex acceptance](codex-live-acceptance.md).
+Public tests use real Git repositories and owned deterministic ACP subprocesses. They cover parallel checkouts, source edits left untouched, staged/binary/untracked changes committed on cancel, explicit and external commits, retries after failed automatic and manual commits, locks/branch changes leaving the folder, startup cancellation, the Ink `x` and failed-commit/`c` flows, and a tracked Run leaving its project while its Task keeps its stage. Real-model validation is recorded separately in [Codex acceptance](codex-live-acceptance.md).

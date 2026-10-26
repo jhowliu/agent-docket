@@ -386,23 +386,12 @@ test('the service serves a Run’s Change map from its own worktree and the TUI 
   assert.equal(files.files.length, map.files.length);
   assert.equal((await changes(`runId=${run.id}&files=all`)).status, 400);
 
-  // Once the worktree is committed and collected, the map points to the branch instead.
+  // Cancelling commits the edits to the branch and removes the Run, and its map.
   await client.command({ kind: 'cancel', runId: run.id });
-  await client.command({
-    kind: 'commit-workspace',
-    runId: run.id,
-    message: 'Keep store edits',
-  });
-  await until(
-    async () =>
-      (await client.poll()).runs[0]?.worktree?.status.kind === 'removed',
-  );
+  assert.equal((await client.poll()).runs.length, 0);
   const removed = await changes(`runId=${run.id}`);
-  assert.equal(removed.status, 409);
-  assert.match(
-    errorBody.parse(await removed.json()).error,
-    new RegExp(run.worktree.branch),
-  );
+  assert.equal(removed.status, 404);
+  assert.equal(errorBody.parse(await removed.json()).error, 'Unknown Run');
 });
 
 test('a Run without a local worktree has no Change map', async (t) => {

@@ -17,6 +17,19 @@ async function until<T>(read: () => T | undefined): Promise<T> {
   }
   throw new Error('Fixture condition timed out');
 }
+/** A cancelled Run leaves the list; its journal keeps the final state. */
+function removed(runtime: ReturnType<typeof createExecution>, id: RunId) {
+  assert.ok(!runtime.list().some((run) => run.id === id));
+  assert.throws(() => runtime.snapshot(id), /Unknown Run/);
+  const states = runtime
+    .events()
+    .flatMap((event) =>
+      event.runId === id && event.type === 'run.state'
+        ? [event.state.kind]
+        : [],
+    );
+  return states.at(-1);
+}
 const waiting = (attention: Attention, id: RunId) =>
   until<AttentionItem>(() =>
     attention.list(id).find((item) => item.status === 'pending'),
@@ -160,7 +173,7 @@ test('accepted decision followed immediately by cancellation cannot edit the fix
   assert.equal((await prompt).stopReason, 'cancelled');
   await cancelled;
   assert.equal(attention.list(run.id)[0]?.status, 'stale');
-  assert.equal(runtime.snapshot(run.id).state.kind, 'cancelled');
+  assert.equal(removed(runtime, run.id), 'cancelled');
   assert.ok(
     !runtime
       .events()
@@ -244,7 +257,7 @@ test('concurrent duplicate cancellations share one operation', async (t) => {
   );
   await Promise.all([runtime.cancel(run.id), runtime.cancel(run.id)]);
   await prompt;
-  assert.equal(runtime.snapshot(run.id).state.kind, 'cancelled');
+  assert.equal(removed(runtime, run.id), 'cancelled');
   assert.equal(
     runtime
       .events()

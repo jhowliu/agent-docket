@@ -145,10 +145,13 @@ export function notices(
     if (!current || notice.rank < current.rank)
       urgent.set(notice.runId, notice);
   }
-  return [...urgent.values()].map((notice) => ({
-    ...notice,
-    text: `${runName(next, notice.runId)} ${notice.text}`,
-  }));
+  // A removed Run's last events are not news.
+  return [...urgent.values()]
+    .filter((notice) => next.runs.some((run) => run.id === notice.runId))
+    .map((notice) => ({
+      ...notice,
+      text: `${runName(next, notice.runId)} ${notice.text}`,
+    }));
 }
 
 /** Whether a delayed notice still tells the person something new. */

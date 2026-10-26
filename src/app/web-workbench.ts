@@ -546,11 +546,13 @@ export function createWebWorkbench(
         }
         const id = execution.list().find((run) => run.id === command.runId)?.id;
         if (!id) return json({ error: 'Unknown Run' }, 404);
+        // Execution removes a cancelled or committed Run once nothing is left to save.
+        const removed = () => !execution.list().some((run) => run.id === id);
         if (command.kind === 'cancel') {
-          await execution.cancel(id);
-          const worktree = execution.snapshot(id).worktree;
+          const { worktree } = await execution.cancel(id);
           return json({
             result: 'cancelled',
+            ...(removed() ? { removed: true } : {}),
             ...(worktree
               ? {
                   branch: worktree.branch,
@@ -566,6 +568,7 @@ export function createWebWorkbench(
           );
           return json({
             result: 'accepted',
+            ...(removed() ? { removed: true } : {}),
             ...(worktree
               ? {
                   branch: worktree.branch,

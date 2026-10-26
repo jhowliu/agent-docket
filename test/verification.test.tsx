@@ -164,10 +164,11 @@ test('a Candidate freezes every non-ignored file without touching the worktree, 
     () => execution.startCheck(run.id, candidate, 'true'),
     /already running/,
   );
-  // Stopping the Run cancels its check and removes the checkout.
+  // Stopping the Run cancels its check and removes the checkout; the Run's
+  // own edits go to its branch and its worktree goes with it.
   await execution.cancel(run.id);
   assert.equal((await slow).outcome, 'cancelled');
-  assert.equal(worktrees(repo), 3);
+  assert.equal(worktrees(repo), 2);
   const events = execution.events().filter((event) => event.runId === run.id);
   assert.deepEqual(
     events.flatMap((event) =>

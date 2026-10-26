@@ -239,11 +239,12 @@ test('cancelling through the browser invalidates the old decision and rejects bu
     409,
   );
   const state = await ui.snapshot();
-  assert.equal(state.runs[0]?.state.kind, 'cancelled');
+  // A cancelled Run with nothing to save leaves the list.
+  assert.equal(state.runs.length, 0);
   assert.equal(state.attention[0]?.status, 'stale');
   assert.equal(
     (await ui.command({ kind: 'prompt', runId, text: 'fix' })).status,
-    409,
+    404,
   );
 });
 

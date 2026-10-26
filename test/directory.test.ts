@@ -96,7 +96,8 @@ test('directory metadata is Run scoped, bounded, read only and rejects traversal
   const reading = execution.listDirectory(one.id, 'many');
   await execution.cancel(one.id);
   assert.equal((await reading).kind, 'unavailable');
-  assert.equal((await execution.listDirectory(one.id)).kind, 'unavailable');
+  // A cancelled Run with nothing to save is removed.
+  await assert.rejects(execution.listDirectory(one.id), /Unknown Run/);
   await assert.rejects(execution.listDirectory('run-unknown'));
   await rename(
     two.environment.location,

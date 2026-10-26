@@ -14,7 +14,7 @@ import { join, resolve } from 'node:path';
 import { render } from 'ink-testing-library';
 import { createAttention } from '../src/attention/index.js';
 import { createExecution } from '../src/execution/index.js';
-import type { Launch } from '../src/execution/index.js';
+import type { Launch, RunId } from '../src/execution/index.js';
 import { createWebWorkbench } from '../src/app/web-workbench.js';
 import { createWorkbenchClient } from '../src/app/workbench-client.js';
 import { WorkbenchApp } from '../src/app/tui-app.js';
@@ -58,6 +58,18 @@ async function setup() {
   } satisfies Launch;
   return { base, source, launch };
 }
+/** A removed Run leaves the list; its worktree diagnostics stay in the journal. */
+function gone(execution: ReturnType<typeof createExecution>, id: RunId) {
+  assert.ok(!execution.list().some((run) => run.id === id));
+  assert.throws(() => execution.snapshot(id), /Unknown Run/);
+}
+const AUTO_COMMIT = 'Save the work of a cancelled Run (Agent Workbench)';
+/** Commits fail until `restore`, so a cancelled Run keeps its changes listed. */
+function failCommits(base: string, source: string) {
+  git(source, 'config', 'commit.gpgSign', 'true');
+  git(source, 'config', 'gpg.program', join(base, 'missing-gpg'));
+  return () => git(source, 'config', 'commit.gpgSign', 'false');
+}
 async function until(predicate: () => boolean | Promise<boolean>) {
   const end = Date.now() + 8000;
   while (Date.now() < end) {
@@ -96,7 +108,7 @@ test('clean close collects the checkout and ignored build output while preservin
     'generated',
   );
   await Promise.all([execution.cancel(run.id), execution.cancel(run.id)]);
-  assert.equal(execution.snapshot(run.id).worktree?.status.kind, 'removed');
+  gone(execution, run.id);
   await assert.rejects(access(run.environment.location));
   assert.equal(git(source, 'status', '--porcelain'), before);
   assert.equal(
@@ -110,7 +122,7 @@ test('clean close collects the checkout and ignored build output while preservin
   );
 });
 
-test('staged, unstaged, binary and untracked changes require commit even without provider diff events; commit/close is idempotent', async (t) => {
+test('staged, unstaged, binary and untracked changes are committed to the Run branch on cancel even without provider diff events', async (t) => {
   const { base, source, launch } = await setup();
   const execution = createExecution({ attention: createAttention() });
   t.after(async () => {
@@ -136,24 +148,26 @@ test('staged, unstaged, binary and untracked changes require commit even without
     join(run.environment.location, 'new binary.bin'),
     Buffer.from([0, 1, 255]),
   );
-  await execution.cancel(run.id);
-  const stopped = execution.snapshot(run.id);
-  assert.deepEqual(stopped.worktree?.status, {
-    kind: 'commit-required',
-    changes: 3,
-  });
+  const [one, two] = await Promise.all([
+    execution.cancel(run.id),
+    execution.cancel(run.id),
+  ]);
+  assert.equal(one.worktree?.status.kind, 'removed');
+  assert.equal(two.worktree?.status.kind, 'removed');
+  gone(execution, run.id);
+  assert.ok(
+    execution
+      .events()
+      .some(
+        (event) =>
+          event.type === 'diagnostic' &&
+          event.message.startsWith('Commit required: 3 changed paths'),
+      ),
+  );
   assert.equal(
     execution.events().some((event) => event.type === 'diff'),
     false,
   );
-  assert.equal((await execution.listDirectory(run.id)).kind, 'ready');
-  const message = 'Save "quoted" changes $(literal)';
-  const [one, two] = await Promise.all([
-    execution.commitWorkspace(run.id, message),
-    execution.commitWorkspace(run.id, message),
-  ]);
-  assert.equal(one.worktree?.status.kind, 'removed');
-  assert.equal(two.worktree?.status.kind, 'removed');
   await assert.rejects(access(run.environment.location));
   assert.equal(git(source, 'rev-parse', 'HEAD'), run.worktree.baseRevision);
   assert.equal(
@@ -167,7 +181,7 @@ test('staged, unstaged, binary and untracked changes require commit even without
   );
   assert.equal(
     git(source, 'log', '-1', '--format=%s', run.worktree.branch),
-    message,
+    AUTO_COMMIT,
   );
   assert.equal(
     git(source, 'show', `${run.worktree.branch}:token.mjs`),
@@ -185,7 +199,7 @@ test('staged, unstaged, binary and untracked changes require commit even without
   assert.equal(git(source, 'remote'), '');
 });
 
-test('external commit followed by close removes the worktree and preserves the unmerged commit', async (t) => {
+test('cancelling commits what the worktree holds to the Run branch, and an external commit is kept as is', async (t) => {
   const { base, source, launch } = await setup();
   const execution = createExecution({ attention: createAttention() });
   t.after(async () => {
@@ -198,22 +212,35 @@ test('external commit followed by close removes the worktree and preserves the u
     join(run.environment.location, 'new.txt'),
     'saved on the branch\n',
   );
-  await execution.cancel(run.id);
-  assert.equal(
-    execution.snapshot(run.id).worktree?.status.kind,
-    'commit-required',
-  );
-  git(run.environment.location, 'add', 'new.txt');
-  git(run.environment.location, 'commit', '-qm', 'Saved externally');
-  await execution.cancel(run.id);
-  assert.equal(execution.snapshot(run.id).worktree?.status.kind, 'removed');
+  const stopped = await execution.cancel(run.id);
+  assert.deepEqual(stopped.worktree?.status, { kind: 'removed' });
+  gone(execution, run.id);
+  await assert.rejects(access(run.environment.location));
   assert.equal(
     git(source, 'show', `${run.worktree.branch}:new.txt`),
     'saved on the branch',
   );
+  assert.equal(
+    git(source, 'log', '-1', '--format=%s', run.worktree.branch),
+    AUTO_COMMIT,
+  );
+  assert.equal(git(source, 'rev-parse', 'HEAD'), run.worktree.baseRevision);
+
+  // Work the person already committed gets no extra commit.
+  const second = await execution.start(launch);
+  assert.ok(second.worktree);
+  await writeFile(join(second.environment.location, 'own.txt'), 'mine\n');
+  git(second.environment.location, 'add', 'own.txt');
+  git(second.environment.location, 'commit', '-qm', 'Saved externally');
+  await execution.cancel(second.id);
+  gone(execution, second.id);
+  assert.equal(
+    git(source, 'log', '-1', '--format=%s', second.worktree.branch),
+    'Saved externally',
+  );
 });
 
-test('commit failure retains files and can be retried without rewriting the source checkout', async (t) => {
+test('a failed automatic or manual commit keeps the Run and its files, and can be retried', async (t) => {
   const { base, source, launch } = await setup();
   const execution = createExecution({ attention: createAttention() });
   t.after(async () => {
@@ -221,13 +248,25 @@ test('commit failure retains files and can be retried without rewriting the sour
     await rm(base, { recursive: true, force: true });
   });
   const run = await execution.start(launch);
+  assert.ok(run.worktree);
   await writeFile(
     join(run.environment.location, 'new.txt'),
     'must survive failed commit',
   );
+  const restore = failCommits(base, source);
   await execution.cancel(run.id);
-  git(source, 'config', 'commit.gpgSign', 'true');
-  git(source, 'config', 'gpg.program', join(base, 'missing-gpg'));
+  assert.equal(execution.snapshot(run.id).state.kind, 'cancelled');
+  assert.equal((await execution.listDirectory(run.id)).kind, 'ready');
+  assert.ok(
+    execution
+      .events()
+      .some(
+        (event) =>
+          event.runId === run.id &&
+          event.type === 'diagnostic' &&
+          event.message.startsWith('Automatic commit failed:'),
+      ),
+  );
   await assert.rejects(
     execution.commitWorkspace(run.id, 'Failing signed commit'),
   );
@@ -239,16 +278,23 @@ test('commit failure retains files and can be retried without rewriting the sour
     execution.snapshot(run.id).worktree?.status.kind,
     'commit-required',
   );
-  git(source, 'config', 'commit.gpgSign', 'false');
+  restore();
+  const message = 'Save "quoted" changes $(literal)';
+  const [one, two] = await Promise.all([
+    execution.commitWorkspace(run.id, message),
+    execution.commitWorkspace(run.id, message),
+  ]);
+  assert.equal(one.worktree?.status.kind, 'removed');
+  assert.equal(two.worktree?.status.kind, 'removed');
+  gone(execution, run.id);
   assert.equal(
-    (await execution.commitWorkspace(run.id, 'Retry save')).worktree?.status
-      .kind,
-    'removed',
+    git(source, 'log', '-1', '--format=%s', run.worktree.branch),
+    message,
   );
   assert.equal(git(source, 'status', '--porcelain'), '');
 });
 
-test('worktree lock and unexpected branch retain the workspace until corrected; no force cleanup', async (t) => {
+test('a locked worktree or one on another branch stays on disk untouched when its Run is removed; no force cleanup', async (t) => {
   const { base, source, launch } = await setup();
   const execution = createExecution({ attention: createAttention() });
   t.after(async () => {
@@ -258,25 +304,38 @@ test('worktree lock and unexpected branch retain the workspace until corrected; 
   const run = await execution.start(launch);
   assert.ok(run.worktree);
   git(source, 'worktree', 'lock', run.environment.location);
-  await execution.cancel(run.id);
-  assert.equal(execution.snapshot(run.id).worktree?.status.kind, 'retained');
-  await access(run.environment.location);
-  git(source, 'worktree', 'unlock', run.environment.location);
-  git(run.environment.location, 'checkout', '-qb', 'user-switched-branch');
-  await execution.cancel(run.id);
-  assert.equal(execution.snapshot(run.id).worktree?.status.kind, 'retained');
-  await assert.rejects(
-    execution.commitWorkspace(run.id, 'Do not commit another branch'),
+  await writeFile(join(run.environment.location, 'kept.txt'), 'kept\n');
+  const locked = await execution.cancel(run.id);
+  assert.equal(locked.worktree?.status.kind, 'retained');
+  gone(execution, run.id);
+  await access(join(run.environment.location, 'kept.txt'));
+  assert.match(git(source, 'worktree', 'list', '--porcelain'), /locked/);
+  // Its changes were still committed to its branch before Git refused removal.
+  assert.equal(
+    git(source, 'log', '-1', '--format=%s', run.worktree.branch),
+    AUTO_COMMIT,
+  );
+
+  const moved = await execution.start(launch);
+  assert.ok(moved.worktree);
+  git(moved.environment.location, 'checkout', '-qb', 'user-switched-branch');
+  await writeFile(join(moved.environment.location, 'kept.txt'), 'kept\n');
+  const away = await execution.cancel(moved.id);
+  assert.match(
+    away.worktree?.status.kind === 'retained'
+      ? away.worktree.status.reason
+      : '',
     /ownership or branch changed/,
   );
-  git(run.environment.location, 'checkout', '-q', run.worktree.branch);
-  await execution.cancel(run.id);
-  assert.deepEqual(execution.snapshot(run.id).worktree?.status, {
-    kind: 'removed',
-  });
+  gone(execution, moved.id);
+  await access(join(moved.environment.location, 'kept.txt'));
   assert.equal(
     git(source, 'rev-parse', 'user-switched-branch'),
-    run.worktree.baseRevision,
+    moved.worktree.baseRevision,
+  );
+  assert.equal(
+    git(source, 'rev-parse', moved.worktree.branch),
+    moved.worktree.baseRevision,
   );
 });
 
@@ -306,7 +365,7 @@ test('a local directory must be the Git root and have an initial commit', async 
   );
 });
 
-test('TUI closes dirty worktrees, shows a commit action, commits to the branch and removes the stopped Run', async (t) => {
+test('TUI x commits a dirty worktree to its branch and removes the Run; a failed commit leaves the commit action', async (t) => {
   const { base, source, launch } = await setup();
   const origin = 'http://127.0.0.1:4177';
   const app = createWebWorkbench(origin, { launch });
@@ -335,11 +394,28 @@ test('TUI closes dirty worktrees, shows a commit action, commits to the branch a
     'Saved through the real Ink input flow',
   );
   await until(() => !!ui.lastFrame()?.includes('Idle'));
+  // The first commit fails, so the Run stays with its commit action.
+  const restore = failCommits(base, source);
   ui.stdin.write('x');
-  await until(() => !!ui.lastFrame()?.includes('Commit required'));
+  await until(async () =>
+    (await client.poll()).events.some(
+      (event) =>
+        event.type === 'diagnostic' &&
+        event.message.startsWith('Automatic commit failed:'),
+    ),
+  );
   state = await client.poll();
   assert.equal(state.runs[0]?.state.kind, 'cancelled');
   assert.equal(visibleRuns(state, 'active').length, 1);
+  await until(
+    () =>
+      !!ui
+        .lastFrame()
+        ?.includes(
+          'Commit required · c commit with a message · x commit and remove',
+        ),
+  );
+  restore();
   ui.stdin.write('c');
   await until(() => !!ui.lastFrame()?.includes(': commit'));
   ui.stdin.write('Save session work');
@@ -352,11 +428,38 @@ test('TUI closes dirty worktrees, shows a commit action, commits to the branch a
   );
   await until(() => !ui.lastFrame()?.includes('> Run 1'));
   state = await client.poll();
-  assert.equal(state.runs[0]?.worktree?.status.kind, 'removed');
-  assert.equal(visibleRuns(state, 'active').length, 0);
+  assert.equal(state.runs.length, 0);
   assert.equal(
     git(source, 'show', `${run.worktree.branch}:saved.txt`),
     'Saved through the real Ink input flow',
+  );
+  assert.equal(
+    git(source, 'log', '-1', '--format=%s', run.worktree.branch),
+    'Save session work',
+  );
+
+  // Without a failure, x saves and removes at once.
+  const again = await client.command({ kind: 'start' });
+  assert.ok('runId' in again);
+  await until(async () => {
+    state = await client.poll();
+    return state.runs[0]?.state.kind === 'idle';
+  });
+  const second = state.runs[0];
+  assert.ok(second?.worktree);
+  await writeFile(join(second.environment.location, 'quick.txt'), 'quick');
+  await until(() => !!ui.lastFrame()?.includes('Idle'));
+  ui.stdin.write('x');
+  await until(
+    () =>
+      !!ui
+        .lastFrame()
+        ?.includes(`Run removed · its work is on ${second.worktree?.branch}`),
+  );
+  assert.equal((await client.poll()).runs.length, 0);
+  assert.equal(
+    git(source, 'show', `${second.worktree.branch}:quick.txt`),
+    'quick',
   );
   assert.equal(
     commandSchema.safeParse({

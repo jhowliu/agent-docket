@@ -107,10 +107,14 @@ function stateHint(
     }
     case 'failed':
     case 'interrupted':
-      return `Run ${run.state.kind}${changes} · n new Run`;
     case 'cancelled':
-    case 'closed':
-      return `Run ended${changes} · n new Run`;
+    case 'closed': {
+      const ended =
+        run.state.kind === 'failed' || run.state.kind === 'interrupted'
+          ? `Run ${run.state.kind}`
+          : 'Run ended';
+      return `${ended}${changes} · x remove · n new Run`;
+    }
   }
 }
 
@@ -449,17 +453,25 @@ export function WorkbenchApp({
         setNote('Check saved for this project · v verifies the selected Run');
       else if (command.kind === 'authenticate')
         setNote('Sign-in requested · waiting for agent');
-      else if (command.kind === 'cancel')
+      else if (command.kind === 'cancel') {
+        const path = state.runs.find((run) => run.id === command.runId)
+          ?.worktree?.path;
         setNote(
-          result.branch && result.workspaceRemoved
-            ? `Run closed · branch kept: ${result.branch}`
-            : 'Run cancelled · n starts a new Run',
+          !result.removed
+            ? 'Run stopped · its changes still need :commit <message> · see Timeline'
+            : result.branch && !result.workspaceRemoved
+              ? `Run removed · its worktree stays on disk for you: ${path ?? result.branch}`
+              : result.branch
+                ? `Run removed · its work is on ${result.branch}; n can start from it`
+                : 'Run removed',
         );
-      else if (command.kind === 'commit-workspace')
+      } else if (command.kind === 'commit-workspace')
         setNote(
-          result.branch
-            ? `Saved ${result.branch} · worktree ${result.workspaceRemoved ? 'removed' : 'retained'}`
-            : 'Changes saved to local branch · worktree cleanup checked',
+          result.removed && result.branch
+            ? `Saved ${result.branch} · Run removed · n can start from it`
+            : result.branch
+              ? `Saved ${result.branch} · worktree ${result.workspaceRemoved ? 'removed' : 'retained'}`
+              : 'Changes saved to local branch · worktree cleanup checked',
         );
       else if ('expectedRevision' in command)
         setNote(

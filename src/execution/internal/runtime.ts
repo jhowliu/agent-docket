@@ -185,6 +185,8 @@ type Slot = {
   tree: string | undefined;
   treeEpoch: number;
   check: { abort: AbortController; task: Promise<CheckResult> } | null;
+  /** The person cancelled it or saved its changes: removed once nothing is left to save. */
+  dismissed: boolean;
 };
 const terminal = (state: RunState) =>
   ['cancelled', 'closed', 'failed', 'interrupted'].includes(state.kind);
@@ -209,6 +211,7 @@ const withTree = (
 };
 const errorText = (error: unknown) =>
   safeText(error instanceof Error ? error.message : String(error));
+const AUTO_COMMIT = 'Save the work of a cancelled Run (Agent Workbench)';
 async function deadline<T>(task: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -299,6 +302,26 @@ export function createExecution(options: ExecutionOptions): Execution {
     const slot = slots.get(id);
     if (!slot) throw new Error('Unknown Run');
     return slot;
+  }
+  /**
+   * A dismissed Run leaves once nothing is left to save. Changes still in its
+   * worktree go to its own branch first; a worktree Git would not remove
+   * (locked, branch changed) stays on disk for the person.
+   */
+  async function release(slot: Slot): Promise<void> {
+    if (!slot.dismissed || closing || !terminal(slot.snapshot.state)) return;
+    const worktree = slot.managed?.worktree;
+    if (slot.snapshot.worktree?.status.kind === 'commit-required' && worktree)
+      try {
+        recordWorktree(slot, await worktree.commit(AUTO_COMMIT));
+      } catch (error) {
+        emit(slot, {
+          type: 'diagnostic',
+          message: `Automatic commit failed: ${errorText(error)}. :commit <message> saves the changes.`,
+        });
+        return;
+      }
+    if (!closing) slots.delete(slot.snapshot.id);
   }
   function interrupt(slot: Slot, reason: string): void {
     if (
@@ -560,6 +583,7 @@ export function createExecution(options: ExecutionOptions): Execution {
       tree: undefined,
       treeEpoch: 0,
       check: null,
+      dismissed: false,
     };
     slots.set(id, slot);
     emit(slot, { type: 'run.state', state: { kind: 'starting' } });
@@ -859,7 +883,11 @@ export function createExecution(options: ExecutionOptions): Execution {
     },
     async cancel(id) {
       const slot = get(id);
-      if (slot.cancelTask) return slot.cancelTask;
+      if (slot.cancelTask) {
+        await slot.cancelTask;
+        return structuredClone(slot.snapshot);
+      }
+      slot.dismissed = true;
       slot.cancelTask = Promise.resolve().then(async () => {
         if (
           slot.snapshot.state.kind === 'closed' ||
@@ -868,6 +896,7 @@ export function createExecution(options: ExecutionOptions): Execution {
           slot.epoch++;
           try {
             await clean(slot);
+            await release(slot);
           } finally {
             slot.cancelTask = null;
           }
@@ -889,6 +918,7 @@ export function createExecution(options: ExecutionOptions): Execution {
           }
           await clean(slot);
           if (!isClosed(slot)) setState(slot, { kind: 'cancelled' });
+          await release(slot);
         } catch (error) {
           setState(slot, {
             kind: 'interrupted',
@@ -899,7 +929,8 @@ export function createExecution(options: ExecutionOptions): Execution {
           slot.cancelTask = null;
         }
       });
-      return slot.cancelTask;
+      await slot.cancelTask;
+      return structuredClone(slot.snapshot);
     },
     async commitWorkspace(id, message) {
       const slot = get(id);
@@ -911,6 +942,8 @@ export function createExecution(options: ExecutionOptions): Execution {
       if (!worktree) throw new Error('This Run has no managed Git worktree');
       slot.epoch++;
       recordWorktree(slot, await worktree.commit(message));
+      slot.dismissed = true;
+      await release(slot);
       return structuredClone(slot.snapshot);
     },
     async createCandidate(id) {

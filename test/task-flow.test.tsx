@@ -320,3 +320,29 @@ async function waitIdle(client: WorkbenchClient, runId: RunId) {
     );
   });
 }
+
+test('cancelling a tracked Run removes it from its project while the Task keeps its stage', async (t) => {
+  const { client, runId, task } = await tracked(t, 'test -f token.mjs');
+  await client.command({ kind: 'prompt', runId, text: 'done:Finished.' });
+  await until(async () => (await task()).task.stage === 'human-review');
+  const reply = await client.command({ kind: 'cancel', runId });
+  assert.ok('result' in reply && reply.removed === true);
+  const state = await client.poll();
+  assert.deepEqual(state.runs, []);
+  assert.deepEqual(
+    state.projects?.flatMap((project) => project.runIds),
+    [],
+  );
+  assert.deepEqual(
+    state.overview?.flatMap((project) => project.runs),
+    [],
+  );
+  assert.deepEqual(state.verifications, []);
+  assert.deepEqual(state.flows, []);
+  const { task: kept } = await task(state);
+  assert.equal(kept.stage, 'human-review');
+  await assert.rejects(
+    client.command({ kind: 'accept', runId }),
+    /Run has no project association/,
+  );
+});

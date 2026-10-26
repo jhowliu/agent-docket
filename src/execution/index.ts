@@ -146,11 +146,19 @@ export interface Execution {
   prompt(id: RunId, text: string): Promise<{ stopReason: string }>;
   /** Accepts input into the current process. Turn outcomes arrive as events. */
   submit(id: RunId, text: string, context?: string): void;
-  /** Stops managed work, then collects clean local Git worktrees. Dirty ones remain actionable. */
-  cancel(id: RunId): Promise<void>;
+  /**
+   * Stops managed work (ended Runs too), commits changes left in its local Git
+   * worktree to the Run's own branch (never pushed), collects the worktree and
+   * removes the Run: `list()` drops it, its id becomes unknown and the last
+   * snapshot is returned. A worktree Git would not remove (locked, branch
+   * changed) stays on disk untouched. A failed commit or cleanup keeps the
+   * Run. Journaled events stay until they age out.
+   */
+  cancel(id: RunId): Promise<RunSnapshot>;
   /** A stopped Run only: commit all non-ignored changes to its owned local branch,
-   * then collect the clean worktree. Does not push or delete the branch.
-   * Failure preserves files; duplicate calls after collection have no side effect.
+   * then collect the clean worktree and remove the Run, returning its last
+   * snapshot. Does not push or delete the branch. Failure preserves files and
+   * the Run; a repeated call after removal throws without side effect.
    */
   commitWorkspace(id: RunId, message: string): Promise<RunSnapshot>;
   /**

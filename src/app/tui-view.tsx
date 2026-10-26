@@ -1463,7 +1463,7 @@ export function WorkbenchScreen(props: ScreenProps) {
             'Enter new prompt · a/r approval · x cancel',
             environment === 'local'
               ? selected?.worktree
-                ? 'x close/recheck · :commit message saves all changes'
+                ? 'x stops, commits changes to its branch and removes the Run'
                 : 'Local code copies are retained'
               : 'x cancel Run',
             selected?.worktree && state.features?.verify
@@ -1966,8 +1966,8 @@ export function WorkbenchScreen(props: ScreenProps) {
                 connected &&
                 !props.actionFailed
                 ? selected?.worktree?.status.kind === 'commit-required'
-                  ? 'Commit required · c commit all changes · x recheck'
-                  : 'Worktree retained · x recheck · 1 Live for details'
+                  ? 'Commit required · c commit with a message · x commit and remove · 1 Live for details'
+                  : 'Worktree retained · x removes the Run, the folder stays · 1 Live for details'
                 : note,
             )}
           </Text>

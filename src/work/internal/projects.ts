@@ -74,6 +74,16 @@ export function createProjectWorkspaces(
     if (!id) throw new Error('Run has no project association');
     return project(id);
   }
+  /** Forgets Runs that execution removed after the person cancelled them. */
+  function prune() {
+    const live = new Set(options.execution.list().map((run) => run.id));
+    for (const runId of runs.keys())
+      if (!live.has(runId)) {
+        runs.delete(runId);
+        flows.delete(runId);
+        finishing.delete(runId);
+      }
+  }
 
   // The Task flow: an agent's finished report on a confirmed Task starts its
   // checks; failures go back to the agent at most FIX_LIMIT times; a pass
@@ -292,6 +302,7 @@ export function createProjectWorkspaces(
       return { projectId: id, run };
     },
     async snapshot() {
+      prune();
       return Promise.all(
         [...projects].map(async ([id, { source, work }]) => ({
           id,
@@ -344,6 +355,7 @@ export function createProjectWorkspaces(
     },
     verify: check,
     flows() {
+      prune();
       return [...flows.values()].filter((flow) => runs.has(flow.runId));
     },
     async accept(runId) {
@@ -388,6 +400,7 @@ export function createProjectWorkspaces(
       );
     },
     verifications() {
+      prune();
       return [...runs].flatMap(([runId, id]) => {
         const found = projects.get(id);
         const judged = found

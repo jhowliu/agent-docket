@@ -512,13 +512,11 @@
     });
     $('[data-send]').disabled = !canPrompt;
     // Drafts remain editable while a Run is busy or disconnected.
+    // Cancelling removes the Run, committing what its worktree still holds.
     $('[data-cancel]').disabled =
-      !state.connected ||
-      state.busy ||
-      (terminal(run) && !workspaceNeedsAction(run)) ||
-      run.state.kind === 'cancelling';
-    $('[data-cancel]').textContent = workspaceNeedsAction(run)
-      ? 'Recheck worktree'
+      !state.connected || state.busy || run.state.kind === 'cancelling';
+    $('[data-cancel]').textContent = terminal(run)
+      ? 'Remove Run'
       : 'Cancel Run';
     $('[data-compose-note]').textContent = !state.connected
       ? 'Disconnected. Draft kept; reconnect before sending.'
@@ -710,9 +708,13 @@
             : input.kind === 'answer'
               ? 'Response accepted · awaiting transport delivery'
               : input.kind === 'cancel'
-                ? result.branch && result.workspaceRemoved
-                  ? 'Run closed · branch kept: ' + result.branch
-                  : 'Run cancelled · old approvals expired'
+                ? !result.removed
+                  ? 'Run stopped · its changes still need a commit'
+                  : result.branch && !result.workspaceRemoved
+                    ? 'Run removed · its worktree stays on disk'
+                    : result.branch
+                      ? 'Run removed · its work is on ' + result.branch
+                      : 'Run removed'
                 : input.kind === 'commit-workspace'
                   ? result.branch
                     ? 'Saved ' +

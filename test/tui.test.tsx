@@ -79,7 +79,7 @@ test('Ink exposes active Runs without history controls or archive requests', asy
   ui.stdin.write('cancel');
   await frameHas(ui, ': cancel');
   ui.stdin.write('\r');
-  await frameHas(ui, 'Run cancelled');
+  await frameHas(ui, 'Run removed');
   await frameHas(ui, '> Run 1', false);
   for (const command of ['history', 'older', 'latest', 'older-runs']) {
     ui.stdin.write(':');
@@ -91,7 +91,7 @@ test('Ink exposes active Runs without history controls or archive requests', asy
     await frameHas(ui, 'Unknown command');
     assert.ok(!ui.lastFrame()?.includes('> Run 1'));
   }
-  assert.equal((await client.poll()).runs[0]?.state.kind, 'cancelled');
+  assert.equal((await client.poll()).runs.length, 0);
   assert.ok(paths.every((path) => !path.startsWith('/api/runs')));
 });
 
@@ -160,7 +160,7 @@ test('Ink controls configured local startup, advertised sign-in and prompts in p
   );
   await frameHas(ui, 'Reply · Enter', false);
   ui.stdin.write('x');
-  await stateWhen(client, (state) => state.runs[0]?.state.kind === 'cancelled');
+  await stateWhen(client, (state) => state.runs.length === 0);
 });
 
 test('Ink navigation preserves independent drafts and never interprets typed text as actions', async (t) => {

@@ -131,7 +131,7 @@ test('cancelling a reporting Run closes its tool process and prevents late progr
   }
   await execution.cancel(run.id);
   await prompt;
-  assert.equal(execution.snapshot(run.id).state.kind, 'cancelled');
+  assert.ok(!execution.list().some((item) => item.id === run.id));
   const journal = execution.events();
   const cancelling = journal.find(
     (event) => event.type === 'run.state' && event.state.kind === 'cancelling',

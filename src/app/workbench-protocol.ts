@@ -207,6 +207,8 @@ export const replySchema = z.union([
     ]),
     branch: z.string().optional(),
     workspaceRemoved: z.boolean().optional(),
+    /** The Run left the list: cancelled or committed, with nothing left to save. */
+    removed: z.boolean().optional(),
   }),
 ]);
 export type WorkbenchReply = z.infer<typeof replySchema>;
