@@ -167,6 +167,8 @@ export const stateSchema = z.object({
   reset: z.boolean(),
   source: z.string(),
   configurationId: z.string().optional(),
+  // The code the server runs. Older daemons omit it, so they read as out of date.
+  build: z.string().max(64).optional(),
   work: workSnapshotSchema.optional(),
   projects: z.array(projectWorkSchema).max(65).optional(),
   // Older daemons omit it; the TUI then lists Runs in launch order.

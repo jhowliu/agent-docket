@@ -5,6 +5,7 @@ import { loadLaunchConfig } from './launch-config.js';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
+import { codeBuild } from './code-build.js';
 
 const origin = workbenchOrigin();
 const port = Number(new URL(origin).port);
@@ -16,6 +17,7 @@ const workbench = createWebWorkbench(origin, {
   ),
   ...(configured ? { launch: configured.launch } : {}),
   defaultProjectPath: process.cwd(),
+  build: await codeBuild(),
   localWorker: {
     transport: 'local',
     workspaceRoot: resolve('.workbench/local-runs'),

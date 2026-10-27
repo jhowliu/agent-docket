@@ -1,10 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
-import { access, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { connectWorkbench } from '../src/app/workbench-daemon.js';
+import { codeBuild } from '../src/app/code-build.js';
 import type { WorkbenchClient } from '../src/app/workbench-client.js';
 
 async function freeOrigin(): Promise<string> {
@@ -44,6 +52,8 @@ test('one-command bootstrap creates a real shared server; client detach preserve
   });
   owner = boot.client;
   assert.equal(boot.initial.runs.length, 0);
+  // The started server runs this tree's code, so the TUI finds it current.
+  assert.equal(boot.initial.build, await codeBuild());
   const started = await owner.command({ kind: 'start' });
   assert.ok('runId' in started);
   await owner.command({ kind: 'prompt', runId: started.runId, text: 'fix' });
@@ -124,4 +134,22 @@ test('connect-only fails without starting a background listener', async () => {
     /Cannot connect/,
   );
   await assert.rejects(fetch(origin));
+});
+
+test('the code build changes with the source and the lockfile, not with other files', async (t) => {
+  const project = await mkdtemp(join(tmpdir(), 'workbench-build-test-'));
+  t.after(() => rm(project, { recursive: true, force: true }));
+  const src = join(project, 'src');
+  await mkdir(join(src, 'app'), { recursive: true });
+  await writeFile(join(src, 'app', 'web.ts'), 'export const port = 4177;\n');
+  const first = await codeBuild(src);
+  assert.match(first, /^[0-9a-f]{12}$/);
+  assert.equal(await codeBuild(src), first);
+  await writeFile(join(src, 'notes.md'), 'not code');
+  assert.equal(await codeBuild(src), first);
+  await writeFile(join(src, 'app', 'web.ts'), 'export const port = 4180;\n');
+  const edited = await codeBuild(src);
+  assert.notEqual(edited, first);
+  await writeFile(join(project, 'package-lock.json'), '{}');
+  assert.notEqual(await codeBuild(src), edited);
 });

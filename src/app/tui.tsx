@@ -4,6 +4,7 @@ import { connectWorkbench } from './workbench-daemon.js';
 import { workbenchOrigin } from './workbench-protocol.js';
 import { WorkbenchApp } from './tui-app.js';
 import { terminalText } from './tui-input.js';
+import { codeBuild } from './code-build.js';
 
 /**
  * Opt-in alerts outside the TUI for background notices: `bell` rings the
@@ -54,6 +55,11 @@ async function main() {
   const { client, initial } = await connectWorkbench(origin, {
     autostart: !args.includes('--connect'),
   });
+  const port = new URL(origin).port;
+  const build = {
+    id: await codeBuild(),
+    stop: `${port === '4177' ? '' : `WORKBENCH_PORT=${port} `}npm run daemon:stop`,
+  };
   const alternateScreen = process.env['INK_SCREEN_READER'] !== 'true';
   const app = render(
     <WorkbenchApp
@@ -61,6 +67,7 @@ async function main() {
       initial={initial}
       projectPath={process.cwd()}
       notify={notify}
+      build={build}
     />,
     {
       alternateScreen,

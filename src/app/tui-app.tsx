@@ -168,6 +168,7 @@ export function WorkbenchApp({
   projectPath = process.cwd(),
   openUrl = openInBrowser,
   notify,
+  build,
 }: {
   client: WorkbenchClient;
   initial: WorkbenchState;
@@ -176,6 +177,11 @@ export function WorkbenchApp({
   openUrl?: (url: string) => void;
   /** Also announces background notices outside the TUI, such as a terminal bell. */
   notify?: ((text: string) => void) | undefined;
+  /**
+   * This TUI's code (`codeBuild`) and the command that stops its server. A
+   * server reporting other code, or none, started before the code changed.
+   */
+  build?: { id: string; stop: string };
 }) {
   const { exit } = useApp();
   const { columns, rows } = useWindowSize();
@@ -1064,6 +1070,7 @@ export function WorkbenchApp({
         request={request}
         armed={!needsSelection}
         connected={connected}
+        outdated={build && snapshot.build !== build.id ? build.stop : undefined}
         busy={busy}
         actionFailed={actionFailed}
         note={footer}

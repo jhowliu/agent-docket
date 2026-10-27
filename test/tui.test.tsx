@@ -567,3 +567,39 @@ test('Vim keys move between Runs and views; typed text stays text while replying
   await frameHas(ui, 'Reply · Enter', false);
   assert.equal((await client.poll()).runs.length, 2);
 });
+
+test('the header names a server that runs other code than this TUI and how to stop it', async (t) => {
+  const app = createWebWorkbench(origin, { build: 'a1b2c3d4e5f6' });
+  const client = createWorkbenchClient(origin, (request) => app.fetch(request));
+  const initial = await client.connect();
+  const stale = render(
+    <WorkbenchApp
+      client={client}
+      initial={initial}
+      pollInterval={25}
+      build={{ id: '0f0f0f0f0f0f', stop: 'npm run daemon:stop' }}
+    />,
+  );
+  t.after(async () => {
+    stale.unmount();
+    stale.cleanup();
+    await app.close();
+  });
+  await frameHas(stale, 'Server out of date · npm run daemon:stop');
+  assert.doesNotMatch(stale.lastFrame() ?? '', /Connected/);
+  stale.unmount();
+  const current = render(
+    <WorkbenchApp
+      client={client}
+      initial={initial}
+      pollInterval={25}
+      build={{ id: 'a1b2c3d4e5f6', stop: 'npm run daemon:stop' }}
+    />,
+  );
+  t.after(() => {
+    current.unmount();
+    current.cleanup();
+  });
+  await frameHas(current, 'Connected');
+  assert.doesNotMatch(current.lastFrame() ?? '', /out of date/);
+});

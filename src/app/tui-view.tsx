@@ -631,6 +631,8 @@ export type ScreenProps = {
   request: AttentionItem | undefined;
   armed: boolean;
   connected: boolean;
+  /** The command that stops a server running other code than this TUI. */
+  outdated?: string | undefined;
   busy: boolean;
   actionFailed?: boolean;
   note: string;
@@ -1591,7 +1593,9 @@ export function WorkbenchScreen(props: ScreenProps) {
     ? 'Disconnected · reconnecting'
     : busy
       ? 'Sending'
-      : 'Connected';
+      : props.outdated
+        ? `Server out of date · ${props.outdated}`
+        : 'Connected';
   const isolation = fixture
     ? 'FIXTURE / no model'
     : environment === 'local'
@@ -1755,7 +1759,11 @@ export function WorkbenchScreen(props: ScreenProps) {
           <Box flexShrink={0}>
             <Text bold>workbench</Text>
             <Text> · {isolation} · </Text>
-            <Text color={connected ? 'cyan' : 'yellow'}>{connection}</Text>
+            <Text
+              color={connected && (busy || !props.outdated) ? 'cyan' : 'yellow'}
+            >
+              {connection}
+            </Text>
             <Text color="yellow">{pendingCount}</Text>
           </Box>
           {sidebar && notice}

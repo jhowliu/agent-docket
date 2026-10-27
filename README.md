@@ -67,7 +67,7 @@ npm run tui
 
 TUI 與同網址的瀏覽器共享 Run 和核准。啟動不會自動連線模型；New Session 可明確選擇本機 Codex 或可信 Fixture，不需用環境變數／JSON 指定專案。不同專案的路徑與 Roadmap 隨所選 Run 切換，也可選之前保存的分支接續程式碼。詳見 [New Session 操作](docs/session-creation.md) 與 [本機 Codex 模式](docs/local-execution.md)。本機 Git 專案使用每 Run 的獨立 worktree／分支與 CLI home，仍不是 OS sandbox。`x` 停止並移除 Run：worktree 的修改先自動 commit 到 Run 分支再回收目錄；Run 自己結束且還有改動時，可用 `c`／`:commit <message>` 自己寫訊息；不自動 push。詳見 [worktree 操作](docs/worktrees.md)。選取有本機 worktree 的 Run 按 `m`（或 `:map`），會在瀏覽器開啟 [Change map](docs/change-map.md)：從按鍵經 HTTP route、模組 Interface 到被修改函式的 flow，以及逐函式 diff；flow 為靜態推得，不代表 review 或驗證。Run／事件／核准只保留在背景服務的有界記憶體；不保存或查閱過去 Run，服務重啟從空白開始。草稿只保留在當次 TUI。停止服務：`npm run daemon:stop`；只連線不自動啟動：`npm run tui -- --connect`。服務 log 在 `.workbench/daemon-4177.log`。詳見 [Run 生命週期與重啟限制](docs/run-lifecycle.md)。
 
-可用 `WORKBENCH_PORT=4180 npm run tui` 選擇另一個 port；停止時使用同一個 `WORKBENCH_PORT`。TUI 不會替換已存在的服務；先前的 M0 服務可連線，但若不支援 shutdown，仍需回原服務的 terminal 用 Ctrl+C 停止。前景 `npm run ui`／`npm run daemon` 的 Ctrl+C 也會清理其 Runs。
+可用 `WORKBENCH_PORT=4180 npm run tui` 選擇另一個 port；停止時使用同一個 `WORKBENCH_PORT`。TUI 不會替換已存在的服務；服務的程式碼若跟 TUI 不同（例如更新程式前就啟動），header 會顯示 `Server out of date · npm run daemon:stop`。先前的 M0 服務可連線，但若不支援 shutdown，仍需回原服務的 terminal 用 Ctrl+C 停止。前景 `npm run ui`／`npm run daemon` 的 Ctrl+C 也會清理其 Runs。
 
 詳見 [TUI 操作與範圍](docs/tui-operation.md) 和 [鍵盤操作](docs/tui-keyboard.md)。
 

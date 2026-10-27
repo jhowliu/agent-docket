@@ -81,6 +81,8 @@ export function createWebWorkbench(
     /** Trusted settings only. Clients choose a project, never an executable/login/storage path. */
     localWorker?: LocalWorker;
     defaultProjectPath?: string;
+    /** The code this server runs (`codeBuild`); clients compare it with their own. */
+    build?: string;
   } = {},
 ) {
   const address = new URL(origin);
@@ -204,6 +206,7 @@ export function createWebWorkbench(
         reset,
         source,
         configurationId,
+        ...(options.build ? { build: options.build } : {}),
         work: projects.find((project) => project.id === defaultProjectId)?.work,
         projects,
         overview: work.overview(),
