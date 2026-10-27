@@ -133,7 +133,14 @@ export function createWebWorkbench(
       : options.localWorker;
   const presets = [
     ...(localWorker
-      ? [{ id: 'codex-local', label: 'Codex · local', kind: 'local' as const }]
+      ? [
+          { id: 'codex-local', label: 'Codex · local', kind: 'local' as const },
+          {
+            id: 'claude-local',
+            label: 'Claude · local',
+            kind: 'local' as const,
+          },
+        ]
       : []),
     ...(launch.provider !== 'fixture' &&
     !(
@@ -457,7 +464,7 @@ export function createWebWorkbench(
                 if (!localWorker || !command.project)
                   throw new Error('Choose a Git project and starting branch');
                 selected = {
-                  provider: 'codex',
+                  provider: preset.id === 'claude-local' ? 'claude' : 'codex',
                   worker: localWorker,
                   source: { kind: 'directory', ...command.project },
                 };

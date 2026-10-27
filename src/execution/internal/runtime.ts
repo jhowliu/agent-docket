@@ -52,6 +52,11 @@ const workerSchema = z.discriminatedUnion('transport', [
         .min(1)
         .refine(isAbsolute, 'Use an absolute authFile')
         .optional(),
+      claudeTokenFile: z
+        .string()
+        .min(1)
+        .refine(isAbsolute, 'Use an absolute claudeTokenFile')
+        .optional(),
       adapter: z
         .object({
           file: z
@@ -135,8 +140,6 @@ export function parseLaunch(input: unknown): Launch {
   const parsed = launchSchema.parse(input);
   const label = parsed.label === undefined ? {} : { label: parsed.label };
   if (parsed.provider === 'fixture') return { provider: 'fixture', ...label };
-  if (parsed.worker.transport === 'local' && parsed.provider !== 'codex')
-    throw new Error('Local mode currently supports Codex only');
   if (parsed.worker.transport !== 'local' && parsed.source.kind === 'directory')
     throw new Error('Directory sources require explicit local mode');
   const configured = parsed.worker;
@@ -148,6 +151,9 @@ export function parseLaunch(input: unknown): Launch {
           ...(configured.authFile === undefined
             ? {}
             : { authFile: configured.authFile }),
+          ...(configured.claudeTokenFile === undefined
+            ? {}
+            : { claudeTokenFile: configured.claudeTokenFile }),
           ...(configured.adapter === undefined
             ? {}
             : { adapter: configured.adapter }),

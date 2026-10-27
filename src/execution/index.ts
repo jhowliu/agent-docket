@@ -25,7 +25,16 @@ export type LocalWorker = Readonly<{
   workspaceRoot: string;
   /** Optional auth.json to copy into a private Codex home; never shared writable. */
   authFile?: string;
-  /** Trusted operator configuration, never accepted from workbench commands. */
+  /**
+   * File holding the long-lived token `claude setup-token` prints. Read at
+   * each Claude launch and handed to the agent alone; never copied or shown.
+   * Claude Runs fail to start without it.
+   */
+  claudeTokenFile?: string;
+  /**
+   * Trusted operator configuration, never accepted from workbench commands.
+   * Replaces the bundled adapter of whichever provider a Run uses.
+   */
   adapter?: Readonly<{ file: string; args: readonly string[] }>;
 }>;
 export type Worker =
@@ -199,7 +208,8 @@ export interface Execution {
    * Local Git worktree Runs only, one review per Run at a time. Starts a
    * separate reviewer Run at once (same provider and worker, labelled
    * `Review · <label>`, listed like any Run, with `review` set) on a detached
-   * checkout of the Candidate: no branch, the adapter in read-only mode, and
+   * checkout of the Candidate: no branch, the adapter read-only (Codex
+   * `read-only`; Claude `plan` with edit tools denied), and
    * the Run-private submit_review tool instead of report_progress and
    * request_user. Sends `prompt` (1–100000 characters) once the reviewer is
    * ready. `settled` resolves with the latest review submitted when that turn

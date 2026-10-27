@@ -1,12 +1,14 @@
-# Local Codex execution
+# Local Codex and Claude execution
 
-2026-10-19. Container isolation is deferred by the user's explicit decision. Local mode connects the installed, pinned `@agentclientprotocol/codex-acp@2.2.2` dependency to the existing workbench. It is an explicit launch mode, never a fallback after a container failure. Claude local execution is not implemented in this slice.
+2026-10-19. Container isolation is deferred by the user's explicit decision. Local mode connects the installed, pinned `@agentclientprotocol/codex-acp@2.2.2` dependency to the existing workbench. It is an explicit launch mode, never a fallback after a container failure.
+
+2026-10-27: **Claude · local** connects the pinned `@agentclientprotocol/claude-agent-acp@0.97.0` (the Claude Agent SDK; its native Claude binary, about 270 MB, installs as an optional dependency) the same way: per-Run worktree, private home, the Run-private progress tools. Deterministic tests cover its launch profile; it has not yet run with a real model.
 
 2026-10-21: real Codex with the existing copied file login passed project reading, progress, sample-code editing and independent tests, native Allow once / Reject once, and cancellation of an observed running process. The earlier routing failure reproduced under restricted connectivity and the same probe succeeded with approved network access. See [live acceptance and the repeatable command](codex-live-acceptance.md). Physical-terminal and other authentication flows remain unverified; opening the workbench alone does not start a model.
 
 ## Start
 
-Normally run `npm run tui`, press **n**, choose **Codex · local**, enter a Git project root and select a starting branch. No launch JSON or environment variable is needed to select a project. The standard server uses the bundled adapter and copies the existing `~/.codex/auth.json` when that file exists at startup. See [New Session](session-creation.md).
+Normally run `npm run tui`, press **n**, choose **Codex · local** (or **Claude · local**, see [Claude login and configuration](#claude-login-and-configuration)), enter a Git project root and select a starting branch. No launch JSON or environment variable is needed to select a project. The standard server uses the bundled adapter and copies the existing `~/.codex/auth.json` when that file exists at startup. See [New Session](session-creation.md).
 
 For custom operator settings, copy `worker/codex.local.example.json` to a private configuration file and replace the absolute paths. `source.path` supplies a legacy/default project; `workspaceRoot` selects where per-Run Git worktrees live. Ordinary commands can choose a project and displayed base revision, but cannot override executable, credential or storage settings. See [worktree operation and cleanup](worktrees.md).
 
@@ -30,6 +32,27 @@ Choose either:
 Browser/device-code sign-in inside the workbench is not accepted as working in this slice. Raw adapter/login stderr is drained and excluded from Timeline; do not rely on it to deliver login URLs. One existing file-based login completed real inference in the 2026-10-21 acceptance; API-key inference remains unverified. The project trial used an explicit private copy of the existing file login; credential contents were never printed or included in its logs.
 
 API keys are inherited only when starting the daemon. Attaching to a server cannot change its environment. The temporary Run credential copy is removed on a confirmed stop. Token refresh in one copy is not synchronized to other copies; multi-Run subscription refresh behavior remains unverified.
+
+## Claude login and configuration
+
+The user chose a long-lived token (2026-10-27). Once, in a terminal:
+
+```sh
+claude setup-token                      # needs a Claude subscription; prints the token
+mkdir -p ~/.config/agent-docket
+pbpaste > ~/.config/agent-docket/claude-token   # after copying the token alone
+chmod 600 ~/.config/agent-docket/claude-token
+```
+
+`WORKBENCH_CLAUDE_TOKEN_FILE=/absolute/path` (when the daemon starts) or `worker.claudeTokenFile` points elsewhere. The file is read at each Claude launch, so a new token needs no restart, and its content goes only to the adapter as `CLAUDE_CODE_OAUTH_TOKEN`: it is never copied into the Run, logged or shown. A missing or malformed file fails that Run before any checkout (`No Claude token at …: run \`claude setup-token\` …`). Sign-in inside the workbench is not offered.
+
+Why a token: the adapter otherwise loads the person's `~/.claude` (hooks, plugins, MCP servers, global instructions) into every Run. Each Run instead gets a private `CLAUDE_CONFIG_DIR` in its private home, and the existing Claude login (in the macOS Keychain, tied to the configuration directory) is not visible there. `ANTHROPIC_API_KEY` and the Codex keys are not inherited. The workbench writes that private `settings.json`:
+
+- a Run starts in `acceptEdits` (file edits without asking; commands still ask, as approvals);
+- a reviewer starts in `plan` with `Edit`, `Write` and `NotebookEdit` denied;
+- `allow: ["mcp__workbench_progress"]`, so `report_progress`, `request_user` and `submit_review` never ask.
+
+Project settings in the worktree (`.claude/settings.json`) still apply; the adapter loads project and local settings.
 
 ## Operate and keep the code
 
@@ -64,4 +87,6 @@ The bundled real adapter also completed an initialization/new-session handshake 
 
 On 2026-10-19, the user-selected `ptt-web` directory was copied and the real Ink application sent `Describe this project in 200 words.` to the real adapter with a private copy of the existing file login. The harness used in-memory application transport, without a listener or physical terminal. The adapter reached Idle, accepted the prompt and returned `workspace routing discovery failed`; the current execution sandbox reports networking disabled. No project description, model tool activity, approval or diff was received. The adapter still reported `end_turn` and returned to Idle: a completed turn does not establish task success. Cancellation reached Cancelled, the code copy remained, and fingerprints confirmed all 17 selected original source, test, manifest and documentation files were unchanged. Private trial configuration, state and frames are under `.workbench/acceptance/ptt-web/`. Real inference must be retried in an environment with the required connectivity; this attempt does not establish that the login can perform inference.
 
-The 2026-10-21 live checks extend these deterministic orchestration tests with one real file-login/model workflow. They do not establish general model correctness or security isolation. Other login methods, Claude local mode, product check-result recording, Services and the role pipeline remain separate work.
+The 2026-10-21 live checks extend these deterministic orchestration tests with one real file-login/model workflow. They do not establish general model correctness or security isolation. Other login methods, product check-result recording, Services and the role pipeline remain separate work.
+
+Claude local mode (2026-10-27) is tested with the same deterministic peers: a private `CLAUDE_CONFIG_DIR` and settings, the token from its file with no Codex login or keys, a failed start without the token, a reviewer in `plan` mode with edits denied. The bundled real adapter also completed initialize and `session/new` to Idle in about 5 s with a fake token and no prompt, reporting version 0.97.0 and ACP v1; cancelling removed the worktree, private home and adapter processes. That checks wiring, not a model response. Real Claude (`npm run qa:loop -- --provider claude`) is not yet run.

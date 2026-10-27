@@ -513,7 +513,11 @@ test('Tab browses folders, distinguishes links, preserves Agent focus and accept
   ui.stdin.write('\u001b[Z');
   await frame('Agent >');
   ui.stdin.write('\u001b[C');
+  await frame('Claude · local');
+  ui.stdin.write('\u001b[C');
   await frame('Fixture · no model');
+  ui.stdin.write('\u001b[D');
+  await frame('Claude · local');
   ui.stdin.write('\u001b[D');
   await frame('Codex · local');
   ui.stdin.write('\t');

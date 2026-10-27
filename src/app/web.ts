@@ -24,6 +24,11 @@ const workbench = createWebWorkbench(origin, {
     ...(existsSync(resolve(homedir(), '.codex/auth.json'))
       ? { authFile: resolve(homedir(), '.codex/auth.json') }
       : {}),
+    // Read at each Claude launch; a missing file fails that Run with a hint.
+    claudeTokenFile: resolve(
+      process.env['WORKBENCH_CLAUDE_TOKEN_FILE'] ??
+        resolve(homedir(), '.config/agent-docket/claude-token'),
+    ),
   },
   onShutdown: () => {
     void stop();

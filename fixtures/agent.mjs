@@ -89,8 +89,21 @@ const app = agent({ name: 'workbench-fixture' })
       const tools = await workbenchTools(session);
       try {
         const names = (await tools.listTools()).tools.map((tool) => tool.name);
+        // Codex reads its mode from the environment, Claude from its settings.
+        const claude = process.env.CLAUDE_CONFIG_DIR
+          ? JSON.parse(
+              await readFile(
+                join(process.env.CLAUDE_CONFIG_DIR, 'settings.json'),
+                'utf8',
+              ),
+            ).permissions
+          : undefined;
+        const agentMode = process.env.INITIAL_AGENT_MODE ?? claude?.defaultMode;
+        const denied = claude?.deny
+          ? ` (denied: ${claude.deny.join(', ')})`
+          : '';
         await message(
-          `Reviewing in ${process.env.INITIAL_AGENT_MODE} mode with ${names.join(', ')}.`,
+          `Reviewing in ${agentMode} mode${denied} with ${names.join(', ')}.`,
         );
         if (mode === 'wait' && !abort.signal.aborted)
           await new Promise((resolve) =>

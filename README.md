@@ -13,11 +13,12 @@ npm run tui
 
 - 需要 Node.js 22.16 以上與互動式 terminal。TUI 會連上 `127.0.0.1:4177` 的背景服務，沒有就自動啟動。
 - 用本機 Codex 前，先在這台電腦用 Codex CLI 登入一次（產生 `~/.codex/auth.json`）。每個 Run 會複製一份私有的登入資料，不會改動原檔。也可以在啟動服務的環境設定 `CODEX_API_KEY`／`OPENAI_API_KEY`。
+- 用本機 Claude 前，執行一次 `claude setup-token`，把印出的 token 單獨存成 `~/.config/agent-docket/claude-token`（`chmod 600`）。每個 Run 用私有的 Claude 設定，不會載入你 `~/.claude` 的 hooks／plugins。詳見 [Claude 登入與設定](docs/local-execution.md#claude-login-and-configuration)。
 - 已經有舊版服務在跑時，重開 TUI 不會更新它。要用新版就換一個 port：`WORKBENCH_PORT=4242 npm run tui`。
 
 ### 2. 開一個 Session
 
-1. 按 `n`。Agent 預設是 **Codex · local**；`Shift+Tab` 可改選 **Fixture · no model**，不連模型、只用來試操作。
+1. 按 `n`。Agent 預設是 **Codex · local**；`Shift+Tab` 再用 ←/→ 可改選 **Claude · local**，或 **Fixture · no model**（不連模型、只用來試操作）。
 2. 輸入 Git 專案根目錄（`Tab` 補全），按 `Enter` 讀分支。不是 Git 的資料夾會詢問要不要初始化，預設 No。
 3. 選起始分支後按 `Enter`。工作台會建立新的 `workbench/run-…` 分支和獨立 worktree，不會動到你原本的 checkout。
 
@@ -71,7 +72,7 @@ TUI 與同網址的瀏覽器共享 Run 和核准。啟動不會自動連線模�
 
 詳見 [TUI 操作與範圍](docs/tui-operation.md) 和 [鍵盤操作](docs/tui-keyboard.md)。
 
-真實 Codex 的既有檔案登入、改檔／Diff、測試、一次性允許／拒絕與執行中取消已完成限定案例驗收。`npm run qa:loop` 會在一次性的範例專案上用真的 Codex 跑完整個 Task flow（Check → Agent Review → Human Review → accept），2026-10-27 一次就通過、Check 失敗後修正、review findings 修正三種情境都已通過（`-- --scenario fix-checks`／`fix-review`）。可用 `npm run qa:codex -- --launch /absolute/path/to/local-config.json` 在可連線環境重跑；它使用真實模型操作內建小型測試專案副本，與 Fixture 選項不同。範圍與證據見 [真實 Codex 驗收](docs/codex-live-acceptance.md)。
+真實 Codex 的既有檔案登入、改檔／Diff、測試、一次性允許／拒絕與執行中取消已完成限定案例驗收。`npm run qa:loop` 會在一次性的範例專案上用真的 Codex 跑完整個 Task flow（Check → Agent Review → Human Review → accept），2026-10-27 一次就通過、Check 失敗後修正、review findings 修正三種情境都已通過（`-- --scenario fix-checks`／`fix-review`）。`-- --provider claude` 改由 Claude 開發與審查（尚未實測）。可用 `npm run qa:codex -- --launch /absolute/path/to/local-config.json` 在可連線環境重跑；它使用真實模型操作內建小型測試專案副本，與 Fixture 選項不同。範圍與證據見 [真實 Codex 驗收](docs/codex-live-acceptance.md)。
 
 已提供可選的 [Roadmap 追蹤](docs/roadmap-operation.md)：`:roadmap <title>` 建立計畫，`:spec <requirements>`／`:confirm` 確認需求，`o` 開啟小型 outline，`:track 2.1` 接續既有 Task，`:direct` 回一般 Run。瀏覽器從 Actions → Use Roadmap 操作。只保存專案計畫與需求版本，Run 對話與核准仍不存檔。確認後的 Task 會在 agent 回報 finished 時自動跑 Check、做 Agent Review，再進入 Human Review（[Task flow](docs/task-flow.md)）；agent 提案拆分 Task 尚待後續切片。
 

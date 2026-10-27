@@ -124,6 +124,7 @@ export async function launchManaged(
   if (input.worker.transport === 'local')
     return launchLocal(
       input.worker,
+      input.provider,
       input.source,
       id,
       join(dirname(fixtureAgentPath()), 'project'),

@@ -129,6 +129,8 @@ test('Ink controls configured local startup, advertised sign-in and prompts in p
   ui.stdin.write('\u001b[Z');
   await frameHas(ui, 'Agent >');
   ui.stdin.write('\u001b[C');
+  await frameHas(ui, 'Claude · local');
+  ui.stdin.write('\u001b[C');
   await frameHas(ui, 'Configured project');
   ui.stdin.write('\r');
   await stateWhen(

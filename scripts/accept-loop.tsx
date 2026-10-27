@@ -8,9 +8,11 @@ import { createWebWorkbench } from '../src/app/web-workbench.js';
 import { createWorkbenchClient } from '../src/app/workbench-client.js';
 import type { WorkbenchState } from '../src/app/workbench-protocol.js';
 
-// The whole Task flow with real Codex: Roadmap → finished → checks → Agent
+// The whole Task flow with a real agent: Roadmap → finished → checks → Agent
 // Review → Human Review → accept. The sample project is a disposable copy;
-// the adapter, the model and the person's Codex login are real.
+// the adapters, the models and the person's logins are real.
+//
+// --provider codex (default) | claude: the agent that develops and reviews.
 //
 // --scenario passing (default): one prompt asks for what the spec asks.
 // --scenario fix-checks / fix-review: the spec also expires a non-finite
@@ -19,21 +21,43 @@ import type { WorkbenchState } from '../src/app/workbench-protocol.js';
 // fix-review only the boundary is checked, so the review should find the gap.
 const exec = promisify(execFile);
 const scenarios = ['passing', 'fix-checks', 'fix-review'] as const;
-const at = process.argv.indexOf('--scenario');
-const scenario = at < 0 ? 'passing' : process.argv[at + 1];
-if (!scenarios.some((name) => name === scenario))
-  throw new Error(
-    `Usage: npm run qa:loop -- [--scenario ${scenarios.join('|')}]`,
-  );
+const usage =
+  'Usage: npm run qa:loop -- [--scenario passing|fix-checks|fix-review] [--provider codex|claude]';
+const option = (name: string, fallback: string) => {
+  const at = process.argv.indexOf(`--${name}`);
+  return at < 0 ? fallback : process.argv[at + 1];
+};
+const scenario = option('scenario', 'passing');
+const provider = option('provider', 'codex');
+if (
+  !scenarios.some((name) => name === scenario) ||
+  (provider !== 'codex' && provider !== 'claude')
+)
+  throw new Error(usage);
 const partial = scenario !== 'passing';
+const exists = (path: string) =>
+  access(path).then(
+    () => true,
+    () => false,
+  );
 const authFile = resolve(homedir(), '.codex/auth.json');
-const signedIn = await access(authFile).then(
-  () => true,
-  () => false,
+const signedIn = await exists(authFile);
+const claudeTokenFile = resolve(
+  process.env.WORKBENCH_CLAUDE_TOKEN_FILE ??
+    resolve(homedir(), '.config/agent-docket/claude-token'),
 );
-if (!signedIn && !process.env.CODEX_API_KEY && !process.env.OPENAI_API_KEY)
+if (
+  provider === 'codex' &&
+  !signedIn &&
+  !process.env.CODEX_API_KEY &&
+  !process.env.OPENAI_API_KEY
+)
   throw new Error(
     'Sign in to Codex first (~/.codex/auth.json) or set CODEX_API_KEY',
+  );
+if (provider === 'claude' && !(await exists(claudeTokenFile)))
+  throw new Error(
+    `Save a token from \`claude setup-token\` to ${claudeTokenFile} first`,
   );
 const limit = Number(process.env.WORKBENCH_LOOP_MINUTES ?? 30) * 60_000;
 
@@ -92,6 +116,7 @@ const app = createWebWorkbench(origin, {
     transport: 'local',
     workspaceRoot: join(output, 'runs'),
     ...(signedIn ? { authFile } : {}),
+    claudeTokenFile,
   },
   planDirectory: join(output, 'plans'),
 });
@@ -106,7 +131,11 @@ const log = (text: string) =>
 const short = (text: string, max = 160) =>
   text.length > max ? `${text.slice(0, max)}…` : text;
 const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
-const summary: Record<string, unknown> = { scenario, output };
+const summary: Record<string, unknown> = {
+  scenario,
+  provider,
+  output,
+};
 let state: WorkbenchState = await client.connect();
 let failure: string | null = null;
 let runId: RunId | undefined;
@@ -115,7 +144,7 @@ try {
   const inspected = await client.project(project);
   const created = await client.command({
     kind: 'new-session',
-    presetId: 'codex-local',
+    presetId: `${provider}-local`,
     project: {
       path: project,
       base: { branch: 'main', revision: inspected.head },

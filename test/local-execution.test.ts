@@ -421,12 +421,18 @@ test('local mode requires explicit valid configuration and does not weaken conta
       source: { kind: 'fixture' },
     }),
   );
-  assert.throws(() =>
-    parseLaunch({
-      provider: 'claude',
-      worker: { transport: 'local', workspaceRoot: '/tmp/runs' },
-      source: { kind: 'fixture' },
-    }),
+  assert.throws(
+    () =>
+      parseLaunch({
+        provider: 'claude',
+        worker: {
+          transport: 'local',
+          workspaceRoot: '/tmp/runs',
+          claudeTokenFile: 'claude-token',
+        },
+        source: { kind: 'fixture' },
+      }),
+    /absolute claudeTokenFile/,
   );
   assert.throws(() =>
     parseLaunch({
@@ -498,4 +504,87 @@ test('missing local adapter becomes an observed startup failure and collects its
     ).match(/^worktree /gm)?.length,
     1,
   );
+});
+
+test('a Claude local Run gets a private Claude config and its token, never the Codex login; without the token nothing starts', async (t) => {
+  const { directory, source, launch } = await setup();
+  if (launch.worker.transport !== 'local')
+    throw new Error('Expected local launch');
+  const execution = createExecution({ attention: createAttention() });
+  t.after(async () => {
+    await execution.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const openai = process.env['OPENAI_API_KEY'];
+  process.env['OPENAI_API_KEY'] = 'codex only';
+  t.after(() => {
+    if (openai === undefined) delete process.env['OPENAI_API_KEY'];
+    else process.env['OPENAI_API_KEY'] = openai;
+  });
+  const authFile = join(directory, 'auth.json');
+  await writeFile(authFile, JSON.stringify({ test: 'codex login' }));
+  const claudeTokenFile = join(directory, 'claude-token');
+  const claude: Launch = {
+    ...launch,
+    provider: 'claude',
+    worker: { ...launch.worker, authFile, claudeTokenFile },
+  };
+  const worktrees = () =>
+    execFileSync('git', ['-C', source, 'worktree', 'list', '--porcelain'], {
+      encoding: 'utf8',
+    }).match(/^worktree /gm)?.length;
+
+  // Without the token the Run fails before any checkout.
+  const missing = execution.launch(claude);
+  const failure = await until(() => {
+    const state = execution.snapshot(missing.id).state;
+    return state.kind === 'failed' ? state : undefined;
+  });
+  assert.match(failure.reason, /No Claude token at .*claude setup-token/);
+  assert.equal(worktrees(), 1);
+
+  await writeFile(claudeTokenFile, 'sk-ant-oat01-test-token-0123456789\n');
+  const run = await execution.start(claude);
+  const raw: unknown = JSON.parse(
+    await readFile(
+      join(run.environment.location, 'launch-observed.json'),
+      'utf8',
+    ),
+  );
+  const observed = z
+    .object({
+      home: z.string(),
+      claudeConfig: z.string(),
+      claudeToken: z.string(),
+      openaiKey: z.null(),
+      claudeSettings: z.unknown(),
+    })
+    .parse(raw);
+  // No Codex home, login or mode.
+  assert.ok(raw && typeof raw === 'object');
+  assert.ok(!('codexHome' in raw) && !('mode' in raw) && !('auth' in raw));
+  assert.equal(observed.claudeConfig, join(observed.home, '.claude'));
+  assert.notEqual(observed.home, homedir());
+  assert.equal(observed.claudeToken, 'sk-ant-oat01-test-token-0123456789');
+  assert.deepEqual(observed.claudeSettings, {
+    permissions: {
+      defaultMode: 'acceptEdits',
+      allow: ['mcp__workbench_progress'],
+    },
+  });
+  assert.equal(run.provider, 'claude');
+  assert.ok(run.worktree);
+  // The token is read, never copied into the Run.
+  await assert.rejects(
+    access(join(observed.claudeConfig, '.credentials.json')),
+  );
+
+  await writeFile(claudeTokenFile, 'two words');
+  const invalid = execution.launch(claude);
+  const refused = await until(() => {
+    const state = execution.snapshot(invalid.id).state;
+    return state.kind === 'failed' ? state : undefined;
+  });
+  assert.match(refused.reason, /must hold only the token/);
+  assert.doesNotMatch(refused.reason, /two words/);
 });

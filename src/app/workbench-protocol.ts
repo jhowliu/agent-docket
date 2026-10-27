@@ -68,7 +68,7 @@ export const sessionOptionsSchema = z
           .strict(),
       )
       .min(1)
-      .max(3),
+      .max(8),
   })
   .strict();
 

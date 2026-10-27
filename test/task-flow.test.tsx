@@ -46,10 +46,13 @@ async function gitProject(
   git(repo, 'config', 'user.email', 'flow@example.invalid');
   git(repo, 'add', '.');
   git(repo, 'commit', '-qm', 'Initial project');
+  const claudeTokenFile = join(directory, 'claude-token');
+  await writeFile(claudeTokenFile, 'sk-ant-oat01-test-token-0123456789');
   const app = createWebWorkbench(origin, {
     localWorker: {
       transport: 'local',
       workspaceRoot: join(directory, 'runs'),
+      claudeTokenFile,
       adapter: {
         file: process.execPath,
         args: [resolve('fixtures/agent.mjs'), ...adapterArgs],
@@ -71,12 +74,13 @@ async function tracked(
   t: test.TestContext,
   check: string,
   adapterArgs: readonly string[] = [],
+  presetId = 'codex-local',
 ) {
   const { app, client, repo } = await gitProject(t, adapterArgs);
   const project = await client.project(repo);
   const started = await client.command({
     kind: 'new-session',
-    presetId: 'codex-local',
+    presetId,
     project: { path: repo, base: { branch: 'main', revision: project.head } },
   });
   assert.ok('runId' in started);
@@ -383,6 +387,35 @@ test('the whole Task flow runs from the TUI: New Session, check, Roadmap, spec, 
   await has('Task accepted · nothing was committed or pushed');
   assert.equal((await task()).status, 'accepted');
   assert.equal(git(repo, 'worktree', 'list').split('\n').length, 2);
+});
+
+test('a Claude Run is reviewed by Claude in plan mode with edit tools denied', async (t) => {
+  const { client, runId, task } = await tracked(
+    t,
+    'test -f token.mjs',
+    [],
+    'claude-local',
+  );
+  await client.command({
+    kind: 'prompt',
+    runId,
+    text: 'done:Rejected expired tokens at the boundary.',
+  });
+  await until(async () => (await task()).task.stage === 'human-review');
+  const state = await client.poll();
+  assert.equal(state.runs[0]?.provider, 'claude');
+  const reviewer = state.reviews?.[0]?.reviewer;
+  assert.ok(reviewer);
+  assert.equal(state.reviews?.[0]?.status, 'approved');
+  assert.ok(
+    state.events.some(
+      (event) =>
+        event.runId === reviewer &&
+        event.type === 'agent.message' &&
+        event.text ===
+          'Reviewing in plan mode (denied: Edit, Write, NotebookEdit) with submit_review.',
+    ),
+  );
 });
 
 test('failed checks go back to the agent twice, then stop for the person until they prompt', async (t) => {

@@ -10,7 +10,17 @@ const observation = {
   cwd: process.cwd(),
   injectedHostSetting: process.env.WORKBENCH_TEST_HOST_SETTING ?? null,
   mode: process.env.INITIAL_AGENT_MODE,
+  claudeConfig: process.env.CLAUDE_CONFIG_DIR ?? null,
+  claudeToken: process.env.CLAUDE_CODE_OAUTH_TOKEN ?? null,
+  openaiKey: process.env.OPENAI_API_KEY ?? null,
 };
+if (process.env.CLAUDE_CONFIG_DIR)
+  observation.claudeSettings = JSON.parse(
+    await readFile(
+      join(process.env.CLAUDE_CONFIG_DIR, 'settings.json'),
+      'utf8',
+    ),
+  );
 if (process.argv.includes('--git-root-probe')) {
   const gitRoot = () => {
     try {
@@ -27,13 +37,14 @@ if (process.argv.includes('--git-root-probe')) {
     execFileSync('git', ['-c', 'core.hooksPath=/dev/null', 'init', '--quiet']);
   observation.gitRootAfter = gitRoot();
 }
-try {
-  const auth = join(process.env.CODEX_HOME, 'auth.json');
-  observation.auth = JSON.parse(await readFile(auth, 'utf8'));
-  await writeFile(auth, JSON.stringify({ test: 'refreshed-copy' }));
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
-}
+if (process.env.CODEX_HOME)
+  try {
+    const auth = join(process.env.CODEX_HOME, 'auth.json');
+    observation.auth = JSON.parse(await readFile(auth, 'utf8'));
+    await writeFile(auth, JSON.stringify({ test: 'refreshed-copy' }));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
 if (process.argv.includes('--descendants')) {
   const script = `
     const { spawn } = require('node:child_process');
