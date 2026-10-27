@@ -14,6 +14,7 @@ import {
   projectWorkSchema,
   projectOverviewSchema,
   projectCheckSchema,
+  projectReviewerSchema,
   runReviewSchema,
   runVerificationSchema,
   taskFlowSchema,
@@ -153,6 +154,14 @@ export const commandSchema = z.discriminatedUnion('kind', [
       command: projectCheckSchema.shape.command,
     })
     .strict(),
+  // null: each Run's own agent reviews it.
+  z
+    .object({
+      kind: z.literal('set-reviewer'),
+      projectId: projectWorkSchema.shape.id,
+      provider: projectReviewerSchema.shape.provider.nullable(),
+    })
+    .strict(),
   z.object({ kind: z.literal('shutdown') }).strict(),
   ...workCommandSchema.options,
 ]);
@@ -174,6 +183,7 @@ export const stateSchema = z.object({
   // Older daemons omit it; the TUI then lists Runs in launch order.
   overview: z.array(projectOverviewSchema).max(65).optional(),
   checks: z.array(projectCheckSchema).max(65).optional(),
+  reviewers: z.array(projectReviewerSchema).max(65).optional(),
   verifications: z.array(runVerificationSchema).max(64).optional(),
   flows: z.array(taskFlowSchema).max(64).optional(),
   reviews: z.array(runReviewSchema).max(64).optional(),
@@ -189,6 +199,7 @@ export const stateSchema = z.object({
       verify: z.boolean().optional(),
       flow: z.boolean().optional(),
       review: z.boolean().optional(),
+      reviewer: z.boolean().optional(),
     })
     .optional(),
   launch: z

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { render } from 'ink-testing-library';
 import type { LocalWorker, RunId } from '../src/execution/index.js';
 import { createWebWorkbench } from '../src/app/web-workbench.js';
@@ -416,6 +416,77 @@ test('a Claude Run is reviewed by Claude in plan mode with edit tools denied', a
           'Reviewing in plan mode (denied: Edit, Write, NotebookEdit) with submit_review.',
     ),
   );
+});
+
+test(':reviewer claude makes Claude review a Codex Run, saved for the project until :reviewer same', async (t) => {
+  const { client, runId, task, repo } = await tracked(t, 'test -f token.mjs');
+  const ui = render(
+    <WorkbenchApp
+      client={client}
+      initial={await client.poll()}
+      pollInterval={20}
+    />,
+  );
+  t.after(() => {
+    ui.unmount();
+    ui.cleanup();
+  });
+  const has = (text: string) =>
+    until(() => (ui.lastFrame() ?? '').includes(text), 6000).catch(() => {
+      throw new Error(`Expected ${text}\n${ui.lastFrame()}`);
+    });
+  const command = async (text: string) => {
+    for (const key of [':', text, '\r']) {
+      await new Promise((done) => setTimeout(done, 40));
+      ui.stdin.write(key);
+    }
+  };
+  const saved = join(dirname(repo), 'plans', 'reviewers.json');
+  await command('reviewer');
+  await has("Agent Review: each Run's own agent · :reviewer codex|claude|same");
+  await command('reviewer gemini');
+  await has('Use :reviewer codex, :reviewer claude or :reviewer same');
+  await command('reviewer claude');
+  await has("Claude runs this project's next Agent Reviews");
+  const [{ projectId } = { projectId: '' }] =
+    (await client.poll()).reviewers ?? [];
+  assert.deepEqual((await client.poll()).reviewers, [
+    { projectId, provider: 'claude' },
+  ]);
+  assert.deepEqual(JSON.parse(await readFile(saved, 'utf8')), {
+    version: 1,
+    reviewers: { [projectId]: 'claude' },
+  });
+
+  await client.command({
+    kind: 'prompt',
+    runId,
+    text: 'done:Rejected expired tokens at the boundary.',
+  });
+  await until(async () => (await task()).task.stage === 'human-review');
+  const state = await client.poll();
+  assert.equal(state.runs.find((run) => run.id === runId)?.provider, 'codex');
+  const reviewer = state.reviews?.[0]?.reviewer;
+  assert.ok(reviewer);
+  assert.equal(state.reviews?.[0]?.status, 'approved');
+  // Claude's private settings, not Codex's read-only mode.
+  assert.ok(
+    state.events.some(
+      (event) =>
+        event.runId === reviewer &&
+        event.type === 'agent.message' &&
+        event.text ===
+          'Reviewing in plan mode (denied: Edit, Write, NotebookEdit) with submit_review.',
+    ),
+  );
+
+  await command('reviewer same');
+  await has("Each Run's own agent runs this project's Agent Reviews");
+  assert.deepEqual((await client.poll()).reviewers, []);
+  assert.deepEqual(JSON.parse(await readFile(saved, 'utf8')), {
+    version: 1,
+    reviewers: {},
+  });
 });
 
 test('failed checks go back to the agent twice, then stop for the person until they prompt', async (t) => {

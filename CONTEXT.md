@@ -41,7 +41,7 @@ _Avoid_: 把單次工具操作的允許／拒絕核准視為 Human Review 完成
 _Avoid_: 把 Task flow 當成 Task 完成、審查通過，或從 agent 對話推斷要不要檢查
 
 **Agent Review**：
-Check 通過後，由另一個 reviewer Run 在該 Candidate 的唯讀 checkout 上，依 Task spec 檢查變更，並以 Run 專用工具 `submit_review` 給出 approve 或 changes 與 findings；結果綁定 Candidate 與 spec 版本，結束後 reviewer Run 與 checkout 一併移除。
+Check 通過後，由另一個 reviewer Run（預設與該 Run 同一個 agent，專案可指定另一個做交叉審查）在該 Candidate 的唯讀 checkout 上，依 Task spec 檢查變更，並以 Run 專用工具 `submit_review` 給出 approve 或 changes 與 findings；結果綁定 Candidate 與 spec 版本，結束後 reviewer Run 與 checkout 一併移除。
 _Avoid_: 把 Agent Review 的 approve 當成 Human Review 接受或 Task 完成；從 reviewer 的對話推斷結論
 
 **Task spec**：

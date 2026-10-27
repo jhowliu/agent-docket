@@ -1049,7 +1049,7 @@ export function createExecution(options: ExecutionOptions): Execution {
         createdAt: new Date().toISOString(),
       } satisfies Candidate;
     },
-    startReview(id, candidate, prompt) {
+    startReview(id, candidate, prompt, provider) {
       const reviewed = get(id);
       if (closing) throw new Error('Execution is closing');
       const worktree = reviewed.managed?.worktree;
@@ -1065,8 +1065,17 @@ export function createExecution(options: ExecutionOptions): Execution {
         prompt.length > 100_000
       )
         throw new Error('Review prompt must contain 1–100000 characters');
+      if (
+        provider !== undefined &&
+        provider !== 'codex' &&
+        provider !== 'claude'
+      )
+        throw new Error('A reviewer is Codex or Claude');
+      if (reviewed.launch.provider === 'fixture')
+        throw new Error('Agent Review needs a local Run');
       const { slot, launch } = reserve({
         ...reviewed.launch,
+        ...(provider ? { provider } : {}),
         label: `Review · ${reviewed.snapshot.label}`.slice(0, 120),
       });
       const reviewer = slot.snapshot.id;

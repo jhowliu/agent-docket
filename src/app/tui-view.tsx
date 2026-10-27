@@ -1518,6 +1518,7 @@ export function WorkbenchScreen(props: ScreenProps) {
       'v verify: freeze the Run’s code, run the project check on a clean copy',
       ':check <command> sets the check · :check shows it',
       'Human Review: :accept on passing checks · :changes <what to fix>',
+      ':reviewer codex|claude|same picks who runs Agent Review',
     );
   // Bound every optional region to leave a readable timeline at the minimum size.
   const extras = disclosures.filter(Boolean).slice(0, extraCapacity);

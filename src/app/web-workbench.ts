@@ -218,6 +218,7 @@ export function createWebWorkbench(
         projects,
         overview: work.overview(),
         checks: work.checks(),
+        reviewers: work.reviewers(),
         verifications: work.verifications(),
         flows: work.flows(),
         reviews: work.reviews(),
@@ -232,6 +233,7 @@ export function createWebWorkbench(
           verify: true,
           flow: true,
           review: true,
+          reviewer: true,
         },
         launch: {
           provider: launch.provider,
@@ -508,6 +510,10 @@ export function createWebWorkbench(
         }
         if (command.kind === 'set-check') {
           await work.setCheck(command.projectId, command.command);
+          return json({ result: 'accepted' }, 202);
+        }
+        if (command.kind === 'set-reviewer') {
+          await work.setReviewer(command.projectId, command.provider);
           return json({ result: 'accepted' }, 202);
         }
         if (command.kind === 'verify') {

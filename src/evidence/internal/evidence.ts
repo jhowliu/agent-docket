@@ -140,11 +140,12 @@ export function createEvidence(options: EvidenceOptions): Evidence {
         ? { verification, assessment: judge(verification, current) }
         : null;
     },
-    review({ runId, candidate, spec, prompt }) {
+    review({ runId, candidate, spec, prompt, provider }) {
       const { reviewer, settled } = options.execution.startReview(
         runId,
         candidate,
         prompt,
+        provider,
       );
       const review: Review = {
         runId,

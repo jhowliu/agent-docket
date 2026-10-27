@@ -12,7 +12,8 @@ import type { WorkbenchState } from '../src/app/workbench-protocol.js';
 // Review → Human Review → accept. The sample project is a disposable copy;
 // the adapters, the models and the person's logins are real.
 //
-// --provider codex (default) | claude: the agent that develops and reviews.
+// --provider codex (default) | claude: the agent that develops.
+// --reviewer same (default) | codex | claude: the agent that reviews.
 //
 // --scenario passing (default): one prompt asks for what the spec asks.
 // --scenario fix-checks / fix-review: the spec also expires a non-finite
@@ -22,16 +23,18 @@ import type { WorkbenchState } from '../src/app/workbench-protocol.js';
 const exec = promisify(execFile);
 const scenarios = ['passing', 'fix-checks', 'fix-review'] as const;
 const usage =
-  'Usage: npm run qa:loop -- [--scenario passing|fix-checks|fix-review] [--provider codex|claude]';
+  'Usage: npm run qa:loop -- [--scenario passing|fix-checks|fix-review] [--provider codex|claude] [--reviewer same|codex|claude]';
 const option = (name: string, fallback: string) => {
   const at = process.argv.indexOf(`--${name}`);
   return at < 0 ? fallback : process.argv[at + 1];
 };
 const scenario = option('scenario', 'passing');
 const provider = option('provider', 'codex');
+const reviewer = option('reviewer', 'same');
 if (
   !scenarios.some((name) => name === scenario) ||
-  (provider !== 'codex' && provider !== 'claude')
+  (provider !== 'codex' && provider !== 'claude') ||
+  (reviewer !== 'same' && reviewer !== 'codex' && reviewer !== 'claude')
 )
   throw new Error(usage);
 const partial = scenario !== 'passing';
@@ -46,8 +49,9 @@ const claudeTokenFile = resolve(
   process.env.WORKBENCH_CLAUDE_TOKEN_FILE ??
     resolve(homedir(), '.config/agent-docket/claude-token'),
 );
+const agents = new Set([provider, reviewer === 'same' ? provider : reviewer]);
 if (
-  provider === 'codex' &&
+  agents.has('codex') &&
   !signedIn &&
   !process.env.CODEX_API_KEY &&
   !process.env.OPENAI_API_KEY
@@ -55,7 +59,7 @@ if (
   throw new Error(
     'Sign in to Codex first (~/.codex/auth.json) or set CODEX_API_KEY',
   );
-if (provider === 'claude' && !(await exists(claudeTokenFile)))
+if (agents.has('claude') && !(await exists(claudeTokenFile)))
   throw new Error(
     `Save a token from \`claude setup-token\` to ${claudeTokenFile} first`,
   );
@@ -134,6 +138,7 @@ const pause = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
 const summary: Record<string, unknown> = {
   scenario,
   provider,
+  reviewer,
   output,
 };
 let state: WorkbenchState = await client.connect();
@@ -288,6 +293,12 @@ try {
         ? `node check.mjs && node ${hidden}`
         : 'node check.mjs',
   });
+  if (reviewer !== 'same')
+    await client.command({
+      kind: 'set-reviewer',
+      projectId,
+      provider: reviewer === 'claude' ? 'claude' : 'codex',
+    });
   await client.command({
     kind: 'project-work',
     projectId,

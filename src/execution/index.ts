@@ -222,6 +222,8 @@ export interface Execution {
     id: RunId,
     candidate: Candidate,
     prompt: string,
+    /** Another local agent on the same worker; omitted, the Run's own. */
+    provider?: 'codex' | 'claude',
   ): Readonly<{ reviewer: RunSnapshot; settled: Promise<ReviewResult> }>;
   snapshot(id: RunId): RunSnapshot;
   list(): readonly RunSnapshot[];

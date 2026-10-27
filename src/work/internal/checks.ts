@@ -21,20 +21,24 @@ export const checkCommand = z
     (value) => !/[\u0000-\u001f\u007f]/u.test(value),
     'Use one line of plain text',
   );
-const fileSchema = z
-  .object({
-    version: z.literal(1),
-    checks: z.record(projectId, checkCommand),
-  })
-  .strict();
+/** The agent that reviews a project's Candidates, when not the Run's own. */
+export const reviewerProvider = z.enum(['codex', 'claude']);
 
 /**
- * Project check commands, loaded once at startup and written through.
- * Another daemon's later writes are seen only after a restart.
+ * One value per project in `<directory>/<name>.json`, loaded once at startup
+ * and written through. Another daemon's later writes are seen only after a
+ * restart.
  */
-export function createCheckStore(directory: string | undefined) {
-  const file = directory ? join(directory, 'checks.json') : null;
-  const checks = new Map<string, string>();
+function createProjectStore<T>(
+  directory: string | undefined,
+  name: 'checks' | 'reviewers',
+  value: z.ZodType<T>,
+) {
+  const file = directory ? join(directory, `${name}.json`) : null;
+  const fileSchema = z
+    .object({ version: z.literal(1), [name]: z.record(projectId, value) })
+    .strict();
+  const values = new Map<string, T>();
   if (file) {
     let body: string | null = null;
     try {
@@ -49,21 +53,23 @@ export function createCheckStore(directory: string | undefined) {
       const parsed = fileSchema.safeParse(JSON.parse(body));
       if (!parsed.success)
         throw new Error(
-          'checks.json is invalid; preserve it and repair the check commands',
+          `${name}.json is invalid; preserve it and repair the ${name === 'checks' ? 'check commands' : 'reviewers'}`,
         );
-      for (const [id, command] of Object.entries(parsed.data.checks))
-        checks.set(id, command);
+      const saved = parsed.data[name] as Record<string, T>;
+      for (const [id, entry] of Object.entries(saved)) values.set(id, entry);
     }
   }
   let queue = Promise.resolve();
   return {
-    get: (id: string) => checks.get(id) ?? null,
-    list: () =>
-      [...checks].map(([id, command]) => ({ projectId: id, command })),
-    set(id: string, input: string): Promise<void> {
-      const command = checkCommand.parse(input);
+    get: (id: string) => values.get(id) ?? null,
+    list: () => [...values],
+    /** `null` removes the project's value. */
+    set(id: string, input: unknown): Promise<void> {
+      const entry = input === null ? null : value.parse(input);
       const result = queue.then(async () => {
-        const next = new Map(checks).set(id, command);
+        const next = new Map(values);
+        if (entry === null) next.delete(id);
+        else next.set(id, entry);
         if (file && directory) {
           await mkdir(directory, { recursive: true, mode: 0o700 });
           const temporary = `${file}.${randomUUID()}.tmp`;
@@ -71,7 +77,7 @@ export function createCheckStore(directory: string | undefined) {
             await writeFile(
               temporary,
               JSON.stringify(
-                { version: 1, checks: Object.fromEntries(next) },
+                { version: 1, [name]: Object.fromEntries(next) },
                 null,
                 2,
               ) + '\n',
@@ -82,10 +88,34 @@ export function createCheckStore(directory: string | undefined) {
             await rm(temporary, { force: true });
           }
         }
-        checks.set(id, command);
+        if (entry === null) values.delete(id);
+        else values.set(id, entry);
       });
       queue = result.catch(() => {});
       return result;
     },
+  };
+}
+
+/** Project check commands. */
+export function createCheckStore(directory: string | undefined) {
+  const store = createProjectStore(directory, 'checks', checkCommand);
+  return {
+    get: store.get,
+    list: () =>
+      store.list().map(([id, command]) => ({ projectId: id, command })),
+    set: (id: string, command: string) => store.set(id, command),
+  };
+}
+
+/** Which agent reviews each project's Candidates; absent means the Run's own. */
+export function createReviewerStore(directory: string | undefined) {
+  const store = createProjectStore(directory, 'reviewers', reviewerProvider);
+  return {
+    get: store.get,
+    list: () =>
+      store.list().map(([id, provider]) => ({ projectId: id, provider })),
+    set: (id: string, provider: z.infer<typeof reviewerProvider> | null) =>
+      store.set(id, provider),
   };
 }

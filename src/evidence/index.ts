@@ -84,6 +84,8 @@ export interface Evidence {
       candidate: Candidate;
       spec: SpecRef;
       prompt: string;
+      /** The reviewing agent, when not the Run's own. */
+      provider?: 'codex' | 'claude';
     }>,
   ): Readonly<{ review: Review; settled: Promise<Review> }>;
   /** The latest review judged against the Run's current code and spec. */

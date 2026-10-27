@@ -264,3 +264,10 @@ export const projectCheckSchema = z
     command: z.string().min(1).max(1000),
   })
   .strict();
+/** A project whose Candidates another agent reviews than the Run's own. */
+export const projectReviewerSchema = z
+  .object({
+    projectId: projectWorkSchema.shape.id,
+    provider: z.enum(['codex', 'claude']),
+  })
+  .strict();

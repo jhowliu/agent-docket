@@ -43,6 +43,7 @@ npm run tui
 - 工作台會自動跑 Check。失敗時把輸出送回 agent 修。
 - Check 通過後，另一個 reviewer Run 會在唯讀副本上依需求審查（左欄會多一個 `Review · …` Run，審完就消失）。有問題時會把 findings 送回 agent 修。Check 失敗和 review 意見合計最多送回兩次，還是不行就停下來等你（左欄顯示 `checks` 或 `agent review`）。
 - review 核可後 Task 進入 Human Review（左欄顯示 `review`）：用 `:accept` 接受，或用 `:changes <要改什麼>` 退回，意見會送給 agent。review 只是建議，Check 通過時你隨時可以 `:accept`。
+- 想讓另一個模型審：`:reviewer claude`（或 `codex`），之後這個專案的 Agent Review 都改由它來做；`:reviewer same` 改回各 Run 自己的 agent。
 - 隨時可以按 `v` 手動驗證。要加下一個 Task：`:task 1 <title>`，再用 `:track 1.2` 綁定。`:direct` 回到不綁 Task 的一般 Run。
 - accepted 不代表已經 commit 或 merge。
 
@@ -72,7 +73,7 @@ TUI 與同網址的瀏覽器共享 Run 和核准。啟動不會自動連線模�
 
 詳見 [TUI 操作與範圍](docs/tui-operation.md) 和 [鍵盤操作](docs/tui-keyboard.md)。
 
-真實 Codex 的既有檔案登入、改檔／Diff、測試、一次性允許／拒絕與執行中取消已完成限定案例驗收。`npm run qa:loop` 會在一次性的範例專案上用真的 Codex 跑完整個 Task flow（Check → Agent Review → Human Review → accept），2026-10-27 一次就通過、Check 失敗後修正、review findings 修正三種情境都已通過（`-- --scenario fix-checks`／`fix-review`）。`-- --provider claude` 改由 Claude 開發與審查（尚未實測）。可用 `npm run qa:codex -- --launch /absolute/path/to/local-config.json` 在可連線環境重跑；它使用真實模型操作內建小型測試專案副本，與 Fixture 選項不同。範圍與證據見 [真實 Codex 驗收](docs/codex-live-acceptance.md)。
+真實 Codex 的既有檔案登入、改檔／Diff、測試、一次性允許／拒絕與執行中取消已完成限定案例驗收。`npm run qa:loop` 會在一次性的範例專案上用真的 Codex 跑完整個 Task flow（Check → Agent Review → Human Review → accept），2026-10-27 一次就通過、Check 失敗後修正、review findings 修正三種情境都已通過（`-- --scenario fix-checks`／`fix-review`）。`-- --provider claude` 改由 Claude 開發、`-- --reviewer claude` 改由 Claude 審查（尚未實測）。可用 `npm run qa:codex -- --launch /absolute/path/to/local-config.json` 在可連線環境重跑；它使用真實模型操作內建小型測試專案副本，與 Fixture 選項不同。範圍與證據見 [真實 Codex 驗收](docs/codex-live-acceptance.md)。
 
 已提供可選的 [Roadmap 追蹤](docs/roadmap-operation.md)：`:roadmap <title>` 建立計畫，`:spec <requirements>`／`:confirm` 確認需求，`o` 開啟小型 outline，`:track 2.1` 接續既有 Task，`:direct` 回一般 Run。瀏覽器從 Actions → Use Roadmap 操作。只保存專案計畫與需求版本，Run 對話與核准仍不存檔。確認後的 Task 會在 agent 回報 finished 時自動跑 Check、做 Agent Review，再進入 Human Review（[Task flow](docs/task-flow.md)）；agent 提案拆分 Task 尚待後續切片。
 

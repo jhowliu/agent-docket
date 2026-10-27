@@ -11,6 +11,7 @@ import type {
   nextActionSchema,
   planSchema,
   projectCheckSchema,
+  projectReviewerSchema,
   projectOverviewSchema,
   runReviewSchema,
   runVerificationSchema,
@@ -32,6 +33,7 @@ export type NextAction = z.infer<typeof nextActionSchema>;
 export type ProjectOverview = z.infer<typeof projectOverviewSchema>;
 export type RunVerification = z.infer<typeof runVerificationSchema>;
 export type ProjectCheck = z.infer<typeof projectCheckSchema>;
+export type ProjectReviewer = z.infer<typeof projectReviewerSchema>;
 
 export interface ProjectWorkspaces {
   /** Registers a stable project identity once; no Run or conversation is restored. */
@@ -68,6 +70,16 @@ export interface ProjectWorkspaces {
    * operator: trusted input, never accepted from an agent.
    */
   setCheck(projectId: string, command: string): Promise<void>;
+  /** Projects whose Agent Review uses another agent; persisted like checks. */
+  reviewers(): readonly ProjectReviewer[];
+  /**
+   * Which agent reviews the project's Candidates from the next review on,
+   * on the same local worker: `codex`, `claude`, or `null` for each Run's own.
+   */
+  setReviewer(
+    projectId: string,
+    provider: 'codex' | 'claude' | null,
+  ): Promise<void>;
   /**
    * Checks the Run's current code with its project's command, bound to the
    * Task spec revision the Run tracks (none in Direct mode). Resolves once the
@@ -152,6 +164,7 @@ export {
   nextActionSchema,
   planSchema,
   projectCheckSchema,
+  projectReviewerSchema,
   projectOverviewSchema,
   runReviewSchema,
   runVerificationSchema,

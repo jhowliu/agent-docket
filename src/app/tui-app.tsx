@@ -464,6 +464,12 @@ export function WorkbenchApp({
         setNote('Back to Development · your notes went to the agent');
       else if (command.kind === 'set-check')
         setNote('Check saved for this project · v verifies the selected Run');
+      else if (command.kind === 'set-reviewer')
+        setNote(
+          command.provider
+            ? `${AGENT_NAMES[command.provider]} runs this project's next Agent Reviews`
+            : "Each Run's own agent runs this project's Agent Reviews",
+        );
       else if (command.kind === 'authenticate')
         setNote('Sign-in requested · waiting for agent');
       else if (command.kind === 'cancel') {
@@ -652,6 +658,33 @@ export function WorkbenchApp({
           : 'No check yet · :check <command>, e.g. npm ci && npm test',
       );
   }
+  function setReviewer(argument: string) {
+    const project = projectForRun(snapshot, selected?.id ?? null);
+    const current = snapshot.reviewers?.find(
+      (item) => item.projectId === project?.id,
+    );
+    if (!snapshot.features?.reviewer)
+      setNote(
+        'Choosing a reviewer needs an updated server; start a new daemon',
+      );
+    else if (!project) setNote('Select a Run to choose its project reviewer');
+    else if (
+      argument === 'codex' ||
+      argument === 'claude' ||
+      argument === 'same'
+    )
+      void execute({
+        kind: 'set-reviewer',
+        projectId: project.id,
+        provider: argument === 'same' ? null : argument,
+      });
+    else if (argument)
+      setNote('Use :reviewer codex, :reviewer claude or :reviewer same');
+    else
+      setNote(
+        `Agent Review: ${current ? AGENT_NAMES[current.provider] : "each Run's own agent"} · :reviewer codex|claude|same`,
+      );
+  }
   function runCommand(text: string) {
     const [name = '', ...parts] = text.trim().split(/\s+/);
     const argument = parts.join(' ');
@@ -732,6 +765,10 @@ export function WorkbenchApp({
     if (name === 'check') {
       // The shell command as typed, spacing and quotes included.
       setCheck(text.trim().slice(name.length).trim());
+      return;
+    }
+    if (name === 'reviewer') {
+      setReviewer(argument);
       return;
     }
     if (name === 'verify' && !argument) {

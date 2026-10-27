@@ -12,7 +12,11 @@ import type {
 } from '../index.js';
 import { nextActionSchema } from './contract.js';
 import { createTrackedWork } from './work.js';
-import { CheckRequired, createCheckStore } from './checks.js';
+import {
+  CheckRequired,
+  createCheckStore,
+  createReviewerStore,
+} from './checks.js';
 
 /** Failed checks and review findings sent back before the flow stops for the person. */
 const FIX_LIMIT = 2;
@@ -67,6 +71,7 @@ export function createProjectWorkspaces(
   >();
   const runs = new Map<RunId, string>();
   const checks = createCheckStore(options.directory);
+  const reviewers = createReviewerStore(options.directory);
   let closed = false;
   function project(id: string) {
     const found = projects.get(id);
@@ -261,11 +266,13 @@ export function createProjectWorkspaces(
     const base = options.execution.snapshot(runId).worktree?.baseRevision;
     const sha = done.candidate.sha;
     const flow = { runId, taskId: task.id, attempts, reason: '' };
+    const provider = reviewers.get(id);
     try {
       const { review, settled } = options.evidence.review({
         runId,
         candidate: done.candidate,
         spec: done.spec,
+        ...(provider ? { provider } : {}),
         prompt: [
           `Workbench Agent Review of Candidate ${sha.slice(0, 7)} for the Task "${task.title}".`,
           `Requirements (revision ${task.spec.revision}):`,
@@ -504,6 +511,11 @@ export function createProjectWorkspaces(
     setCheck(id, command) {
       project(id);
       return checks.set(id, command);
+    },
+    reviewers: () => reviewers.list(),
+    setReviewer(id, provider) {
+      project(id);
+      return reviewers.set(id, provider);
     },
     verify: check,
     flows() {
