@@ -27,10 +27,9 @@ async function until(check: () => boolean | Promise<boolean>, ms = 15000) {
   throw new Error('Task flow condition timed out');
 }
 
-/** A Git project, a worktree Run on it tracking a confirmed Task, and its check. */
-async function tracked(
+/** A Git project and a workbench whose Codex · local preset runs the fixture agent. */
+async function gitProject(
   t: test.TestContext,
-  check: string,
   adapterArgs: readonly string[] = [],
 ) {
   const directory = await realpath(
@@ -64,6 +63,16 @@ async function tracked(
   });
   const client = createWorkbenchClient(origin, (request) => app.fetch(request));
   await client.connect();
+  return { app, client, repo };
+}
+
+/** A Git project, a worktree Run on it tracking a confirmed Task, and its check. */
+async function tracked(
+  t: test.TestContext,
+  check: string,
+  adapterArgs: readonly string[] = [],
+) {
+  const { app, client, repo } = await gitProject(t, adapterArgs);
   const project = await client.project(repo);
   const started = await client.command({
     kind: 'new-session',
@@ -268,6 +277,112 @@ test('a finished report on a confirmed Task runs its checks, an approving Agent 
     client.command({ kind: 'request-changes', runId, text: 'More.' }),
     /Request changes once the Task is in Human Review/,
   );
+});
+
+test('the whole Task flow runs from the TUI: New Session, check, Roadmap, spec, confirm, a prompt, Agent Review and :accept', async (t) => {
+  const { client, repo } = await gitProject(t);
+  const ui = render(
+    <WorkbenchApp
+      client={client}
+      initial={await client.poll()}
+      projectPath={repo}
+      pollInterval={20}
+    />,
+  );
+  t.after(() => {
+    ui.unmount();
+    ui.cleanup();
+  });
+  const has = (text: string, ms = 6000) =>
+    until(() => (ui.lastFrame() ?? '').includes(text), ms).catch(() => {
+      throw new Error(`Expected ${text}\n${ui.lastFrame()}`);
+    });
+  const lacks = (text: string) =>
+    until(() => !(ui.lastFrame() ?? '').includes(text), 6000).catch(() => {
+      throw new Error(`Expected no ${text}\n${ui.lastFrame()}`);
+    });
+  // Ink attaches a new key handler after each render: a key sent the moment
+  // a frame appears reaches the previous one. Wait before and after each key.
+  const key = async (value: string) => {
+    await new Promise((done) => setTimeout(done, 40));
+    ui.stdin.write(value);
+    await new Promise((done) => setTimeout(done, 40));
+  };
+  const command = async (text: string) => {
+    await key(':');
+    await key(text);
+    await key('\r');
+  };
+
+  await key('n');
+  await has('New Session');
+  await key('\r');
+  await has('Enter create');
+  await key('\r');
+  await lacks('New Session');
+  await until(async () => (await client.poll()).runs[0]?.state.kind === 'idle');
+  const runId = (await client.poll()).runs[0]?.id;
+  assert.ok(runId);
+
+  await command('check test -f token.mjs');
+  await until(async () =>
+    Boolean(
+      (await client.poll()).checks?.some(
+        (check) => check.command === 'test -f token.mjs',
+      ),
+    ),
+  );
+  const task = async () => {
+    const state = await client.poll();
+    const work = state.projects?.find((project) =>
+      project.runIds.includes(runId),
+    )?.work;
+    assert.ok(work?.kind === 'ready' && work.plan);
+    const found = work.plan.phases[0]?.tasks[0];
+    assert.ok(found);
+    return found;
+  };
+  // Each command lands before the next, as a person reading the screen would.
+  await command('roadmap Boundary');
+  await has('Requirement clarification');
+  await command('spec Reject expired tokens.');
+  await until(
+    async () => (await task()).spec.text === 'Reject expired tokens.',
+  );
+  await command('confirm');
+  await until(async () => (await task()).stage === 'development');
+
+  // Enter opens the reply line; the prompt is text, never a command.
+  await key('\r');
+  await has('Reply');
+  await key('done:Rejected expired tokens at the boundary.');
+  await key('\r');
+  // The left column shows Human Review at once; the footer keeps the
+  // prompt's receipt for a few seconds first.
+  await has('review · codex', 15000);
+  await has('review Run 1 · Boundary');
+  const state = await client.poll();
+  assert.equal(
+    state.verifications?.find((item) => item.runId === runId)?.status,
+    'passed',
+  );
+  const review = state.reviews?.find((item) => item.runId === runId);
+  assert.equal(review?.status, 'approved');
+  // The reviewer judged the requirement typed in the TUI, then left.
+  assert.ok(review?.reviewer);
+  assert.match(
+    reviewPrompts(state, review.reviewer)[0] ?? '',
+    /Requirements \(revision \d+\):\nReject expired tokens\./,
+  );
+  assert.deepEqual(
+    state.runs.map((run) => run.id),
+    [runId],
+  );
+
+  await command('accept');
+  await has('Task accepted · nothing was committed or pushed');
+  assert.equal((await task()).status, 'accepted');
+  assert.equal(git(repo, 'worktree', 'list').split('\n').length, 2);
 });
 
 test('failed checks go back to the agent twice, then stop for the person until they prompt', async (t) => {

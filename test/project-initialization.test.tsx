@@ -378,6 +378,8 @@ test('Ink defaults to No, declines without writes, and Yes initializes once befo
   await finish();
   await frame('Enter create');
   assert.deepEqual((await client.poll()).runs, []);
+  // A key sent the moment the branches appear reaches Ink's previous handler.
+  await new Promise((done) => setTimeout(done, 40));
   ui.stdin.write('\r');
   await frame('New Session', false);
   await until(async () => (await client.poll()).runs[0]?.state.kind === 'idle');
