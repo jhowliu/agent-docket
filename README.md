@@ -2,31 +2,77 @@
 
 TypeScript 開發中的多專案 agent 工作台。已有 React + Ink 終端介面、共用的本機 fixture 背景服務，以及瀏覽器操作 Demo。
 
-## 從 terminal 使用
+## How to use
+
+### 1. 啟動
 
 ```sh
 npm ci
 npm run tui
 ```
 
-需要 Node.js 22.16 以上與互動式 terminal。TUI 自動連接本機 `127.0.0.1:4177`；沒有服務時啟動背景服務，不需另外開一個 terminal。畫面保留 agents＋timeline，按需展開回覆、路徑和操作。
+- 需要 Node.js 22.16 以上與互動式 terminal。TUI 會連上 `127.0.0.1:4177` 的背景服務，沒有就自動啟動。
+- 用本機 Codex 前，先在這台電腦用 Codex CLI 登入一次（產生 `~/.codex/auth.json`）。每個 Run 會複製一份私有的登入資料，不會改動原檔。也可以在啟動服務的環境設定 `CODEX_API_KEY`／`OPENAI_API_KEY`。
+- 已經有舊版服務在跑時，重開 TUI 不會更新它。要用新版就換一個 port：`WORKBENCH_PORT=4242 npm run tui`。
 
-- `n` 開啟 New Session：輸入 Git 專案根目錄、Enter 讀取分支，選起始分支後 Enter 建立獨立 worktree。路徑欄 `Tab` 可列資料夾並補全，用方向鍵與 Enter 選取；`Shift+Tab` 回 Agent 欄選 Fixture 測試模式。建立後 Enter（或 `i`）輸入需求。
-- 工作區焦點下，`j/k` 切換 Run，`h/l` 或 `1–3` 切換 Live／Diff／Timeline；↑ / ↓ 或滾輪捲動（Timeline 選列），`Space` 讀該輪回覆，`Ctrl+U/D` 翻頁。`w` 跳到待核准，`a/r` 允許一次／拒絕；`Tab` 選下一筆核准。
-- 左欄列出各專案的 agents；Run 工作路徑顯示於底部。`s` 看操作、`?` 看按鍵、`:` 輸入白名單命令。
-- `Esc` 收起回覆並保留草稿；`q`／Ctrl+C 只離開 TUI，重開可繼續處理原本的 Run。
+### 2. 開一個 Session
 
-TUI 與同網址的瀏覽器共享 Run 和核准。啟動不會自動連線模型；New Session 可明確選擇本機 Codex 或可信 Fixture，不需用環境變數／JSON 指定專案。不同專案的路徑與 Roadmap 隨所選 Run 切換，也可選之前保存的分支接續程式碼。詳見 [New Session 操作](docs/session-creation.md) 與 [本機 Codex 模式](docs/local-execution.md)。本機 Git 專案使用每 Run 的獨立 worktree／分支與 CLI home，仍不是 OS sandbox。`x` 停止後回收乾淨 worktree；有修改則顯示 `Commit required`，按 `c` 輸入訊息或用 `:commit <message>`，保存至本機分支後回收目錄，不自動 push。詳見 [worktree 操作](docs/worktrees.md)。選取有本機 worktree 的 Run 按 `m`（或 `:map`），會在瀏覽器開啟 [Change map](docs/change-map.md)：從按鍵經 HTTP route、模組 Interface 到被修改函式的 flow，以及逐函式 diff；flow 為靜態推得，不代表 review 或驗證。Run／事件／核准只保留在背景服務的有界記憶體；不保存或查閱過去 Run，服務重啟從空白開始。草稿只保留在當次 TUI。停止服務：`npm run daemon:stop`；只連線不自動啟動：`npm run tui -- --connect`。服務 log 在 `.workbench/daemon-4177.log`。詳見 [Run 生命週期與重啟限制](docs/run-lifecycle.md)。
+1. 按 `n`。Agent 預設是 **Codex · local**；`Shift+Tab` 可改選 **Fixture · no model**，不連模型、只用來試操作。
+2. 輸入 Git 專案根目錄（`Tab` 補全），按 `Enter` 讀分支。不是 Git 的資料夾會詢問要不要初始化，預設 No。
+3. 選起始分支後按 `Enter`。工作台會建立新的 `workbench/run-…` 分支和獨立 worktree，不會動到你原本的 checkout。
+
+### 3. 跟 agent 工作
+
+- `Enter`（或 `i`）打開輸入欄，打需求後按 `Enter` 送出；`Esc` 收起，草稿會保留。
+- `1` Live、`2` Diff、`3` Timeline；`Space` 讀該回合的完整回覆；`j/k` 切換 Run。
+- agent 要權限時，`w` 跳到等你處理的 Run，`a` 允許一次，`r` 拒絕一次，`d` 看細節。agent 請你在工作台外做事時，做完按 `y`；要回話就直接下 prompt。
+- 左欄每個 Run 都會顯示狀態，黃色（`approve`、`respond`、`commit`、`review`、`checks`）代表輪到你。
+
+### 4. 用 Task 流程驗證成果（可選）
+
+```text
+:check npm ci && npm test        專案的檢查指令，在乾淨的副本上跑
+:roadmap Token validation        建立計畫與第一個 Task，綁定目前選取的 Run
+:spec Reject expired tokens.     寫需求
+:confirm                         確認需求，進入 Development
+```
+
+之後照常下 prompt，Task 的內容會自動附上。agent 回報 finished 之後：
+
+- 工作台會自動跑 Check。失敗時把輸出送回 agent 修，最多兩次；還是失敗就停下來等你（左欄顯示 `checks`）。
+- 通過後 Task 進入 Human Review（左欄顯示 `review`）：用 `:accept` 接受，或用 `:changes <要改什麼>` 退回，意見會送給 agent。
+- 隨時可以按 `v` 手動驗證。要加下一個 Task：`:task 1 <title>`，再用 `:track 1.2` 綁定。`:direct` 回到不綁 Task 的一般 Run。
+- accepted 不代表已經 commit 或 merge。
+
+### 5. 看改動與收尾
+
+- `m` 在瀏覽器開啟 Change map，顯示從按鍵到被修改函式的 flow 和 diff；`2` Diff 可以直接看 git diff。
+- `x` 停止並移除 Run：worktree 裡的改動會自動 commit 到這個 Run 的分支（不會 push），提示會顯示分支名稱。想自己寫 commit 訊息，就先到 worktree 路徑（顯示在底部狀態列）自己 `git commit`，再按 `x`。Run 自己結束（中斷、失敗）且還有改動時，也可以按 `c` 輸入訊息。
+- 要接續工作：按 `n`，選同一個專案，分支選那個 `workbench/run-…`。
+- 要合併：回到原本的 repo 自己執行 `git merge workbench/run-…`。工作台不會 merge，也不會 push。
+
+### 6. 離開與停止
+
+- `q`／Ctrl+C 只會關掉畫面，Run 會繼續跑；再執行 `npm run tui` 就能接回。
+- `npm run daemon:stop` 會停止服務並取消所有 Run。服務重啟後是空的：沒有歷史紀錄，也不能恢復舊對話，程式碼只留在分支裡。
+- agent 連續 10 分鐘沒有任何動靜，該回合會被中斷（`No agent activity for 10 minutes`）。
+- 本機模式沒有 OS 隔離，agent 擁有你這個使用者的權限。
+
+完整按鍵見 [鍵盤操作](docs/tui-keyboard.md)，流程細節見 [Task flow](docs/task-flow.md)、[worktree 操作](docs/worktrees.md)。
+
+## TUI 細節與限制
+
+畫面保留 agents＋timeline，按需展開回覆、路徑和操作。左欄列出各專案的 agents；Run 工作路徑顯示於底部。`s` 看操作、`?` 看按鍵、`:` 輸入白名單命令。
+
+TUI 與同網址的瀏覽器共享 Run 和核准。啟動不會自動連線模型；New Session 可明確選擇本機 Codex 或可信 Fixture，不需用環境變數／JSON 指定專案。不同專案的路徑與 Roadmap 隨所選 Run 切換，也可選之前保存的分支接續程式碼。詳見 [New Session 操作](docs/session-creation.md) 與 [本機 Codex 模式](docs/local-execution.md)。本機 Git 專案使用每 Run 的獨立 worktree／分支與 CLI home，仍不是 OS sandbox。`x` 停止並移除 Run：worktree 的修改先自動 commit 到 Run 分支再回收目錄；Run 自己結束且還有改動時，可用 `c`／`:commit <message>` 自己寫訊息；不自動 push。詳見 [worktree 操作](docs/worktrees.md)。選取有本機 worktree 的 Run 按 `m`（或 `:map`），會在瀏覽器開啟 [Change map](docs/change-map.md)：從按鍵經 HTTP route、模組 Interface 到被修改函式的 flow，以及逐函式 diff；flow 為靜態推得，不代表 review 或驗證。Run／事件／核准只保留在背景服務的有界記憶體；不保存或查閱過去 Run，服務重啟從空白開始。草稿只保留在當次 TUI。停止服務：`npm run daemon:stop`；只連線不自動啟動：`npm run tui -- --connect`。服務 log 在 `.workbench/daemon-4177.log`。詳見 [Run 生命週期與重啟限制](docs/run-lifecycle.md)。
 
 可用 `WORKBENCH_PORT=4180 npm run tui` 選擇另一個 port；停止時使用同一個 `WORKBENCH_PORT`。TUI 不會替換已存在的服務；先前的 M0 服務可連線，但若不支援 shutdown，仍需回原服務的 terminal 用 Ctrl+C 停止。前景 `npm run ui`／`npm run daemon` 的 Ctrl+C 也會清理其 Runs。
 
 詳見 [TUI 操作與範圍](docs/tui-operation.md) 和 [鍵盤操作](docs/tui-keyboard.md)。
 
-Project 區顯示目前 Run 的實際 [資料夾結構](docs/project-tree.md)，支援 fixture／local 工作目錄的唯讀檔名瀏覽。舊 daemon 不支援目錄介面時，使用新 port 啟動新版，例如 `WORKBENCH_PORT=4188 npm run tui`，保留既有服務與 Run。
-
 真實 Codex 的既有檔案登入、改檔／Diff、測試、一次性允許／拒絕與執行中取消已完成限定案例驗收。可用 `npm run qa:codex -- --launch /absolute/path/to/local-config.json` 在可連線環境重跑；它使用真實模型操作內建小型測試專案副本，與 Fixture 選項不同。範圍與證據見 [真實 Codex 驗收](docs/codex-live-acceptance.md)。
 
-已提供可選的 [Roadmap 追蹤](docs/roadmap-operation.md)：`:roadmap <title>` 建立計畫，`:spec <requirements>`／`:confirm` 確認需求，`o` 開啟小型 outline，`:track 2.1` 接續既有 Task，`:direct` 回一般 Run。瀏覽器從 Actions → Use Roadmap 操作。只保存專案計畫與需求版本，Run 對話與核准仍不存檔；獨立審核與驗收門檻尚待後續切片。
+已提供可選的 [Roadmap 追蹤](docs/roadmap-operation.md)：`:roadmap <title>` 建立計畫，`:spec <requirements>`／`:confirm` 確認需求，`o` 開啟小型 outline，`:track 2.1` 接續既有 Task，`:direct` 回一般 Run。瀏覽器從 Actions → Use Roadmap 操作。只保存專案計畫與需求版本，Run 對話與核准仍不存檔。確認後的 Task 會在 agent 回報 finished 時自動跑 Check 並進入 Human Review（[Task flow](docs/task-flow.md)）；Agent Review 尚待後續切片。
 
 直接用瀏覽器開啟 [HTML 原型](preview/index.html)。左側查看專案來源路徑與 agents，選取 Run 後可試用 Services；這裡的核准、服務與結果均為模擬。
 

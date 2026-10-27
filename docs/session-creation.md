@@ -22,7 +22,7 @@ Execution rechecks the canonical folder's filesystem identity and Git state befo
 
 ## Continue saved work
 
-Close a Run with `x`. A clean worktree is collected; changed files require the explicit `c` / `:commit <message>` save. Keep the branch name shown in the receipt. Next time, choose the same project and that branch in New Session. Its committed code appears in a fresh worktree. No remote push, merge or branch deletion occurs. See [worktree operation](worktrees.md).
+Close a Run with `x`. Since 2026-10-26 changed files are committed to the Run's branch first and the Run is removed; `c` / `:commit <message>` saves with your own message. Keep the branch name shown in the receipt. Next time, choose the same project and that branch in New Session. Its committed code appears in a fresh worktree. No remote push, merge or branch deletion occurs. See [worktree operation](worktrees.md).
 
 ## Multiple projects and Roadmaps
 

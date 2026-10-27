@@ -36,7 +36,7 @@ API keys are inherited only when starting the daemon. Attaching to a server cann
 - `n` opens the compact project/starting-branch form. Confirming the form accepts Run startup immediately. Timeline reports readiness/failure; wait for `Idle` before `i` sends a prompt.
 - `a/r` and `Tab` keep the existing once-only approval behavior.
 - `s` shows real-agent actions or advertised sign-in methods. `p` focuses the Run's actual folder tree; the working path is in the bottom status bar.
-- `x` cancels, invalidates approvals and stops the managed POSIX process group. Private home/tmp are cleaned after confirmed stop. A clean local Git worktree is removed; changed worktrees stay visible as `Commit required`.
+- `x` cancels, invalidates approvals and stops the managed POSIX process group. Private home/tmp are cleaned after confirmed stop. Changes in a local Git worktree are committed to the Run's branch, then the worktree and the Run are removed (2026-10-26); a failed commit keeps the Run as `Commit required`.
 - Press `c` or use `:commit <message>` on a stopped worktree to commit all non-ignored changes to its local branch, then remove the clean worktree. A failed commit preserves files. You can also commit manually and press `x` again. No remote push or merge is performed.
 - `q` / Ctrl+C detach the TUI. `WORKBENCH_PORT=4180 npm run daemon:stop` explicitly stops the daemon's managed Runs and performs the same clean-worktree collection check.
 
