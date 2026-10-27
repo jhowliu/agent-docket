@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { Launch, RunId, Worker } from '../index.js';
 import { launchLocal } from './local.js';
+import type { ReviewCheckout } from './local.js';
 import type { ManagedWorktree } from './worktree.js';
 
 const execFileAsync = promisify(execFile);
@@ -84,7 +85,13 @@ async function kill(child: ChildProcessWithoutNullStreams): Promise<void> {
 export async function launchManaged(
   input: Launch,
   id: RunId,
+  review?: ReviewCheckout,
 ): Promise<ManagedProcess> {
+  if (
+    review &&
+    (input.provider === 'fixture' || input.worker.transport !== 'local')
+  )
+    throw new Error('Agent Review needs a local Run');
   if (input.provider === 'fixture') {
     const base = await mkdtemp(join(tmpdir(), 'workbench-fixture-'));
     const cwd = join(base, 'repo');
@@ -120,6 +127,7 @@ export async function launchManaged(
       input.source,
       id,
       join(dirname(fixtureAgentPath()), 'project'),
+      review,
     );
   if (input.source.kind === 'directory')
     throw new Error('Directory sources require explicit local mode');

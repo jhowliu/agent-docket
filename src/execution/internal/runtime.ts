@@ -10,6 +10,7 @@ import type {
   Execution,
   ExecutionOptions,
   Launch,
+  ReviewResult,
   RunEvent,
   RunEventPayload,
   RunId,
@@ -20,9 +21,13 @@ import type {
 } from '../index.js';
 import { launchManaged } from './worker.js';
 import type { ManagedProcess } from './worker.js';
+import type { ReviewCheckout } from './local.js';
 import { createProgressChannel } from './progress.js';
-import type { ProgressChannel } from './progress.js';
-import { workbenchInstructions } from './progress-protocol.js';
+import type { AgentReviewInput, ProgressChannel } from './progress.js';
+import {
+  reviewInstructions,
+  workbenchInstructions,
+} from './progress-protocol.js';
 import { directoryPathSchema, readWorkspaceDirectory } from './directory.js';
 import { runCheck } from './check.js';
 import type { CheckRun } from './check.js';
@@ -191,6 +196,12 @@ type Slot = {
   activeAt: number;
   /** Permission requests waiting on the person; the turn's idle clock stops meanwhile. */
   awaiting: number;
+  /** As parsed, so a reviewer starts with the same provider and worker. */
+  launch: Launch;
+  /** This Run's reviewer while one runs. */
+  reviewer: RunId | null;
+  /** A reviewer Run's latest submitted review in its turn. */
+  verdict: AgentReviewInput | null;
 };
 const terminal = (state: RunState) =>
   ['cancelled', 'closed', 'failed', 'interrupted'].includes(state.kind);
@@ -399,6 +410,8 @@ export function createExecution(options: ExecutionOptions): Execution {
   }
   async function clean(slot: Slot): Promise<void> {
     slot.check?.abort.abort();
+    // A review of a Run that stopped is no longer wanted.
+    if (slot.reviewer) void execution.cancel(slot.reviewer).catch(() => {});
     if (!slot.cleanup)
       slot.cleanup = (async () => {
         slot.connection?.close();
@@ -602,15 +615,22 @@ export function createExecution(options: ExecutionOptions): Execution {
       dismissed: false,
       activeAt: 0,
       awaiting: 0,
+      launch,
+      reviewer: null,
+      verdict: null,
     };
     slots.set(id, slot);
     emit(slot, { type: 'run.state', state: { kind: 'starting' } });
     return { slot, launch };
   }
-  async function initialize(slot: Slot, launch: Launch): Promise<RunSnapshot> {
+  async function initialize(
+    slot: Slot,
+    launch: Launch,
+    review?: ReviewCheckout,
+  ): Promise<RunSnapshot> {
     const id = slot.snapshot.id;
     try {
-      slot.launchTask = launchManaged(launch, id);
+      slot.launchTask = launchManaged(launch, id, review);
       const managed = await slot.launchTask;
       slot.managed = managed;
       slot.snapshot = { ...slot.snapshot, environment: managed.environment };
@@ -650,6 +670,15 @@ export function createExecution(options: ExecutionOptions): Execution {
               });
             }
           },
+          ...(slot.snapshot.review
+            ? {
+                review: (review: AgentReviewInput) => {
+                  if (slot.snapshot.state.kind !== 'running') return;
+                  slot.activeAt = Date.now();
+                  slot.verdict = review;
+                },
+              }
+            : {}),
           failed: () => {
             if (!terminal(slot.snapshot.state) && !cancelling(slot))
               emit(slot, {
@@ -667,7 +696,9 @@ export function createExecution(options: ExecutionOptions): Execution {
           type: 'diagnostic',
           message: managed.worktree
             ? 'Local Git worktree: no OS isolation. Closing collects clean files; commit changes to keep them on the local branch.'
-            : 'Local process: no OS isolation. The code copy is retained when this Run stops.',
+            : slot.snapshot.review
+              ? 'Review checkout: read-only agent mode, no OS isolation. Discarded when the review ends.'
+              : 'Local process: no OS isolation. The code copy is retained when this Run stops.',
         });
       managed.child.on('error', () => {
         interrupt(slot, 'Adapter process failed');
@@ -802,6 +833,7 @@ export function createExecution(options: ExecutionOptions): Execution {
       throw new Error('Prompt must contain 1–100000 characters');
     setState(slot, { kind: 'running' });
     slot.tools.clear();
+    slot.verdict = null;
     emit(slot, { type: 'turn.start', text: safeText(text) });
     if (slot.snapshot.worktree) recordTree(slot, undefined);
     return { slot, epoch: slot.epoch };
@@ -845,7 +877,14 @@ export function createExecution(options: ExecutionOptions): Execution {
             { type: 'text', text },
             ...(context ? [{ type: 'text' as const, text: context }] : []),
             ...(slot.progress
-              ? [{ type: 'text' as const, text: workbenchInstructions }]
+              ? [
+                  {
+                    type: 'text' as const,
+                    text: slot.snapshot.review
+                      ? reviewInstructions
+                      : workbenchInstructions,
+                  },
+                ]
               : []),
           ],
         },
@@ -1003,6 +1042,72 @@ export function createExecution(options: ExecutionOptions): Execution {
         ...frozen,
         createdAt: new Date().toISOString(),
       } satisfies Candidate;
+    },
+    startReview(id, candidate, prompt) {
+      const reviewed = get(id);
+      if (closing) throw new Error('Execution is closing');
+      const worktree = reviewed.managed?.worktree;
+      if (!worktree)
+        throw new Error('Agent Review needs a Run with a local Git worktree');
+      if (candidate.runId !== id)
+        throw new Error('This Candidate belongs to another Run');
+      if (reviewed.reviewer)
+        throw new Error('Agent Review is already running for this Run');
+      if (
+        typeof prompt !== 'string' ||
+        !prompt.trim() ||
+        prompt.length > 100_000
+      )
+        throw new Error('Review prompt must contain 1–100000 characters');
+      const { slot, launch } = reserve({
+        ...reviewed.launch,
+        label: `Review · ${reviewed.snapshot.label}`.slice(0, 120),
+      });
+      const reviewer = slot.snapshot.id;
+      slot.snapshot = {
+        ...slot.snapshot,
+        review: { runId: id, candidate: candidate.sha },
+      };
+      reviewed.reviewer = reviewer;
+      const settled = (async (): Promise<ReviewResult> => {
+        try {
+          await initialize(slot, launch, (path) =>
+            worktree.detach(candidate.sha, path),
+          );
+          if (slot.snapshot.state.kind === 'authentication-required')
+            throw new Error('The reviewer needs sign-in');
+          const accepted = acceptPrompt(reviewer, prompt);
+          const { stopReason } = await runPrompt(
+            accepted.slot,
+            prompt,
+            accepted.epoch,
+          );
+          if (stopReason === 'cancelled' || cancelling(slot))
+            throw new Error('Agent Review was cancelled');
+          if (!slot.verdict)
+            throw new Error('The reviewer ended without submitting a review');
+          const { verdict, summary, findings } = slot.verdict;
+          return {
+            reviewer,
+            candidate: candidate.sha,
+            verdict,
+            summary: safeText(summary),
+            findings: findings.map((finding) => ({
+              ...finding,
+              ...(finding.path ? { path: safeText(finding.path) } : {}),
+              text: safeText(finding.text),
+            })),
+          };
+        } catch (error) {
+          throw new Error(
+            cancelling(slot) ? 'Agent Review was cancelled' : errorText(error),
+          );
+        } finally {
+          if (reviewed.reviewer === reviewer) reviewed.reviewer = null;
+          await execution.cancel(reviewer).catch(() => {});
+        }
+      })();
+      return { reviewer: structuredClone(slot.snapshot), settled };
     },
     startCheck(id, candidate, command) {
       const slot = get(id);

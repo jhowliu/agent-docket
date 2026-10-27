@@ -12,6 +12,7 @@ import type {
   planSchema,
   projectCheckSchema,
   projectOverviewSchema,
+  runReviewSchema,
   runVerificationSchema,
   stageSchema,
   taskFlowSchema,
@@ -20,6 +21,7 @@ import type {
   projectWorkSchema,
 } from './internal/contract.js';
 
+export type RunReview = z.infer<typeof runReviewSchema>;
 export type TaskFlow = z.infer<typeof taskFlowSchema>;
 export type Stage = z.infer<typeof stageSchema>;
 export type WorkPlan = z.infer<typeof planSchema>;
@@ -70,24 +72,29 @@ export interface ProjectWorkspaces {
    * Checks the Run's current code with its project's command, bound to the
    * Task spec revision the Run tracks (none in Direct mode). Resolves once the
    * check has started. Without a command, rejects with CheckRequired. A pass
-   * on a tracked Task in Development moves it to Human Review.
+   * on a tracked Task in Development or Agent Review starts its Agent Review.
    */
   verify(runId: RunId): Promise<void>;
   /**
    * Task flows in progress. When the agent of a Run tracking a confirmed Task
-   * in Development (or back from Human Review) ends a turn reporting finished,
-   * with no open request and a worktree, its checks start by themselves.
-   * Failed checks go back to the agent as a prompt at most twice; then, or
-   * when checks cannot run, the flow stops for the person (next action
-   * `checks`). A pass moves the Task to Human Review (next action `accept`).
-   * The person's own prompt resets the count. Process memory only.
+   * in Development (or back from Agent or Human Review) ends a turn reporting
+   * finished, with no open request and a worktree, its checks start by
+   * themselves. A pass moves the Task to Agent Review and starts a reviewer
+   * Run on that Candidate (shown with the project while it works, removed
+   * after); its approval moves the Task to Human Review (next action
+   * `accept`). Failed checks and review findings go back to the agent as a
+   * prompt, at most twice together; review findings also move the Task back
+   * to Development. After that, or when checks or the review cannot finish,
+   * the flow stops for the person (next action `checks`). The person's own
+   * prompt resets the count and stops a running review. Process memory only.
    */
   flows(): readonly TaskFlow[];
   /**
    * Human Review accepts the Run's Task. Only with checks passing on exactly
    * the Run's current code and Task spec; otherwise rejects and changes
-   * nothing. Accepting again is a no-op; any later spec or stage change
-   * reopens the Task. Not a delivery: nothing is committed or pushed.
+   * nothing. An Agent Review is advice: accepting needs no approval and stops
+   * a running review. Accepting again is a no-op; any later spec or stage
+   * change reopens the Task. Not a delivery: nothing is committed or pushed.
    */
   accept(runId: RunId): Promise<void>;
   /**
@@ -100,6 +107,8 @@ export interface ProjectWorkspaces {
    * plans from the last snapshot(). Never passes a review or finishes a Task.
    */
   verifications(): readonly RunVerification[];
+  /** Latest Agent Review per Run against its current code and spec, like verifications(). */
+  reviews(): readonly RunReview[];
   apply(projectId: string, command: WorkCommand): Promise<void>;
   submit(runId: RunId, text: string): Promise<void>;
   close(): Promise<void>;
@@ -133,7 +142,7 @@ export type ProjectWorkspacesOptions = Readonly<{
   directory?: string;
   execution: Pick<
     Execution,
-    'snapshot' | 'submit' | 'list' | 'start' | 'launch' | 'subscribe'
+    'snapshot' | 'submit' | 'list' | 'start' | 'launch' | 'subscribe' | 'cancel'
   >;
   attention: Pick<Attention, 'list'>;
   evidence: Evidence;
@@ -144,6 +153,7 @@ export {
   planSchema,
   projectCheckSchema,
   projectOverviewSchema,
+  runReviewSchema,
   runVerificationSchema,
   stageSchema,
   taskFlowSchema,

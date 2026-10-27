@@ -110,12 +110,17 @@ async function tracked(
       taskId: created.id,
     },
   });
-  return { app, client, runId, task };
+  return { app, client, runId, task, repo };
 }
 const next = (state: WorkbenchState, runId: RunId) =>
   state.overview
     ?.flatMap((project) => project.runs)
     .find((run) => run.runId === runId)?.next;
+/** Prompts a reviewer Run received. */
+const reviewPrompts = (state: WorkbenchState, reviewer: RunId) =>
+  state.events.flatMap((event) =>
+    event.runId === reviewer && event.type === 'turn.start' ? [event.text] : [],
+  );
 const workbenchPrompts = (
   state: WorkbenchState,
   runId: RunId,
@@ -129,8 +134,8 @@ const workbenchPrompts = (
       : [],
   );
 
-test('a finished report on a confirmed Task runs its checks, a pass moves it to Human Review, and only passing checks can be accepted', async (t) => {
-  const { client, runId, task } = await tracked(t, 'test -f token.mjs');
+test('a finished report on a confirmed Task runs its checks, an approving Agent Review moves it to Human Review, and only passing checks can be accepted', async (t) => {
+  const { client, runId, task, repo } = await tracked(t, 'test -f token.mjs');
   assert.equal((await task()).task.stage, 'development');
   // Nothing has been checked yet, so Human Review cannot accept.
   await assert.rejects(
@@ -168,6 +173,45 @@ test('a finished report on a confirmed Task runs its checks, a pass moves it to 
   );
   assert.equal(next(state, runId), 'accept');
   assert.deepEqual(state.flows, []);
+  // A reviewer Run reviewed the Candidate read-only with only its own tool,
+  // then left with its checkout and no branch.
+  assert.deepEqual(
+    state.reviews?.map(({ runId: reviewed, status, reason }) => ({
+      reviewed,
+      status,
+      reason,
+    })),
+    [
+      {
+        reviewed: runId,
+        status: 'approved',
+        reason: 'Meets the requirements.',
+      },
+    ],
+  );
+  const reviewer = state.reviews?.[0]?.reviewer;
+  assert.ok(reviewer && reviewer !== runId);
+  assert.deepEqual(
+    state.runs.map((run) => run.id),
+    [runId],
+  );
+  assert.match(
+    reviewPrompts(state, reviewer)[0] ?? '',
+    /^Workbench Agent Review of Candidate [a-f0-9]{7} for the Task "Boundary"\.\nRequirements \(revision 1\):\nReject expired tokens\.\n\nThis checkout is the change at HEAD \([a-f0-9]{40}\)\. See it with: git diff [a-f0-9]{40} HEAD\n/,
+  );
+  assert.ok(
+    state.events.some(
+      (event) =>
+        event.runId === reviewer &&
+        event.type === 'agent.message' &&
+        event.text === 'Reviewing in read-only mode with submit_review.',
+    ),
+  );
+  assert.equal(git(repo, 'worktree', 'list').split('\n').length, 2);
+  assert.equal(
+    git(repo, 'branch', '--list', 'workbench/*').split('\n').length,
+    1,
+  );
 
   // The TUI names Human Review and accepts with :accept.
   const ui = render(
@@ -182,7 +226,9 @@ test('a finished report on a confirmed Task runs its checks, a pass moves it to 
     until(() => frame().includes(text), 6000).catch(() => {
       throw new Error(`Expected ${text}\n${frame()}`);
     });
-  await has('Human Review · checks passed · :accept or :changes');
+  await has(
+    'Human Review · checks passed · review approved · :accept or :changes',
+  );
   await has('review · codex');
   await has('review Run 1 · Boundary');
   const key = async (value: string) => {
@@ -344,5 +390,165 @@ test('cancelling a tracked Run removes it from its project while the Task keeps 
   await assert.rejects(
     client.command({ kind: 'accept', runId }),
     /Run has no project association/,
+  );
+});
+
+test('review findings go back to the agent, and its fix is checked and reviewed again', async (t) => {
+  const { client, runId, task } = await tracked(t, 'test -f token.mjs', [
+    '--finish-feedback',
+    '--review=changes-once',
+  ]);
+  await client.command({ kind: 'prompt', runId, text: 'done:Implemented.' });
+  await until(async () => (await task()).task.stage === 'human-review');
+  const state = await client.poll();
+  const sent = workbenchPrompts(
+    state,
+    runId,
+    'Workbench Agent Review requested changes',
+  );
+  assert.equal(sent.length, 1);
+  assert.match(
+    sent[0] ?? '',
+    /^Workbench Agent Review requested changes on Candidate [a-f0-9]{7} \(automatic fix 1 of 2\)\.\nSummary: Expired tokens at the exact boundary are accepted\.\nFindings:\n- token\.mjs:1: Use <= so a token expiring now is rejected\.\n/,
+  );
+  // Checked and reviewed twice: before and after the fix.
+  assert.equal(
+    state.events.filter((event) => event.type === 'check.start').length,
+    2,
+  );
+  assert.equal(
+    state.events.filter(
+      (event) =>
+        event.type === 'turn.start' &&
+        event.text.startsWith('Workbench Agent Review of '),
+    ).length,
+    2,
+  );
+  assert.equal(state.reviews?.[0]?.status, 'approved');
+  assert.equal(next(state, runId), 'accept');
+  assert.deepEqual(
+    state.runs.map((run) => run.id),
+    [runId],
+  );
+});
+
+test('a review that keeps requesting changes stops after two fixes, and the person can still accept on passing checks', async (t) => {
+  const { client, runId, task } = await tracked(t, 'test -f token.mjs', [
+    '--finish-feedback',
+    '--review=changes',
+  ]);
+  await client.command({ kind: 'prompt', runId, text: 'done:Implemented.' });
+  await until(
+    async () =>
+      (await client.poll()).flows?.some(
+        (flow) => flow.runId === runId && flow.step === 'stopped',
+      ) === true,
+  );
+  const state = await client.poll();
+  assert.deepEqual(
+    state.flows?.map(({ step, attempts, reason, cause }) => ({
+      step,
+      attempts,
+      reason,
+      cause,
+    })),
+    [
+      {
+        step: 'stopped',
+        attempts: 2,
+        reason:
+          'Agent Review still requests changes after 2 fixes: Expired tokens at the exact boundary are accepted.',
+        cause: 'review',
+      },
+    ],
+  );
+  assert.equal(
+    workbenchPrompts(state, runId, 'Workbench Agent Review requested changes')
+      .length,
+    2,
+  );
+  assert.equal(next(state, runId), 'checks');
+  assert.equal((await task()).task.stage, 'development');
+  assert.equal(state.reviews?.[0]?.status, 'changes');
+
+  const ui = render(
+    <WorkbenchApp client={client} initial={state} pollInterval={25} />,
+  );
+  t.after(() => {
+    ui.unmount();
+    ui.cleanup();
+  });
+  await until(() =>
+    (ui.lastFrame() ?? '').includes(
+      'Agent Review needs you: Agent Review still requests changes',
+    ),
+  ).catch(() => {
+    throw new Error(`Expected the stopped review\n${ui.lastFrame()}`);
+  });
+  // The review is advice: checks pass on the current code, so the person decides.
+  await client.command({ kind: 'accept', runId });
+  assert.equal((await task()).task.status, 'accepted');
+});
+
+test("the person's prompt or x on the reviewer stops a running review", async (t) => {
+  const { client, runId, task } = await tracked(t, 'test -f token.mjs', [
+    '--review=wait',
+  ]);
+  const reviewing = async () => {
+    await until(
+      async () =>
+        (await client.poll()).flows?.some(
+          (flow) => flow.runId === runId && flow.step === 'reviewing',
+        ) === true,
+    );
+    const state = await client.poll();
+    const reviewer = state.flows?.[0]?.reviewer;
+    assert.ok(reviewer);
+    await until(
+      async () =>
+        (await client.poll()).runs.find((run) => run.id === reviewer)?.state
+          .kind === 'running',
+    );
+    return reviewer;
+  };
+  await client.command({ kind: 'prompt', runId, text: 'done:Implemented.' });
+  const first = await reviewing();
+  let state = await client.poll();
+  const shown = state.runs.find((run) => run.id === first);
+  assert.equal(shown?.label, 'Review · shop');
+  assert.equal(shown?.review?.runId, runId);
+  assert.equal(shown?.worktree, undefined);
+  assert.ok(state.projects?.some((project) => project.runIds.includes(first)));
+  assert.equal((await task()).task.stage, 'agent-review');
+
+  // The person takes over: the review stops and its Run leaves.
+  await client.command({ kind: 'prompt', runId, text: 'progress' });
+  await until(
+    async () =>
+      !(await client.poll()).runs.some((run) => run.id === first) &&
+      (await client.poll()).flows?.length === 0,
+  );
+  await waitIdle(client, runId);
+
+  // x on the reviewer stops the flow for the person.
+  await client.command({ kind: 'prompt', runId, text: 'done:Implemented.' });
+  const second = await reviewing();
+  assert.notEqual(second, first);
+  const reply = await client.command({ kind: 'cancel', runId: second });
+  assert.ok('result' in reply && reply.removed === true);
+  await until(
+    async () =>
+      (await client.poll()).flows?.some(
+        (flow) =>
+          flow.runId === runId &&
+          flow.step === 'stopped' &&
+          flow.reason === 'Agent Review was cancelled',
+      ) === true,
+  );
+  state = await client.poll();
+  assert.equal(next(state, runId), 'checks');
+  assert.deepEqual(
+    state.runs.map((run) => run.id),
+    [runId],
   );
 });

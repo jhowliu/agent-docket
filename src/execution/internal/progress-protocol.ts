@@ -22,6 +22,14 @@ export const requestInstructions =
 /** Everything the Run's private tools ask of the agent; appended to each prompt. */
 export const workbenchInstructions = `${progressInstructions} ${requestInstructions}`;
 
+/** A reviewer Run's only tool; appended to its prompt instead of the above. */
+export const reviewInstructions =
+  'You are reviewing a change in a read-only checkout; do not edit files. ' +
+  'Judge it only against the requirements you were given: missing or wrong behavior, bugs, and risks a reviewer would block on. ' +
+  'When you have decided, call submit_review once with verdict approve when nothing blocks it, or changes with each problem as a finding ' +
+  '(file path, line when you know it, and what is wrong and why, in English). Leave out style preferences and optional ideas. ' +
+  'Your verdict is advice to the workbench, not acceptance; the person decides.';
+
 const plain = (text: string) =>
   !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u.test(text);
 
@@ -64,8 +72,51 @@ export const requestRecord = z.object({
   request: requestInput,
 });
 
+/** Shape and length only, as for requests. */
+export const reviewInput = z
+  .object({
+    verdict: z.enum(['approve', 'changes']),
+    summary: z.string().trim().min(1).max(1000).refine(plain, 'Use plain text'),
+    findings: z
+      .array(
+        z
+          .object({
+            path: z
+              .string()
+              .trim()
+              .min(1)
+              .max(300)
+              .refine(plain, 'Use plain text')
+              .optional(),
+            line: z.number().int().positive().optional(),
+            text: z
+              .string()
+              .trim()
+              .min(1)
+              .max(1000)
+              .refine(plain, 'Use plain text'),
+          })
+          .strict(),
+      )
+      .max(20, 'Use at most 20 findings'),
+  })
+  .strict()
+  .refine(
+    (review) => review.verdict === 'approve' || review.findings.length > 0,
+    'Requesting changes needs at least one finding',
+  );
+
+export const reviewRecord = z.object({
+  turn: z.string().uuid(),
+  review: reviewInput,
+});
+
 /** One line of the Run's private tool journal. */
-export const toolRecord = z.union([progressRecord, requestRecord]);
+export const toolRecord = z.union([
+  progressRecord,
+  requestRecord,
+  reviewRecord,
+]);
 
 /** Agent requests accepted per turn; more are refused so a loop cannot flood the inbox. */
 export const requestsPerTurn = 5;

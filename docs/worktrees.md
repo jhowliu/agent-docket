@@ -20,6 +20,8 @@ The worktree lives at `workspaceRoot/run-…/repo`. Its branch and actual path a
 
 A Run that ended on its own stays listed, showing why, until `x` or a commit. Removed Runs are gone from the daemon: no Timeline, no `:inbox`, no Change map; their journaled events age out.
 
+An Agent Review's reviewer Run (2026-10-26) is the exception: it works in a detached checkout of the Candidate with no branch, and stopping it force-removes that checkout without committing anything. See [Task flow](task-flow.md).
+
 The operator's Git identity and signing configuration apply. A failed commit preserves the worktree and can be retried. Automated Git operations disable hooks. There is no force-discard action. Ignored dependency/build output is discarded with a clean worktree; use Git to save files that must survive removal.
 
 `q` / Ctrl+C in the TUI only detaches and does not collect an active worktree. Stopping the daemon performs the same stop/collect check, preserving unsaved work. No extra worktree-count limit or count setting was added; existing Run limits are unchanged.

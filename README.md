@@ -39,8 +39,9 @@ npm run tui
 
 之後照常下 prompt，Task 的內容會自動附上。agent 回報 finished 之後：
 
-- 工作台會自動跑 Check。失敗時把輸出送回 agent 修，最多兩次；還是失敗就停下來等你（左欄顯示 `checks`）。
-- 通過後 Task 進入 Human Review（左欄顯示 `review`）：用 `:accept` 接受，或用 `:changes <要改什麼>` 退回，意見會送給 agent。
+- 工作台會自動跑 Check。失敗時把輸出送回 agent 修。
+- Check 通過後，另一個 reviewer Run 會在唯讀副本上依需求審查（左欄會多一個 `Review · …` Run，審完就消失）。有問題時會把 findings 送回 agent 修。Check 失敗和 review 意見合計最多送回兩次，還是不行就停下來等你（左欄顯示 `checks` 或 `agent review`）。
+- review 核可後 Task 進入 Human Review（左欄顯示 `review`）：用 `:accept` 接受，或用 `:changes <要改什麼>` 退回，意見會送給 agent。review 只是建議，Check 通過時你隨時可以 `:accept`。
 - 隨時可以按 `v` 手動驗證。要加下一個 Task：`:task 1 <title>`，再用 `:track 1.2` 綁定。`:direct` 回到不綁 Task 的一般 Run。
 - accepted 不代表已經 commit 或 merge。
 
@@ -72,7 +73,7 @@ TUI 與同網址的瀏覽器共享 Run 和核准。啟動不會自動連線模�
 
 真實 Codex 的既有檔案登入、改檔／Diff、測試、一次性允許／拒絕與執行中取消已完成限定案例驗收。可用 `npm run qa:codex -- --launch /absolute/path/to/local-config.json` 在可連線環境重跑；它使用真實模型操作內建小型測試專案副本，與 Fixture 選項不同。範圍與證據見 [真實 Codex 驗收](docs/codex-live-acceptance.md)。
 
-已提供可選的 [Roadmap 追蹤](docs/roadmap-operation.md)：`:roadmap <title>` 建立計畫，`:spec <requirements>`／`:confirm` 確認需求，`o` 開啟小型 outline，`:track 2.1` 接續既有 Task，`:direct` 回一般 Run。瀏覽器從 Actions → Use Roadmap 操作。只保存專案計畫與需求版本，Run 對話與核准仍不存檔。確認後的 Task 會在 agent 回報 finished 時自動跑 Check 並進入 Human Review（[Task flow](docs/task-flow.md)）；Agent Review 尚待後續切片。
+已提供可選的 [Roadmap 追蹤](docs/roadmap-operation.md)：`:roadmap <title>` 建立計畫，`:spec <requirements>`／`:confirm` 確認需求，`o` 開啟小型 outline，`:track 2.1` 接續既有 Task，`:direct` 回一般 Run。瀏覽器從 Actions → Use Roadmap 操作。只保存專案計畫與需求版本，Run 對話與核准仍不存檔。確認後的 Task 會在 agent 回報 finished 時自動跑 Check、做 Agent Review，再進入 Human Review（[Task flow](docs/task-flow.md)）；agent 提案拆分 Task 尚待後續切片。
 
 直接用瀏覽器開啟 [HTML 原型](preview/index.html)。左側查看專案來源路徑與 agents，選取 Run 後可試用 Services；這裡的核准、服務與結果均為模擬。
 

@@ -92,11 +92,18 @@ type RunStatus = Readonly<{
  * blue working, magenta new to you, gray quiet. `unread` is this client's view
  * of a turn; `outcome` is what the agent declared when its latest turn ended.
  */
-/** Where a Run's Task flow stands, from work's flows and next actions. */
+/**
+ * Where a Run's Task flow stands, from work's flows, reviews and next
+ * actions. `review` is Human Review; `approved` says an Agent Review of the
+ * current code approved it.
+ */
 type FlowView = Readonly<{
-  step: 'verifying' | 'fixing' | 'stopped' | 'review';
+  step: 'verifying' | 'reviewing' | 'fixing' | 'stopped' | 'review';
   attempts: number;
   reason: string;
+  reviewer?: RunId | undefined;
+  cause?: 'checks' | 'review' | undefined;
+  approved?: boolean | undefined;
 }>;
 const NO_FLOWS: ReadonlyMap<RunId, FlowView> = new Map();
 export function flowViews(state: WorkbenchState): ReadonlyMap<RunId, FlowView> {
@@ -105,7 +112,14 @@ export function flowViews(state: WorkbenchState): ReadonlyMap<RunId, FlowView> {
   for (const project of state.overview ?? [])
     for (const run of project.runs)
       if (run.next === 'accept')
-        views.set(run.runId, { step: 'review', attempts: 0, reason: '' });
+        views.set(run.runId, {
+          step: 'review',
+          attempts: 0,
+          reason: '',
+          approved: state.reviews?.some(
+            (item) => item.runId === run.runId && item.status === 'approved',
+          ),
+        });
   return views;
 }
 function runStatus(
@@ -161,16 +175,24 @@ function runStatus(
           rank: 0,
         };
   if (run.state.kind === 'idle' && flow?.step === 'stopped')
-    return {
-      label: `Checks · ${flow.reason}`,
-      short: 'Checks',
-      icon: '◉',
-      color: 'yellow',
-      rank: 0,
-    };
+    return flow.cause === 'review'
+      ? {
+          label: `Agent Review · ${flow.reason}`,
+          short: 'Agent review',
+          icon: '◉',
+          color: 'yellow',
+          rank: 0,
+        }
+      : {
+          label: `Checks · ${flow.reason}`,
+          short: 'Checks',
+          icon: '◉',
+          color: 'yellow',
+          rank: 0,
+        };
   if (run.state.kind === 'idle' && flow?.step === 'review')
     return {
-      label: 'Human Review · checks passed',
+      label: `Human Review · checks passed${flow.approved ? ' · review approved' : ''}`,
       short: 'Review',
       icon: '◉',
       color: 'yellow',
@@ -184,9 +206,17 @@ function runStatus(
       color: 'blue',
       rank: 3,
     };
+  if (run.state.kind === 'idle' && flow?.step === 'reviewing')
+    return {
+      label: 'Agent Review',
+      short: 'Reviewing',
+      icon: '●',
+      color: 'blue',
+      rank: 3,
+    };
   if (run.state.kind === 'running' && flow?.step === 'fixing')
     return {
-      label: `Fixing failed checks (${flow.attempts} of 2)`,
+      label: `Fixing ${flow.cause === 'review' ? 'review findings' : 'failed checks'} (${flow.attempts} of 2)`,
       short: 'Fixing',
       icon: '●',
       color: 'blue',

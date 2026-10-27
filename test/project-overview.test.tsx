@@ -43,6 +43,10 @@ async function until(check: () => boolean | Promise<boolean>) {
 const noEvidence: Evidence = {
   verify: () => Promise.reject(new Error('Not used')),
   assess: () => null,
+  review: () => {
+    throw new Error('Not used');
+  },
+  assessReview: () => null,
 };
 function fakeExecution() {
   const runs: RunSnapshot[] = [];
@@ -84,6 +88,7 @@ function fakeExecution() {
       },
       submit() {},
       subscribe: () => () => {},
+      cancel: () => Promise.reject(new Error('Not used')),
       async start(input: { label?: string }) {
         launched.push(input.label ?? 'start');
         const run = runs.at(-1);

@@ -68,6 +68,7 @@ export const runSnapshotSchema: z.ZodType<RunSnapshot> = z.object({
   }),
   capabilities: capabilities.nullable(),
   worktree: worktree.optional(),
+  review: z.object({ runId: runIdSchema, candidate: sha }).optional(),
 });
 const base = z.object({
   sequence: z.number().int().positive(),

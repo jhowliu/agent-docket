@@ -210,6 +210,7 @@ export function createWebWorkbench(
         checks: work.checks(),
         verifications: work.verifications(),
         flows: work.flows(),
+        reviews: work.reviews(),
         defaultProjectId,
         sessionOptions,
         features: {
@@ -220,6 +221,7 @@ export function createWebWorkbench(
           changeMap: true,
           verify: true,
           flow: true,
+          review: true,
         },
         launch: {
           provider: launch.provider,

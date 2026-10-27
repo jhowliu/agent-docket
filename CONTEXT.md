@@ -37,8 +37,12 @@ _Avoid_: 把模式套用到整個專案的所有 Run，或把讀取計畫視為�
 _Avoid_: 把單次工具操作的允許／拒絕核准視為 Human Review 完成；把 accepted 當成已 commit、已交付或已 merge
 
 **Task flow**：
-追蹤已確認 Task 的 Run 在 agent 回報 finished 後，由工作台自動接手的步驟：跑 Check、失敗時把結果送回 agent（最多兩次）、通過後進 Human Review；只存在 daemon 記憶體，使用者自己下 prompt 即重新計數。
+追蹤已確認 Task 的 Run 在 agent 回報 finished 後，由工作台自動接手的步驟：跑 Check、通過後做 Agent Review、核可後進 Human Review；Check 失敗或 review 意見送回 agent，合計最多兩次；只存在 daemon 記憶體，使用者自己下 prompt 即重新計數。
 _Avoid_: 把 Task flow 當成 Task 完成、審查通過，或從 agent 對話推斷要不要檢查
+
+**Agent Review**：
+Check 通過後，由另一個 reviewer Run 在該 Candidate 的唯讀 checkout 上，依 Task spec 檢查變更，並以 Run 專用工具 `submit_review` 給出 approve 或 changes 與 findings；結果綁定 Candidate 與 spec 版本，結束後 reviewer Run 與 checkout 一併移除。
+_Avoid_: 把 Agent Review 的 approve 當成 Human Review 接受或 Task 完成；從 reviewer 的對話推斷結論
 
 **Task spec**：
 Task 已定案的需求與驗收約定；修改後形成新版本，原有證據須重新評估適用性。

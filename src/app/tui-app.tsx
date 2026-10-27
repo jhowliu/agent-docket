@@ -72,10 +72,17 @@ function stateHint(
       ? ' · m changes'
       : '';
   const flow = flowViews(state).get(run.id);
+  const runName = (id: RunId | undefined) =>
+    `Run ${state.runs.findIndex((item) => item.id === id) + 1}`;
   if (run.state.kind === 'idle' && flow?.step === 'stopped')
-    return `Checks need you: ${flow.reason} · Enter tell the agent · v re-run`;
+    return `${flow.cause === 'review' ? 'Agent Review needs' : 'Checks need'} you: ${flow.reason} · Enter tell the agent · v re-run`;
   if (run.state.kind === 'idle' && flow?.step === 'review')
-    return `Human Review · checks passed · :accept or :changes <what to fix>${changes}`;
+    return `Human Review · checks passed${flow.approved ? ' · review approved' : ''} · :accept or :changes <what to fix>${changes}`;
+  if (run.state.kind === 'idle' && flow?.step === 'reviewing')
+    return `Agent Review in ${runName(flow.reviewer)} · a prompt here stops it · :accept skips it`;
+  // A reviewer Run: its result goes to the Run it reviews.
+  if (run.review && run.state.kind === 'running')
+    return `${AGENT_NAMES[run.provider]} is reviewing ${runName(run.review.runId)} (Candidate ${run.review.candidate.slice(0, 7)}) · x stops the review · 1 Live`;
   const checks = verificationHint(
     state.verifications?.find((item) => item.runId === run.id),
   );
@@ -83,7 +90,7 @@ function stateHint(
   switch (run.state.kind) {
     case 'running':
       return flow?.step === 'fixing'
-        ? `${AGENT_NAMES[run.provider]} is fixing failed checks (${flow.attempts} of 2) · x stop · 1 Live`
+        ? `${AGENT_NAMES[run.provider]} is fixing ${flow.cause === 'review' ? 'review findings' : 'failed checks'} (${flow.attempts} of 2) · x stop · 1 Live`
         : `${AGENT_NAMES[run.provider]} is working · x stop · 1 Live`;
     case 'starting':
       return 'Starting the agent…';

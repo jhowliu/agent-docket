@@ -93,11 +93,22 @@ export async function stopGroup(
 }
 
 /** Explicit native mode. A worktree and process group are not a security sandbox. */
+/** A reviewer's working directory, made by the reviewed Run's worktree. */
+export type ReviewCheckout = (
+  path: string,
+) => Promise<{ release(): Promise<void> }>;
+
+/**
+ * With `review`, the Run reviews another Run's Candidate: its directory comes
+ * from `review` instead of `source`, the adapter starts read-only, and stopping
+ * it discards the checkout.
+ */
 export async function launchLocal(
   worker: LocalWorker,
   source: Source,
   id: RunId,
   fixture: string,
+  review?: ReviewCheckout,
 ): Promise<ManagedProcess> {
   if (process.platform === 'win32')
     throw new Error('Local mode currently requires macOS or Linux');
@@ -111,6 +122,7 @@ export async function launchLocal(
   const scratch = join(temporary, 'tmp');
   let child: ChildProcessWithoutNullStreams | undefined;
   let worktree: ManagedWorktree | undefined;
+  let checkout: { release(): Promise<void> } | undefined;
   try {
     await mkdir(codexHome, { recursive: true, mode: 0o700 });
     await writeFile(
@@ -132,7 +144,8 @@ export async function launchLocal(
       XDG_CACHE_HOME: join(home, '.cache'),
       XDG_DATA_HOME: join(home, '.local', 'share'),
       NO_BROWSER: '1',
-      INITIAL_AGENT_MODE: 'workspace-write',
+      // Codex asks before a reviewer edits anything.
+      INITIAL_AGENT_MODE: review ? 'read-only' : 'workspace-write',
       CODEX_CONFIG: JSON.stringify({ cli_auth_credentials_store: 'file' }),
       GIT_CONFIG_NOSYSTEM: '1',
       GIT_CONFIG_GLOBAL: '/dev/null',
@@ -140,7 +153,8 @@ export async function launchLocal(
       GIT_CEILING_DIRECTORIES: base,
       GIT_TERMINAL_PROMPT: '0',
     });
-    if (source.kind === 'git') {
+    if (review) checkout = await review(cwd);
+    else if (source.kind === 'git') {
       const gitOptions = { env, timeout: 60_000, maxBuffer: 1024 * 1024 };
       await execFileAsync(
         'git',
@@ -249,6 +263,7 @@ export async function launchLocal(
         cleanup ??= (async () => {
           await stopGroup(managedChild);
           await rm(temporary, { recursive: true, force: true });
+          await checkout?.release();
         })().catch((error: unknown) => {
           cleanup = undefined;
           throw error;
@@ -260,6 +275,7 @@ export async function launchLocal(
     if (child) await stopGroup(child);
     await rm(temporary, { recursive: true, force: true });
     await worktree?.collect();
+    await checkout?.release().catch(() => {});
     // Preserve code and copy metadata on startup failure as well as cancellation.
     throw error;
   }

@@ -14,6 +14,7 @@ import {
   projectWorkSchema,
   projectOverviewSchema,
   projectCheckSchema,
+  runReviewSchema,
   runVerificationSchema,
   taskFlowSchema,
 } from '../work/index.js';
@@ -173,6 +174,7 @@ export const stateSchema = z.object({
   checks: z.array(projectCheckSchema).max(65).optional(),
   verifications: z.array(runVerificationSchema).max(64).optional(),
   flows: z.array(taskFlowSchema).max(64).optional(),
+  reviews: z.array(runReviewSchema).max(64).optional(),
   defaultProjectId: projectWorkSchema.shape.id.optional(),
   sessionOptions: sessionOptionsSchema.optional(),
   features: z
@@ -184,6 +186,7 @@ export const stateSchema = z.object({
       changeMap: z.boolean().optional(),
       verify: z.boolean().optional(),
       flow: z.boolean().optional(),
+      review: z.boolean().optional(),
     })
     .optional(),
   launch: z

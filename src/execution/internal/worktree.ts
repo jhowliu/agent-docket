@@ -388,6 +388,11 @@ export interface ManagedWorktree {
   freeze(ref: string): Promise<{ sha: string; tree: string; parent: string }>;
   /** A fresh detached checkout of a commit, outside the Run directory. */
   checkout(sha: string): Promise<{ path: string; release(): Promise<void> }>;
+  /**
+   * A detached checkout of a commit at `path` (a reviewer's working
+   * directory): no branch, and release discards whatever it holds.
+   */
+  detach(sha: string, path: string): Promise<{ release(): Promise<void> }>;
 }
 
 /** Git owns checkout/registration removal; this module never recursively deletes a repo. */
@@ -597,6 +602,20 @@ export async function createLocalWorktree(
       },
     };
   }
+  async function detach(sha: string, target: string) {
+    await git(['-C', path, 'worktree', 'add', '--detach', '--', target, sha]);
+    return {
+      async release() {
+        try {
+          // A disposable checkout the workbench made: nothing in it is kept.
+          await administrative('worktree', 'remove', '--force', '--', target);
+        } finally {
+          await administrative('worktree', 'prune').catch(() => {});
+          await rmdir(dirname(target)).catch(() => {});
+        }
+      },
+    };
+  }
   async function collect(): Promise<WorktreeSnapshot> {
     if (current.status.kind === 'removed') return structuredClone(current);
     try {
@@ -643,6 +662,7 @@ export async function createLocalWorktree(
     measure: () => serialize(contentTree),
     freeze: (ref) => serialize(() => freeze(ref)),
     checkout: (sha) => serialize(() => checkout(sha)),
+    detach: (sha, target) => serialize(() => detach(sha, target)),
     collect: () => serialize(collect),
     commit: (message) =>
       serialize(async () => {

@@ -3,7 +3,7 @@ import { basename } from 'node:path';
 import { inspectLocalProject, suggestCheck } from '../../execution/index.js';
 import type { RunId, RunSnapshot } from '../../execution/index.js';
 import type { AttentionItem } from '../../attention/index.js';
-import type { Verification } from '../../evidence/index.js';
+import type { Review, Verification } from '../../evidence/index.js';
 import type {
   NextAction,
   ProjectWorkspaces,
@@ -14,7 +14,7 @@ import { nextActionSchema } from './contract.js';
 import { createTrackedWork } from './work.js';
 import { CheckRequired, createCheckStore } from './checks.js';
 
-/** Failed checks sent back to the agent before the flow stops for the person. */
+/** Failed checks and review findings sent back before the flow stops for the person. */
 const FIX_LIMIT = 2;
 const errorText = (error: unknown) =>
   (error instanceof Error ? error.message : 'Checks could not start').slice(
@@ -24,6 +24,11 @@ const errorText = (error: unknown) =>
 /** The end of a check's output, enough to fix it from. */
 const tail = (output: string) =>
   output.trimEnd().split('\n').slice(-60).join('\n').slice(-3000);
+/** Execution names a cancelled or empty review itself; other failures need context. */
+const reviewFailure = (reason: string) =>
+  /^(Agent Review|The reviewer)/.test(reason)
+    ? reason
+    : `Agent Review failed: ${reason}`;
 
 const rank = (next: NextAction) => nextActionSchema.options.indexOf(next);
 // Prompt, working and ended rank alike for ordering: none asks for a decision.
@@ -74,13 +79,19 @@ export function createProjectWorkspaces(
     if (!id) throw new Error('Run has no project association');
     return project(id);
   }
+  /** Ends a Run's flow, stopping its review: the person or a newer step took over. */
+  function drop(runId: RunId) {
+    const reviewer = flows.get(runId)?.reviewer;
+    flows.delete(runId);
+    if (reviewer) void options.execution.cancel(reviewer).catch(() => {});
+  }
   /** Forgets Runs that execution removed after the person cancelled them. */
   function prune() {
     const live = new Set(options.execution.list().map((run) => run.id));
     for (const runId of runs.keys())
       if (!live.has(runId)) {
         runs.delete(runId);
-        flows.delete(runId);
+        drop(runId);
         finishing.delete(runId);
       }
   }
@@ -129,10 +140,10 @@ export function createProjectWorkspaces(
     const { work } = owner(runId);
     await work.snapshot();
     const task = work.taskOf(runId);
-    // Only a confirmed Task in Development, or back from Human Review, flows.
+    // Only a confirmed Task in Development, or back from a review, flows.
     if (
       !task?.spec.confirmed ||
-      !['development', 'human-review'].includes(task.stage) ||
+      !['development', 'agent-review', 'human-review'].includes(task.stage) ||
       !options.execution.snapshot(runId).worktree ||
       // An open agent request outranks a finished report.
       options.attention
@@ -189,8 +200,13 @@ export function createProjectWorkspaces(
       return;
     const { status, reason } = judged.assessment;
     if (status === 'passed') {
-      if (task.stage === 'development' && task.status !== 'accepted')
-        await work.transition(task.id, { stage: 'human-review' });
+      // A review already running on this code goes on.
+      if (
+        ['development', 'agent-review'].includes(task.stage) &&
+        task.status !== 'accepted' &&
+        flows.get(runId)?.step !== 'reviewing'
+      )
+        await review(runId, done, automatic?.attempts ?? 0);
       return;
     }
     // Checks the person started are shown, never sent back.
@@ -207,7 +223,13 @@ export function createProjectWorkspaces(
       return;
     }
     const attempts = automatic.attempts + 1;
-    flows.set(runId, { ...automatic, step: 'fixing', attempts, reason });
+    flows.set(runId, {
+      ...automatic,
+      step: 'fixing',
+      attempts,
+      reason,
+      cause: 'checks',
+    });
     try {
       await work.submit(
         runId,
@@ -228,6 +250,136 @@ export function createProjectWorkspaces(
         step: 'stopped',
         reason: errorText(error),
       });
+    }
+  }
+  /** Starts the Agent Review of a Candidate that passed its checks. */
+  async function review(runId: RunId, done: Verification, attempts: number) {
+    const id = runs.get(runId);
+    const { work } = owner(runId);
+    const task = work.taskOf(runId);
+    if (!id || !task) return;
+    const base = options.execution.snapshot(runId).worktree?.baseRevision;
+    const sha = done.candidate.sha;
+    const flow = { runId, taskId: task.id, attempts, reason: '' };
+    try {
+      const { review, settled } = options.evidence.review({
+        runId,
+        candidate: done.candidate,
+        spec: done.spec,
+        prompt: [
+          `Workbench Agent Review of Candidate ${sha.slice(0, 7)} for the Task "${task.title}".`,
+          `Requirements (revision ${task.spec.revision}):`,
+          task.spec.text,
+          '',
+          `This checkout is the change at HEAD (${sha}).${base ? ` See it with: git diff ${base} HEAD` : ''}`,
+          `The person's check passed on it: ${done.command}`,
+          'Review the change against these requirements, then call submit_review.',
+        ].join('\n'),
+      });
+      // Shown with its project while it works.
+      runs.set(review.reviewer, id);
+      flows.set(runId, {
+        ...flow,
+        step: 'reviewing',
+        reviewer: review.reviewer,
+      });
+      void settled.then((finished) => step(() => reviewed(runId, finished)));
+      if (task.stage !== 'agent-review')
+        await work.transition(task.id, { stage: 'agent-review' });
+    } catch (error) {
+      flows.set(runId, {
+        ...flow,
+        step: 'stopped',
+        reason: `Agent Review could not start: ${errorText(error)}`.slice(
+          0,
+          400,
+        ),
+        cause: 'review',
+      });
+    }
+  }
+  /** An approval moves the Task to Human Review; findings go back to the agent. */
+  async function reviewed(runId: RunId, finished: Review) {
+    // Execution removed the reviewer Run.
+    runs.delete(finished.reviewer);
+    const flow = flows.get(runId);
+    // The person took over, or another review started.
+    if (flow?.step !== 'reviewing' || flow.reviewer !== finished.reviewer)
+      return;
+    flows.delete(runId);
+    if (!runs.has(runId)) return;
+    const { work } = owner(runId);
+    await work.snapshot();
+    const task = work.taskOf(runId);
+    const run = options.execution.snapshot(runId);
+    const judged = options.evidence.assessReview(runId, {
+      tree: run.worktree?.tree,
+      spec: work.specOf(runId),
+    });
+    if (
+      task?.id !== flow.taskId ||
+      judged?.review.reviewer !== finished.reviewer
+    )
+      return;
+    const { status, reason } = judged.assessment;
+    const { reviewer: _reviewer, ...rest } = flow;
+    const stop = (text: string) =>
+      flows.set(runId, {
+        ...rest,
+        step: 'stopped',
+        reason: text.slice(0, 400),
+        cause: 'review',
+      });
+    if (status === 'approved') {
+      if (task.stage === 'agent-review' && task.status !== 'accepted')
+        await work.transition(task.id, { stage: 'human-review' });
+      return;
+    }
+    // The code or requirements changed since: nothing moves.
+    if (status === 'stale') return;
+    if (status !== 'changes') {
+      stop(reviewFailure(reason));
+      return;
+    }
+    // Findings mean more work: the Task goes back to Development.
+    if (task.stage !== 'development' && task.status !== 'accepted')
+      await work.transition(task.id, { stage: 'development' });
+    if (run.state.kind !== 'idle') {
+      stop(`Agent Review requested changes: ${reason}`);
+      return;
+    }
+    if (flow.attempts >= FIX_LIMIT) {
+      stop(
+        `Agent Review still requests changes after ${FIX_LIMIT} fixes: ${reason}`,
+      );
+      return;
+    }
+    const attempts = flow.attempts + 1;
+    flows.set(runId, {
+      ...rest,
+      step: 'fixing',
+      attempts,
+      reason: reason.slice(0, 400),
+      cause: 'review',
+    });
+    const findings = judged.review.result?.findings ?? [];
+    try {
+      await work.submit(
+        runId,
+        [
+          `Workbench Agent Review requested changes on Candidate ${finished.candidate.sha.slice(0, 7)} (automatic fix ${attempts} of ${FIX_LIMIT}).`,
+          `Summary: ${reason}`,
+          'Findings:',
+          ...findings.map(
+            (finding) =>
+              `- ${finding.path ? `${finding.path}${finding.line ? `:${finding.line}` : ''}: ` : ''}${finding.text}`,
+          ),
+          '',
+          'Fix these within this Task, then report finished again.',
+        ].join('\n'),
+      );
+    } catch (error) {
+      stop(errorText(error));
     }
   }
   /** Human Review is due: the Task waits in its stage with passing checks. */
@@ -376,7 +528,7 @@ export function createProjectWorkspaces(
         stage: 'human-review',
         status: 'accepted',
       });
-      flows.delete(runId);
+      drop(runId);
     },
     async requestChanges(runId, text) {
       const { work } = owner(runId);
@@ -388,7 +540,7 @@ export function createProjectWorkspaces(
         stage: 'development',
         status: 'active',
       });
-      flows.delete(runId);
+      drop(runId);
       await work.submit(
         runId,
         [
@@ -422,6 +574,29 @@ export function createProjectWorkspaces(
           : [];
       });
     },
+    reviews() {
+      prune();
+      return [...runs].flatMap(([runId, id]) => {
+        const found = projects.get(id);
+        const judged = found
+          ? options.evidence.assessReview(runId, {
+              tree: options.execution.snapshot(runId).worktree?.tree,
+              spec: found.work.specOf(runId),
+            })
+          : null;
+        return judged
+          ? [
+              {
+                runId,
+                reviewer: judged.review.reviewer,
+                candidate: judged.review.candidate.sha,
+                ...judged.assessment,
+                reason: judged.assessment.reason.slice(0, 400),
+              },
+            ]
+          : [];
+      });
+    },
     apply(id, command) {
       const target = project(id);
       if ('runId' in command && command.runId) {
@@ -438,7 +613,7 @@ export function createProjectWorkspaces(
       if (!id)
         return Promise.reject(new Error('Run has no project association'));
       // The person takes over: automatic fixes start counting again.
-      flows.delete(runId);
+      drop(runId);
       return project(id).work.submit(runId, text);
     },
     async close() {

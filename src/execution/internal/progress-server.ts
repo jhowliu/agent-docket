@@ -10,17 +10,21 @@ import {
   requestInput,
   requestInstructions,
   requestsPerTurn,
+  reviewInput,
+  reviewInstructions,
   toolRecord,
   workbenchInstructions,
 } from './progress-protocol.js';
 
 const directory = process.env.WORKBENCH_PROGRESS_DIRECTORY;
 if (!directory) throw new Error('Progress channel is not configured');
+// A reviewer Run gets submit_review only.
+const reviewing = process.env.WORKBENCH_PROGRESS_MODE === 'review';
 const records = join(directory, 'reports.jsonl');
 const active = join(directory, 'turn');
 const server = new McpServer(
   { name: 'workbench-progress', version: '1.0.0' },
-  { instructions: workbenchInstructions },
+  { instructions: reviewing ? reviewInstructions : workbenchInstructions },
 );
 const failure = (text: string): CallToolResult => ({
   isError: true,
@@ -33,7 +37,7 @@ let writing = Promise.resolve();
 function record(
   entry: Readonly<Record<string, unknown>>,
   accepted: string,
-  kind: 'progress' | 'request',
+  kind: 'progress' | 'request' | 'review',
 ): Promise<CallToolResult> {
   const result = writing.then<CallToolResult>(async () => {
     try {
@@ -41,7 +45,7 @@ function record(
       const parsed = toolRecord.safeParse({ turn, ...entry });
       if (!parsed.success)
         return failure(
-          `No active turn accepts ${kind === 'progress' ? 'progress reports' : 'requests'}.`,
+          `No active turn accepts ${kind === 'progress' ? 'progress reports' : kind === 'request' ? 'requests' : 'reviews'}.`,
         );
       if (
         kind === 'request' &&
@@ -65,40 +69,58 @@ function record(
   return result;
 }
 
-server.registerTool(
-  'report_progress',
-  {
-    title: 'Report progress',
-    description: progressInstructions,
-    inputSchema: progressInput,
-    annotations: { destructiveHint: false, openWorldHint: false },
-  },
-  ({ summary, finished }) =>
-    finished
-      ? record(
-          { summary, finished: true },
-          'Recorded as your report that the work is finished; it is not verification.',
-          'progress',
-        )
-      : record(
-          { summary },
-          'Progress recorded as an agent report.',
-          'progress',
-        ),
-);
-server.registerTool(
-  'request_user',
-  {
-    title: 'Ask the person to act or answer',
-    description: requestInstructions,
-    inputSchema: requestInput,
-    annotations: { destructiveHint: false, openWorldHint: false },
-  },
-  (request) =>
-    record(
-      { request },
-      'Shown to the person as needing their attention. Nothing waits for it; explain it in your answer.',
-      'request',
-    ),
-);
+if (reviewing)
+  server.registerTool(
+    'submit_review',
+    {
+      title: 'Submit your review',
+      description: reviewInstructions,
+      inputSchema: reviewInput,
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    (review) =>
+      record(
+        { review },
+        'Review recorded. The workbench acts on your latest review when this turn ends.',
+        'review',
+      ),
+  );
+else {
+  server.registerTool(
+    'report_progress',
+    {
+      title: 'Report progress',
+      description: progressInstructions,
+      inputSchema: progressInput,
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    ({ summary, finished }) =>
+      finished
+        ? record(
+            { summary, finished: true },
+            'Recorded as your report that the work is finished; it is not verification.',
+            'progress',
+          )
+        : record(
+            { summary },
+            'Progress recorded as an agent report.',
+            'progress',
+          ),
+  );
+  server.registerTool(
+    'request_user',
+    {
+      title: 'Ask the person to act or answer',
+      description: requestInstructions,
+      inputSchema: requestInput,
+      annotations: { destructiveHint: false, openWorldHint: false },
+    },
+    (request) =>
+      record(
+        { request },
+        'Shown to the person as needing their attention. Nothing waits for it; explain it in your answer.',
+        'request',
+      ),
+  );
+}
 await server.connect(new StdioServerTransport());

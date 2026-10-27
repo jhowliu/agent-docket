@@ -6,9 +6,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { progressLimit, toolRecord } from './progress-protocol.js';
 import type { z } from 'zod';
-import type { requestInput } from './progress-protocol.js';
+import type { requestInput, reviewInput } from './progress-protocol.js';
 
 export type AgentRequestInput = z.infer<typeof requestInput>;
+export type AgentReviewInput = z.infer<typeof reviewInput>;
 
 export type ProgressChannel = Readonly<{
   server: McpServerStdio;
@@ -17,13 +18,18 @@ export type ProgressChannel = Readonly<{
   close(): Promise<void>;
 }>;
 
-/** A local Run's private MCP ingress. Its identity is bound here, never supplied by the agent. */
+/**
+ * A local Run's private MCP ingress. Its identity is bound here, never
+ * supplied by the agent. With `review`, the Run is a reviewer: its server
+ * offers submit_review instead of report_progress and request_user.
+ */
 export async function createProgressChannel(handlers: {
   report: (summary: string, finished: boolean) => void;
   request: (request: AgentRequestInput) => void;
+  review?: (review: AgentReviewInput) => void;
   failed: () => void;
 }): Promise<ProgressChannel> {
-  const { report, request, failed } = handlers;
+  const { report, request, review, failed } = handlers;
   const directory = await mkdtemp(join(tmpdir(), 'workbench-progress-'));
   const records = join(directory, 'reports.jsonl');
   const active = join(directory, 'turn');
@@ -57,7 +63,8 @@ export async function createProgressChannel(handlers: {
           if (!turn || parsed.turn !== turn) continue;
           if ('summary' in parsed)
             report(parsed.summary, parsed.finished === true);
-          else request(parsed.request);
+          else if ('request' in parsed) request(parsed.request);
+          else review?.(parsed.review);
         }
       } catch {
         unavailable = true;
@@ -91,7 +98,12 @@ export async function createProgressChannel(handlers: {
         ...(source ? ['--import', import.meta.resolve('tsx')] : []),
         entry,
       ],
-      env: [{ name: 'WORKBENCH_PROGRESS_DIRECTORY', value: directory }],
+      env: [
+        { name: 'WORKBENCH_PROGRESS_DIRECTORY', value: directory },
+        ...(review
+          ? [{ name: 'WORKBENCH_PROGRESS_MODE', value: 'review' }]
+          : []),
+      ],
     },
     async beginTurn() {
       if (closed || unavailable) return;

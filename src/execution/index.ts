@@ -92,6 +92,8 @@ export type RunSnapshot = Readonly<{
   };
   capabilities: Capabilities | null;
   worktree?: WorktreeSnapshot | undefined;
+  /** A reviewer Run: the Run and Candidate it reviews. */
+  review?: Readonly<{ runId: RunId; candidate: string }> | undefined;
 }>;
 /** A Run's code frozen for checking; equal `tree`s mean equal code. */
 export type Candidate = Readonly<{
@@ -114,6 +116,18 @@ export type CheckResult = Readonly<{
   truncated: boolean;
   startedAt: string;
   durationMs: number;
+}>;
+/** What a reviewer agent submitted; advice, never acceptance. */
+export type ReviewResult = Readonly<{
+  reviewer: RunId;
+  candidate: string;
+  verdict: 'approve' | 'changes';
+  summary: string;
+  findings: readonly Readonly<{
+    path?: string | undefined;
+    line?: number | undefined;
+    text: string;
+  }>[];
 }>;
 export type RunEventPayload =
   | { type: 'run.state'; state: RunState }
@@ -181,6 +195,24 @@ export interface Execution {
     candidate: Candidate,
     command: string,
   ): Promise<CheckResult>;
+  /**
+   * Local Git worktree Runs only, one review per Run at a time. Starts a
+   * separate reviewer Run at once (same provider and worker, labelled
+   * `Review · <label>`, listed like any Run, with `review` set) on a detached
+   * checkout of the Candidate: no branch, the adapter in read-only mode, and
+   * the Run-private submit_review tool instead of report_progress and
+   * request_user. Sends `prompt` (1–100000 characters) once the reviewer is
+   * ready. `settled` resolves with the latest review submitted when that turn
+   * ends, and rejects when the reviewer cannot start, needs sign-in, ends
+   * without a review, is interrupted or is cancelled (x on it, or the reviewed
+   * Run stopping). Either way the reviewer Run is then removed and its
+   * checkout discarded; nothing is committed.
+   */
+  startReview(
+    id: RunId,
+    candidate: Candidate,
+    prompt: string,
+  ): Readonly<{ reviewer: RunSnapshot; settled: Promise<ReviewResult> }>;
   snapshot(id: RunId): RunSnapshot;
   list(): readonly RunSnapshot[];
   /** Read-only, at most 200 entries per relative directory; fixture/local only.

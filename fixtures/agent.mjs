@@ -12,6 +12,39 @@ import { join } from 'node:path';
 // Trusted deterministic protocol peer, not a model or OS sandbox.
 const sessions = new Map();
 let counter = 0;
+const option = (name) =>
+  process.argv
+    .find((arg) => arg.startsWith(`--${name}=`))
+    ?.slice(name.length + 3);
+
+/** Connects to the Run's private workbench tools. */
+async function workbenchTools(session) {
+  const [{ Client }, { StdioClientTransport }] = await Promise.all([
+    import('@modelcontextprotocol/sdk/client/index.js'),
+    import('@modelcontextprotocol/sdk/client/stdio.js'),
+  ]);
+  const configured = session.mcpServers.find(
+    (server) => server.name === 'workbench_progress',
+  );
+  if (!configured || !('command' in configured))
+    throw new Error('Fixture progress tool missing');
+  const transport = new StdioClientTransport({
+    command: configured.command,
+    args: configured.args,
+    env: {
+      ...Object.fromEntries(
+        Object.entries(process.env).filter(([, value]) => value !== undefined),
+      ),
+      ...Object.fromEntries(
+        configured.env.map(({ name, value }) => [name, value]),
+      ),
+    },
+    stderr: 'pipe',
+  });
+  const tools = new Client({ name: 'workbench-fixture', version: '1.0.0' });
+  await tools.connect(transport);
+  return tools;
+}
 const app = agent({ name: 'workbench-fixture' })
   .onRequest(methods.agent.initialize, () => ({
     protocolVersion: PROTOCOL_VERSION,
@@ -49,7 +82,61 @@ const app = agent({ name: 'workbench-fixture' })
     // Codex dispatches slash commands from the first prompt block.
     const first = params.prompt[0];
     const typed = first?.type === 'text' ? first.text : '';
-    // --finish-feedback: what the workbench sends back is answered as fixed.
+    // A reviewer: --review=approve (default), changes, changes-once (until
+    // review-fix.txt exists), none (no verdict) or wait (until cancelled).
+    if (typed.startsWith('Workbench Agent Review of ')) {
+      const mode = option('review') ?? 'approve';
+      const tools = await workbenchTools(session);
+      try {
+        const names = (await tools.listTools()).tools.map((tool) => tool.name);
+        await message(
+          `Reviewing in ${process.env.INITIAL_AGENT_MODE} mode with ${names.join(', ')}.`,
+        );
+        if (mode === 'wait' && !abort.signal.aborted)
+          await new Promise((resolve) =>
+            abort.signal.addEventListener('abort', resolve, { once: true }),
+          );
+        if (abort.signal.aborted) return { stopReason: 'cancelled' };
+        let fixed = false;
+        try {
+          await readFile(join(session.cwd, 'review-fix.txt'));
+          fixed = true;
+        } catch {}
+        const changes =
+          mode === 'changes' || (mode === 'changes-once' && !fixed);
+        if (mode !== 'none')
+          await tools.callTool({
+            name: 'submit_review',
+            arguments: changes
+              ? {
+                  verdict: 'changes',
+                  summary: 'Expired tokens at the exact boundary are accepted.',
+                  findings: [
+                    {
+                      path: 'token.mjs',
+                      line: 1,
+                      text: 'Use <= so a token expiring now is rejected.',
+                    },
+                  ],
+                }
+              : {
+                  verdict: 'approve',
+                  summary: 'Meets the requirements.',
+                  findings: [],
+                },
+          });
+      } finally {
+        await tools.close();
+      }
+      return { stopReason: 'end_turn' };
+    }
+    // --finish-feedback: what the workbench sends back is answered as fixed;
+    // review findings leave review-fix.txt behind.
+    if (
+      process.argv.includes('--finish-feedback') &&
+      typed.startsWith('Workbench Agent Review requested changes')
+    )
+      await writeFile(join(session.cwd, 'review-fix.txt'), 'fixed\n');
     const text =
       process.argv.includes('--finish-feedback') &&
       typed.startsWith('Workbench ')
@@ -72,36 +159,8 @@ const app = agent({ name: 'workbench-fixture' })
       text.startsWith('done:') ||
       text.startsWith('needs:')
     ) {
-      const [{ Client }, { StdioClientTransport }] = await Promise.all([
-        import('@modelcontextprotocol/sdk/client/index.js'),
-        import('@modelcontextprotocol/sdk/client/stdio.js'),
-      ]);
-      const configured = session.mcpServers.find(
-        (server) => server.name === 'workbench_progress',
-      );
-      if (!configured || !('command' in configured))
-        throw new Error('Fixture progress tool missing');
-      const transport = new StdioClientTransport({
-        command: configured.command,
-        args: configured.args,
-        env: {
-          ...Object.fromEntries(
-            Object.entries(process.env).filter(
-              ([, value]) => value !== undefined,
-            ),
-          ),
-          ...Object.fromEntries(
-            configured.env.map(({ name, value }) => [name, value]),
-          ),
-        },
-        stderr: 'pipe',
-      });
-      const progress = new Client({
-        name: 'workbench-fixture',
-        version: '1.0.0',
-      });
+      const progress = await workbenchTools(session);
       try {
-        await progress.connect(transport);
         const tools = await progress.listTools();
         if (!tools.tools.some((tool) => tool.name === 'report_progress'))
           throw new Error('Fixture could not discover progress reporting');
