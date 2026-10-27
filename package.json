@@ -17,6 +17,7 @@
     "daemon:stop": "tsx src/app/tui.tsx --stop",
     "qa:tui": "FORCE_COLOR=1 tsx scripts/capture-tui.tsx",
     "qa:codex": "tsx scripts/accept-codex.tsx",
+    "qa:loop": "tsx scripts/accept-loop.tsx",
     "demo": "tsx src/app/cli.ts demo",
     "doctor": "tsx src/app/cli.ts doctor"
   },

@@ -1,5 +1,23 @@
 # Real Codex acceptance
 
+## 2026-10-27: the whole Task flow passed
+
+`npm run qa:loop [-- --scenario passing|fix-checks|fix-review]` copies `fixtures/project` with a `check.mjs` for the expiry boundary into a disposable Git project under `.workbench/acceptance/task-flow/trial-*`, opens a Codex · local Session with the existing `~/.codex/auth.json` copy, sets the check `node check.mjs`, creates and confirms the Task, and prompts once. It answers permission requests (allow once for the Run, reject for a reviewer), accepts at Human Review, then cancels the Run so its work is committed to its branch. It fails when the Run ends, the flow stops, a turn ends without a finished report, or 30 minutes pass (`WORKBENCH_LOOP_MINUTES`). `summary.json` and `events.json` stay in the trial folder.
+
+First trial, 43 seconds, no permission requests:
+
+- Codex changed `expiry < now` to `expiry <= now`, ran `node check.mjs` itself and called `report_progress` with `finished: true`.
+- Checks started on their own on Candidate `d159842` and passed (exit 0).
+- The reviewer Run started in `read-only` mode on the detached checkout, ran `git diff <base> HEAD`, `node check.mjs` and `cat`, then called `submit_review` with approve and no findings. None of these asked for approval.
+- The Task moved Development → Agent Review → Human Review, and `:accept` set it accepted. The reviewer Run left; the project kept only `main`, the Run's branch with the fix and its Candidate ref, with no extra worktree.
+
+The fix scenarios add a requirement (a non-finite expiry is expired) to the spec, while the prompt asks only to change the comparison. Both passed the same day:
+
+- **`fix-checks`, 52 seconds.** The check also runs a script kept outside the project. Codex changed only the comparison, as asked; checks failed (exit 1) and went back as `automatic fix 1 of 2`. Codex added `!Number.isFinite(expiry) ||`, checks passed on the new Candidate, the review approved, and the Task was accepted.
+- **`fix-review`, 77 seconds.** Only the boundary is checked, so checks passed on the partial change. The reviewer requested changes with one finding (`token.mjs:2`: missing, NaN and Infinity expiries stay unexpired, against the requirements). The Task went back to Development and the findings to Codex as `automatic fix 1 of 2`; it fixed them, checks passed, a second reviewer approved, and the Task was accepted.
+
+In all three trials no permission was asked, each project kept only `main` and the Run's branch, and no reviewer worktree was left. Not covered: the limit of two fixes with real Codex, a reviewer asking for an edit, and the TUI on a physical terminal.
+
 ## 2026-10-21: Git worktree save and collection passed
 
 Latest trial `.workbench/acceptance/codex-workflow/trial-CtUbcY/` repeated the real bundled Codex workflow on an owned Git project initialized from the sample files. Native reading, edits/Diff, three passing Node tests plus independent boundary assertions, exact once-only allow/reject and active cancellation all passed. The observed cancellation PID was 18434 and stopped.

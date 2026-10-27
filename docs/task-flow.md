@@ -87,6 +87,8 @@ The reviewer Run's own footer reads `Codex is reviewing Run 2 (Candidate abc1234
 
 Full run: 149 tests, 148 passed. The known intermittent `project-initialization` test failed; it passes alone.
 
+Real Codex: `npm run qa:loop` ran the whole flow on a disposable sample project on 2026-10-27: the passing path (43 s), a failed check fixed by the agent (`--scenario fix-checks`, 52 s) and review findings fixed by the agent (`--scenario fix-review`, 77 s). The reviewer called `git diff` and `submit_review` in `read-only` mode without approval. See [Real Codex acceptance](codex-live-acceptance.md).
+
 Next slice:
 
 - **Task breakdown.** `propose_plan` from a requirements discussion, kept as a draft until the person adopts it.
@@ -98,4 +100,4 @@ Not done yet:
 - one check per project; the reviewer uses the same agent preset as the Run;
 - the reviewer is not given the diff text, only the command to see it;
 - the reviewer cannot ask the person a question: with no verdict the flow stops and its Run (and what it asked) is removed;
-- not tried with a real Codex Run: that Codex calls `submit_review` and `git diff` without asking in `read-only` mode is unverified.
+- with real Codex the limit of two fixes was not reached; one fix each for checks and review was.
