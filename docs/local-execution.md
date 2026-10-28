@@ -2,7 +2,7 @@
 
 2026-10-19. Container isolation is deferred by the user's explicit decision. Local mode connects the installed, pinned `@agentclientprotocol/codex-acp@2.2.2` dependency to the existing workbench. It is an explicit launch mode, never a fallback after a container failure.
 
-2026-10-27: **Claude · local** connects the pinned `@agentclientprotocol/claude-agent-acp@0.97.0` (the Claude Agent SDK; its native Claude binary, about 270 MB, installs as an optional dependency) the same way: per-Run worktree, private home, the Run-private progress tools. Deterministic tests cover its launch profile; it has not yet run with a real model.
+2026-10-27: **Claude · local** connects the pinned `@agentclientprotocol/claude-agent-acp@0.97.0` (the Claude Agent SDK; its native Claude binary, about 270 MB, installs as an optional dependency) the same way: per-Run worktree, private home, the Run-private progress tools. Deterministic tests cover its launch profile; real Claude passed the whole Task flow on 2026-10-28.
 
 2026-10-21: real Codex with the existing copied file login passed project reading, progress, sample-code editing and independent tests, native Allow once / Reject once, and cancellation of an observed running process. The earlier routing failure reproduced under restricted connectivity and the same probe succeeded with approved network access. See [live acceptance and the repeatable command](codex-live-acceptance.md). Physical-terminal and other authentication flows remain unverified; opening the workbench alone does not start a model.
 
@@ -49,7 +49,7 @@ chmod 600 ~/.config/agent-docket/claude-token
 Why a token: the adapter otherwise loads the person's `~/.claude` (hooks, plugins, MCP servers, global instructions) into every Run. Each Run instead gets a private `CLAUDE_CONFIG_DIR` in its private home, and the existing Claude login (in the macOS Keychain, tied to the configuration directory) is not visible there. `ANTHROPIC_API_KEY` and the Codex keys are not inherited. The workbench writes that private `settings.json`:
 
 - a Run starts in `acceptEdits` (file edits without asking; commands still ask, as approvals);
-- a reviewer starts in `plan` with `Edit`, `Write` and `NotebookEdit` denied;
+- a reviewer starts in `default` with `Edit`, `Write` and `NotebookEdit` denied: read-only commands such as `git diff` run, others ask. Not `plan`: there its own `submit_review` asked for approval in the 2026-10-28 trial;
 - `allow: ["mcp__workbench_progress"]`, so `report_progress`, `request_user` and `submit_review` never ask.
 
 Project settings in the worktree (`.claude/settings.json`) still apply; the adapter loads project and local settings.
@@ -89,4 +89,4 @@ On 2026-10-19, the user-selected `ptt-web` directory was copied and the real Ink
 
 The 2026-10-21 live checks extend these deterministic orchestration tests with one real file-login/model workflow. They do not establish general model correctness or security isolation. Other login methods, product check-result recording, Services and the role pipeline remain separate work.
 
-Claude local mode (2026-10-27) is tested with the same deterministic peers: a private `CLAUDE_CONFIG_DIR` and settings, the token from its file with no Codex login or keys, a failed start without the token, a reviewer in `plan` mode with edits denied. The bundled real adapter also completed initialize and `session/new` to Idle in about 5 s with a fake token and no prompt, reporting version 0.97.0 and ACP v1; cancelling removed the worktree, private home and adapter processes. That checks wiring, not a model response. Real Claude (`npm run qa:loop -- --provider claude`) is not yet run.
+Claude local mode (2026-10-27) is tested with the same deterministic peers: a private `CLAUDE_CONFIG_DIR` and settings, the token from its file with no Codex login or keys, a failed start without the token, a reviewer in `default` mode with edits denied. The bundled real adapter also completed initialize and `session/new` to Idle in about 5 s with a fake token and no prompt, reporting version 0.97.0 and ACP v1; cancelling removed the worktree, private home and adapter processes. That checks wiring, not a model response. On 2026-10-28 real Claude passed `qa:loop` developing and reviewing, and reviewing a Codex Run with findings; see [live acceptance](codex-live-acceptance.md).

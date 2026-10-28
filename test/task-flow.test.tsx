@@ -389,7 +389,7 @@ test('the whole Task flow runs from the TUI: New Session, check, Roadmap, spec, 
   assert.equal(git(repo, 'worktree', 'list').split('\n').length, 2);
 });
 
-test('a Claude Run is reviewed by Claude in plan mode with edit tools denied', async (t) => {
+test('a Claude Run is reviewed by Claude in default mode with edit tools denied', async (t) => {
   const { client, runId, task } = await tracked(
     t,
     'test -f token.mjs',
@@ -413,7 +413,7 @@ test('a Claude Run is reviewed by Claude in plan mode with edit tools denied', a
         event.runId === reviewer &&
         event.type === 'agent.message' &&
         event.text ===
-          'Reviewing in plan mode (denied: Edit, Write, NotebookEdit) with submit_review.',
+          'Reviewing in default mode (denied: Edit, Write, NotebookEdit) with submit_review.',
     ),
   );
 });
@@ -476,7 +476,7 @@ test(':reviewer claude makes Claude review a Codex Run, saved for the project un
         event.runId === reviewer &&
         event.type === 'agent.message' &&
         event.text ===
-          'Reviewing in plan mode (denied: Edit, Write, NotebookEdit) with submit_review.',
+          'Reviewing in default mode (denied: Edit, Write, NotebookEdit) with submit_review.',
     ),
   );
 

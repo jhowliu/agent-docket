@@ -209,7 +209,7 @@ export interface Execution {
    * separate reviewer Run at once (same provider and worker, labelled
    * `Review · <label>`, listed like any Run, with `review` set) on a detached
    * checkout of the Candidate: no branch, the adapter read-only (Codex
-   * `read-only`; Claude `plan` with edit tools denied), and
+   * `read-only`; Claude `default` with edit tools denied), and
    * the Run-private submit_review tool instead of report_progress and
    * request_user. Sends `prompt` (1–100000 characters) once the reviewer is
    * ready. `settled` resolves with the latest review submitted when that turn

@@ -1,5 +1,15 @@
 # Real Codex acceptance
 
+## 2026-10-28: Claude develops and reviews; Claude reviews Codex
+
+`npm run qa:loop` with the user's `claude setup-token` token (file permissions 600, never printed):
+
+- `-- --provider claude` first failed: Claude reviewed in `plan` mode, and its own `submit_review` still asked for approval even though the private settings allow `mcp__workbench_progress` (the script rejects reviewer approvals, so the review never landed and the flow stopped: `The reviewer ended without submitting a review`). The developing Run in `acceptEdits` reported without asking. Claude reviewers now start in `default` with Edit/Write/NotebookEdit denied.
+- `-- --provider claude` then passed in 29 s: Claude read `token.mjs`, edited it (no approval in `acceptEdits`), asked once for `cat check.mjs; node check.mjs` (allowed), reported finished; the check passed; the Claude reviewer ran `git diff <base> HEAD` and `submit_review` with no approval and approved; accepted. No leftover worktree or Run directory.
+- `-- --reviewer claude --scenario fix-review` passed in 1.3 min: Codex (2.2.2) changed only the comparison; the Claude reviewer (0.97.0) requested changes because a non-finite expiry was not expired; Codex added a `Number.isFinite` guard; a second Claude review approved. No approvals were needed. The reviewer said it read the diff without running `check.mjs` (a command that would ask).
+
+Not tried: Claude reaching the two-fix limit, Claude in the TUI on a physical terminal, a Claude reviewer for a Claude Run with findings.
+
 ## 2026-10-27: the whole Task flow passed
 
 `npm run qa:loop [-- --scenario passing|fix-checks|fix-review]` copies `fixtures/project` with a `check.mjs` for the expiry boundary into a disposable Git project under `.workbench/acceptance/task-flow/trial-*`, opens a Codex · local Session with the existing `~/.codex/auth.json` copy, sets the check `node check.mjs`, creates and confirms the Task, and prompts once. It answers permission requests (allow once for the Run, reject for a reviewer), accepts at Human Review, then cancels the Run so its work is committed to its branch. It fails when the Run ends, the flow stops, a turn ends without a finished report, or 30 minutes pass (`WORKBENCH_LOOP_MINUTES`). `summary.json` and `events.json` stay in the trial folder.

@@ -204,8 +204,10 @@ export async function launchLocal(
         join(claudeConfig, 'settings.json'),
         JSON.stringify({
           permissions: {
-            // A reviewer plans and reports; it never edits.
-            defaultMode: review ? 'plan' : 'acceptEdits',
+            // A reviewer never edits and asks before commands that change
+            // anything. Not `plan`: there the Run's own submit_review still
+            // asks for approval.
+            defaultMode: review ? 'default' : 'acceptEdits',
             allow: ['mcp__workbench_progress'],
             ...(review ? { deny: ['Edit', 'Write', 'NotebookEdit'] } : {}),
           },

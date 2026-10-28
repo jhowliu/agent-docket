@@ -73,7 +73,7 @@ TUI 與同網址的瀏覽器共享 Run 和核准。啟動不會自動連線模�
 
 詳見 [TUI 操作與範圍](docs/tui-operation.md) 和 [鍵盤操作](docs/tui-keyboard.md)。
 
-真實 Codex 的既有檔案登入、改檔／Diff、測試、一次性允許／拒絕與執行中取消已完成限定案例驗收。`npm run qa:loop` 會在一次性的範例專案上用真的 Codex 跑完整個 Task flow（Check → Agent Review → Human Review → accept），2026-10-27 一次就通過、Check 失敗後修正、review findings 修正三種情境都已通過（`-- --scenario fix-checks`／`fix-review`）。`-- --provider claude` 改由 Claude 開發、`-- --reviewer claude` 改由 Claude 審查（尚未實測）。可用 `npm run qa:codex -- --launch /absolute/path/to/local-config.json` 在可連線環境重跑；它使用真實模型操作內建小型測試專案副本，與 Fixture 選項不同。範圍與證據見 [真實 Codex 驗收](docs/codex-live-acceptance.md)。
+真實 Codex 的既有檔案登入、改檔／Diff、測試、一次性允許／拒絕與執行中取消已完成限定案例驗收。`npm run qa:loop` 會在一次性的範例專案上用真的 Codex 跑完整個 Task flow（Check → Agent Review → Human Review → accept），2026-10-27 一次就通過、Check 失敗後修正、review findings 修正三種情境都已通過（`-- --scenario fix-checks`／`fix-review`）。`-- --provider claude` 改由 Claude 開發、`-- --reviewer claude` 改由 Claude 審查，2026-10-28 兩者都已用真的 Claude 通過（Claude 審 Codex 時抓到漏掉的需求並修正）。可用 `npm run qa:codex -- --launch /absolute/path/to/local-config.json` 在可連線環境重跑；它使用真實模型操作內建小型測試專案副本，與 Fixture 選項不同。範圍與證據見 [真實 Codex 驗收](docs/codex-live-acceptance.md)。
 
 已提供可選的 [Roadmap 追蹤](docs/roadmap-operation.md)：`:roadmap <title>` 建立計畫，`:spec <requirements>`／`:confirm` 確認需求，`o` 開啟小型 outline，`:track 2.1` 接續既有 Task，`:direct` 回一般 Run。瀏覽器從 Actions → Use Roadmap 操作。只保存專案計畫與需求版本，Run 對話與核准仍不存檔。確認後的 Task 會在 agent 回報 finished 時自動跑 Check、做 Agent Review，再進入 Human Review（[Task flow](docs/task-flow.md)）；agent 提案拆分 Task 尚待後續切片。
 
