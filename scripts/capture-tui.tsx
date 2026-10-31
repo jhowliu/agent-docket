@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
-import { renderToString } from 'ink';
+import { renderToString, Text } from 'ink';
 import stringWidth from 'string-width';
 import { createWebWorkbench } from '../src/app/web-workbench.js';
 import { createWorkbenchClient } from '../src/app/workbench-client.js';
@@ -165,7 +165,15 @@ try {
     outline?: boolean;
     composing?: boolean;
     direct?: boolean;
+    command?: boolean;
+    help?: boolean;
   }[] = [
+    { columns: 120, rows: 36, help: true },
+    { columns: 80, rows: 24, help: true },
+    { columns: 60, rows: 20, help: true },
+    { columns: 120, rows: 36, command: true },
+    { columns: 80, rows: 24, command: true },
+    { columns: 60, rows: 20, command: true },
     { columns: 120, rows: 36, outline: false, composing: false },
     { columns: 120, rows: 36, outline: true, composing: false },
     { columns: 80, rows: 24, outline: false, composing: false },
@@ -182,6 +190,8 @@ try {
     outline = false,
     composing = false,
     direct = false,
+    command = false,
+    help = false,
   } of captures) {
     const selectedId = direct
       ? three.runId
@@ -196,25 +206,33 @@ try {
         selectedId={selectedId}
         filter="active"
         view="timeline"
-        offset={0}
-        request={state.attention.find(
-          (item) => item.runId === selectedId && item.status === 'pending',
-        )}
+        offset={help ? 1_000_000 : 0}
+        request={
+          help
+            ? undefined
+            : state.attention.find(
+                (item) =>
+                  item.runId === selectedId && item.status === 'pending',
+              )
+        }
         armed
         connected
         busy={false}
         note={composing ? 'Last message accepted' : 'Last response accepted'}
         options={false}
-        help={false}
+        help={help}
         details={false}
         outline={outline}
         outlinePhase={0}
         outlineOffset={1}
-        mode={composing ? 'reply' : 'normal'}
+        commandText={command ? 'c' : ''}
+        mode={command ? 'command' : composing ? 'reply' : 'normal'}
         columns={columns}
         rows={rows}
         input={
-          composing ? (
+          command ? (
+            <Text>c</Text>
+          ) : composing ? (
             <PromptInput
               id="capture"
               active
@@ -235,7 +253,7 @@ try {
       />,
       { columns },
     );
-    const name = `${columns}x${rows}${outline ? '-roadmap' : direct ? '-direct' : composing ? (columns >= 80 ? '-reply' : '-direct-reply') : ''}`;
+    const name = `${columns}x${rows}${help ? '-help' : command ? '-command' : outline ? '-roadmap' : direct ? '-direct' : composing ? (columns >= 80 ? '-reply' : '-direct-reply') : ''}`;
     await writeFile(resolve(directory, name + '.ansi'), output);
     await writeFile(
       resolve(directory, name + '.txt'),

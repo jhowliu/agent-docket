@@ -20,7 +20,7 @@ export type TimelineEntry = Readonly<{
   turn: number | null;
 }>;
 type ToolActivity = {
-  row: number;
+  row: number | undefined;
   first: RunEvent;
   title: string;
   status: string;
@@ -63,13 +63,13 @@ export function checkEnded(
         ? { label: 'Checks passed', detail: `${sha} · ${time}`, color: 'green' }
         : {
             label: 'Checks failed',
-            detail: `${event.exitCode === null ? 'signal' : `exit ${event.exitCode}`} · ${sha} · ${time} · 1 Live`,
+            detail: `${event.exitCode === null ? 'signal' : `exit ${event.exitCode}`} · ${sha} · ${time} · :live`,
             color: 'red',
           };
     case 'timed-out':
       return {
         label: 'Checks timed out',
-        detail: `${sha} · 1 Live`,
+        detail: `${sha} · :live`,
         color: 'red',
       };
     case 'cancelled':
@@ -267,7 +267,7 @@ export function timelineEntries(
       }
       case 'tool': {
         const activity = tools.get(event.id) ?? {
-          row: rows.length,
+          row: undefined,
           first: event,
           title: event.title,
           status: event.status,
@@ -277,26 +277,19 @@ export function timelineEntries(
           activity.title = event.title;
         if (event.status !== 'unknown') activity.status = event.status;
         tools.set(event.id, activity);
-        const duration = ['completed', 'failed'].includes(activity.status)
-          ? elapsed(activity.first.at, event.at)
-          : undefined;
-        rows[activity.row] = row(
-          activity.first,
-          activity.status === 'in_progress'
-            ? 'Tool running'
-            : activity.status === 'unknown'
-              ? 'Tool update'
-              : 'Tool ' + activity.status,
-          `${preview(activity.title)}${duration ? ` · ${duration}` : ''}`,
-          activity.status === 'failed'
-            ? 'red'
-            : activity.status === 'completed'
-              ? 'green'
-              : activity.status === 'in_progress'
-                ? 'blue'
-                : 'gray',
-          true,
-        );
+        // Routine tool activity belongs in Live. Keep failures visible without
+        // mistaking an agent-run command for a Workbench Check.
+        if (activity.status === 'failed' || activity.row !== undefined) {
+          const duration = elapsed(activity.first.at, event.at);
+          activity.row ??= rows.length;
+          rows[activity.row] = row(
+            activity.first,
+            'Tool ' + activity.status,
+            `${preview(activity.title)}${duration ? ` · ${duration}` : ''} · :live`,
+            activity.status === 'failed' ? 'red' : 'gray',
+            true,
+          );
+        }
         break;
       }
       case 'attention': {
@@ -377,8 +370,6 @@ export function timelineEntries(
         break;
       }
       case 'diff':
-        if (!files.has(event.path))
-          rows.push(row(event, 'File changed', event.path, 'white', true));
         files.add(event.path);
         break;
       case 'turn.end': {

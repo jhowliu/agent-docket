@@ -4,6 +4,8 @@
 
 **已選技術與範圍**
 
+- 2026-10-30 TUI uses Timeline as the main workspace; Diff and background diff polling are removed. `m` / `:map` opens Change map for implementation inspection. `:live` opens diagnostics on demand; Esc / `:timeline` returns. No numbered tabs or h/l switching. `:h` / `:help` / `?` opens scrollable help; command input offers bounded suggestions with Tab / Shift+Tab name completion, Enter alone executes. Metadata is app-only (`tui-commands.ts`); domain validation is unchanged. See `docs/tui-keyboard.md`.
+
 - All product interface copy, CLI help/errors and built-in fixture messages use English. Preserve user-authored text, provider output, paths and historical records in their original language.
 
 - 2026-10-24 user removed the TUI Files panel (the former Project tree) as unused: no panel, `p` browsing or `Ctrl+W` focus prefix. `execution.listDirectory` (read-only, bounded directory metadata for fixture/local Runs; UI never chooses an arbitrary absolute root) and `/api/directory` / `client.directory` remain, tested, without a UI caller. This is separate from ACP client filesystem callbacks, which remain unsupported. Run/provider/working path belong in the bottom status bar. See `docs/project-tree.md`.

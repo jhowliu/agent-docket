@@ -358,19 +358,12 @@ test('the service serves a Run’s Change map from its own worktree and the TUI 
   assert.deepEqual(opened, [url]);
   await until(() => !!ui?.lastFrame()?.includes('Change map:'));
 
-  // A finished turn points at the map; the Diff tab says it only lists reported edits.
+  // The Timeline points at the map; there is no Diff tab or background diff fetch.
   await client.command({ kind: 'prompt', runId: run.id, text: 'reply:done' });
   await until(
     () => !!ui?.lastFrame()?.includes('Turn finished · m see what changed'),
   );
-  // The Diff tab reads the worktree itself: none of these edits were reported by the agent.
-  ui.stdin.write('2');
-  await until(
-    () => !!ui?.lastFrame()?.includes('+  return name.trim().toLowerCase();'),
-  );
-  ui.stdin.write('g');
-  await until(() => !!ui?.lastFrame()?.includes('Worktree vs'));
-  assert.ok(ui.lastFrame()?.includes('README.md · +2 −0'), ui.lastFrame());
+  assert.ok(!ui.lastFrame()?.includes('2 Diff'));
 
   const quick = await changes(`runId=${run.id}&files=only`);
   assert.equal(quick.status, 200);
@@ -434,7 +427,7 @@ test('a Run without a local worktree has no Change map', async (t) => {
   assert.deepEqual(opened, []);
 });
 
-test('the Diff tab follows the selected Run and drops a late reply for the previous one', async (t) => {
+test('the Timeline never fetches diffs and Change map opens for the selected Run', async (t) => {
   const { root } = await repository(project);
   const runs = await mkdtemp(join(tmpdir(), 'workbench-change-map-runs-'));
   const launch = {
@@ -451,23 +444,14 @@ test('the Diff tab follows the selected Run and drops a late reply for the previ
   } satisfies Launch;
   const origin = 'http://127.0.0.1:4174';
   const app = createWebWorkbench(origin, { launch });
-  // Hold the first Run's diff reply until the selection has moved on.
-  let held: string | undefined;
-  let release = () => {};
-  const client = createWorkbenchClient(origin, async (request) => {
-    const url = new URL(request.url);
-    if (
-      url.pathname === '/api/changes' &&
-      url.searchParams.get('runId') === held
-    )
-      await new Promise<void>((done) => {
-        release = done;
-      });
+  const paths: string[] = [];
+  const opened: string[] = [];
+  const client = createWorkbenchClient(origin, (request) => {
+    paths.push(new URL(request.url).pathname);
     return app.fetch(request);
   });
   let ui: ReturnType<typeof render> | undefined;
   t.after(async () => {
-    release();
     ui?.unmount();
     ui?.cleanup();
     await app.close();
@@ -489,21 +473,26 @@ test('the Diff tab follows the selected Run and drops a late reply for the previ
   assert.ok(first?.worktree && second?.worktree);
   await write(first.worktree.path, { 'only-first.txt': 'first\n' });
   await write(second.worktree.path, { 'only-second.txt': 'second\n' });
-  held = first.id;
   ui = render(
-    <WorkbenchApp client={client} initial={state} pollInterval={25} />,
+    <WorkbenchApp
+      client={client}
+      initial={state}
+      pollInterval={25}
+      openUrl={(url) => opened.push(url)}
+    />,
   );
   await until(() => !!ui?.lastFrame()?.includes('Run 2'));
-  ui.stdin.write('2');
-  await until(() => !!ui?.lastFrame()?.includes('Reading worktree changes'));
+  ui.stdin.write('m');
+  await until(() => opened.length === 1);
+  assert.equal(opened[0], client.changeMapUrl(first.id));
   ui.stdin.write('j');
-  await until(() => !!ui?.lastFrame()?.includes('only-second.txt'));
-  release();
-  await new Promise((done) => setTimeout(done, 300));
-  const frame = ui.lastFrame() ?? '';
-  assert.ok(frame.includes('only-second.txt'), frame);
+  await until(() => !!ui?.lastFrame()?.includes('> Run 2'));
+  ui.stdin.write('m');
+  await until(() => opened.length === 2);
+  assert.equal(opened[1], client.changeMapUrl(second.id));
   assert.ok(
-    !frame.includes('only-first.txt'),
-    'a late reply for the previous Run never replaces the current one',
+    !paths.includes('/api/changes'),
+    'Timeline does not poll worktree diffs',
   );
+  assert.ok(!ui.lastFrame()?.includes('2 Diff'));
 });

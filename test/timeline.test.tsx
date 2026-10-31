@@ -56,7 +56,7 @@ function timeline(events: RunEvent[], attention: AttentionItem[] = []) {
   );
 }
 
-test('Timeline shows explicit agent progress and tool activity while ordinary conversation stays in Live', () => {
+test('Timeline shows explicit progress and hides routine tool details', () => {
   const journal = events([
     { type: 'run.state', state: { kind: 'starting' } },
     {
@@ -86,8 +86,8 @@ test('Timeline shows explicit agent progress and tool activity while ordinary co
   ]);
   const output = timeline(journal);
   assert.ok(!output.includes('I will inspect the project.'), output);
-  assert.equal(output.split('Read README.md').length - 1, 1, output);
-  assert.ok(output.includes('completed'), output);
+  assert.ok(!output.includes('Read README.md'), output);
+  assert.ok(!output.includes('Tool completed'), output);
   assert.ok(
     output.includes(
       'Progress · Located the Rust backend and JavaScript frontend.',
@@ -164,11 +164,11 @@ test('Timeline associates requests, tool reuse and changed-file counts with thei
     output,
   );
   assert.ok(output.includes('Request · Check the JavaScript syntax.'), output);
-  assert.ok(output.includes('Tool completed · Read project files'), output);
-  assert.ok(output.includes('Tool completed · npm run check'), output);
+  assert.ok(!output.includes('Read project files'), output);
+  assert.ok(!output.includes('npm run check'), output);
   assert.ok(output.includes('5s · 1 tool · 1 file changed'), output);
   assert.ok(output.includes('3s · 1 tool'), output);
-  assert.equal(output.split('File changed · README.md').length - 1, 1, output);
+  assert.ok(!output.includes('File changed'), output);
   assert.ok(!output.includes('Turn started'), output);
   assert.ok(!output.includes('verified'), output);
   assert.equal(JSON.stringify(journal), before);
@@ -189,4 +189,59 @@ test('Timeline retains failure and stop reasons without claiming a successful ch
   assert.ok(output.includes('Run interrupted · Adapter exited'), output);
   assert.ok(!output.includes('NaN'), output);
   assert.ok(!output.includes('passed'), output);
+});
+
+test('Timeline keeps progress, replies and Checks visible through noisy tool activity', () => {
+  const journal = events([
+    { type: 'run.state', state: { kind: 'running' } },
+    { type: 'turn.start', text: 'Fix the issue.' },
+    ...Array.from(
+      { length: 80 },
+      (_, index): RunEventPayload => ({
+        type: 'tool',
+        id: `read-${index}`,
+        title: `Read file ${index}`,
+        status: 'completed',
+      }),
+    ),
+    {
+      type: 'tool',
+      id: 'failed',
+      title: 'Read missing file',
+      status: 'in_progress',
+    },
+    { type: 'agent.progress', summary: 'Found the cause and applied the fix.' },
+    { type: 'tool', id: 'failed', title: 'Tool update', status: 'failed' },
+    { type: 'tool', id: 'failed', title: 'Tool update', status: 'unknown' },
+    { type: 'agent.message', text: 'The fix is ready.' },
+    { type: 'turn.end', reason: 'end_turn' },
+    { type: 'check.start', candidate: 'abc1234', command: 'npm test' },
+    {
+      type: 'check.end',
+      candidate: 'abc1234',
+      command: 'npm test',
+      truncated: false,
+      outcome: 'exited',
+      exitCode: 0,
+      durationMs: 1000,
+      output: '',
+    },
+  ]);
+  const before = JSON.stringify(journal);
+  const output = timeline(journal);
+  assert.ok(!output.includes('Read file'), output);
+  assert.ok(
+    output.includes('Progress · Found the cause and applied the fix.'),
+    output,
+  );
+  assert.equal(
+    output.split('Tool failed · Read missing file').length - 1,
+    1,
+    output,
+  );
+  assert.ok(output.includes('Space reply · 1 line'), output);
+  assert.ok(output.includes('The fix is ready.'), output);
+  assert.ok(output.includes('Checks started'), output);
+  assert.ok(output.includes('Checks passed'), output);
+  assert.equal(JSON.stringify(journal), before);
 });

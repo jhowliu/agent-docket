@@ -108,7 +108,11 @@ test('Space reads a turn’s reply in the right pane; arrows scroll it or select
   await has('> Run 2');
   await key('k');
   await has('> Run 1');
-  await key('1');
+  await key(':');
+  await has('Command');
+  await key('live');
+  await key('\r');
+  await has('Live diagnostics');
   await has('↑↓ scroll');
   await key('\u001b[A');
   await has('paused');

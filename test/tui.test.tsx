@@ -70,10 +70,10 @@ test('Ink exposes active Runs without history controls or archive requests', asy
   });
   await frameHas(ui, '> Run 1');
   ui.stdin.write('?');
-  await frameHas(ui, ':active all agents');
+  await frameHas(ui, ':active');
   assert.doesNotMatch(ui.lastFrame() ?? '', /history|older-runs|Archived/i);
   ui.stdin.write('\u001b');
-  await frameHas(ui, ':active all agents', false);
+  await frameHas(ui, ':active', false);
   ui.stdin.write(':');
   await frameHas(ui, 'Command');
   ui.stdin.write('cancel');
@@ -305,8 +305,12 @@ test('Ink approval shortcuts target the focused request; paste and repeats canno
       .length,
     2,
   );
-  ui.stdin.write('2');
-  await frameHas(ui, '2 Diff');
+  ui.stdin.write(':');
+  await frameHas(ui, 'Command');
+  ui.stdin.write('live');
+  await frameHas(ui, ': live');
+  ui.stdin.write('\r');
+  await frameHas(ui, 'Live diagnostics');
   ui.stdin.write('a'); // Switching tabs cannot arm another approval.
   await frameHas(ui, 'Press Tab to select');
   assert.equal(
@@ -482,7 +486,7 @@ test('Ink frames fit terminal cells with long CJK, diff and all optional control
     [60, 20],
     [40, 12],
   ]) {
-    for (const view of ['live', 'diff', 'timeline'] as const) {
+    for (const view of ['live', 'timeline'] as const) {
       for (const expanded of [false, true]) {
         const output = renderToString(
           <WorkbenchScreen
@@ -526,7 +530,7 @@ test('Ink frames fit terminal cells with long CJK, diff and all optional control
   }
 });
 
-test('Vim keys move between Runs and views; typed text stays text while replying', async (t) => {
+test('Run navigation and on-demand diagnostics preserve typed replies', async (t) => {
   const app = createWebWorkbench(origin);
   const client = createWorkbenchClient(origin, (request) => app.fetch(request));
   await client.connect();
@@ -549,10 +553,13 @@ test('Vim keys move between Runs and views; typed text stays text while replying
     await new Promise((done) => setTimeout(done, 30));
   };
   await frameHas(ui, '> Run 1');
-  await key('2');
-  await frameHas(ui, 'No file changes yet');
-  await key('h');
-  await frameHas(ui, 'Enter to prompt · s for fixture scenarios');
+  await key(':');
+  await key('live');
+  await key('\r');
+  await frameHas(ui, 'Live diagnostics');
+  await key('\u001b');
+  await frameHas(ui, 'Live diagnostics', false);
+  await frameHas(ui, 'Timeline');
   await key('j');
   await frameHas(ui, '> Run 2');
   await frameHas(ui, 'Run 2 · fixture');
@@ -604,4 +611,83 @@ test('the header names a server that runs other code than this TUI and how to st
   });
   await frameHas(current, 'Connected');
   assert.doesNotMatch(current.lastFrame() ?? '', /out of date/);
+});
+
+test('command help is scrollable and completion edits text without executing it', async (t) => {
+  const app = createWebWorkbench(origin);
+  const client = createWorkbenchClient(origin, (request) => app.fetch(request));
+  const ui = render(
+    <WorkbenchApp
+      client={client}
+      initial={await client.connect()}
+      pollInterval={25}
+    />,
+  );
+  t.after(async () => {
+    ui.unmount();
+    ui.cleanup();
+    await app.close();
+  });
+  const key = async (text: string) => {
+    ui.stdin.write(text);
+    await new Promise((done) => setTimeout(done, 40));
+  };
+  await frameHas(ui, 'Timeline');
+  assert.doesNotMatch(ui.lastFrame() ?? '', /1 Live|2 Diff|3 Timeline/);
+  await key(':');
+  await frameHas(ui, 'Tab complete');
+  await frameHas(ui, ':help');
+  await key('h');
+  await key('\r');
+  await frameHas(ui, 'Commands · Esc close');
+  await frameHas(ui, ':new');
+  await key('G');
+  await frameHas(ui, 'Keyboard shortcuts');
+  await frameHas(ui, 'q / Ctrl+C detach; Runs keep running');
+  await key('g');
+  await frameHas(ui, ':new');
+  await key('\u001b');
+  await frameHas(ui, 'Commands · Esc close', false);
+  for (const text of ['help', 'h']) {
+    await key(':');
+    await key(text);
+    await key('\r');
+    await frameHas(ui, 'Commands · Esc close');
+    await key('\u001b');
+  }
+  await key(':');
+  await key('rev');
+  await frameHas(ui, ':reviewer [codex|claude|same]');
+  await key('\t');
+  await frameHas(ui, ': reviewer');
+  await key('claude');
+  await frameHas(ui, ': reviewer claude');
+  await key('\u001b');
+  // Discard this command so the next composer starts with an empty value.
+  await key(':');
+  await key('\u0015');
+  await key('c');
+  await key('\t');
+  await frameHas(ui, ': check');
+  await key('\t');
+  await frameHas(ui, ': changes');
+  await key('\u001b[Z');
+  await frameHas(ui, ': check');
+  await key('\u001b');
+  assert.equal(
+    (await client.poll()).runs.length,
+    0,
+    'Completion never starts or changes a Run',
+  );
+  await key(':');
+  await key('\u0015');
+  await key('live');
+  await key('\r');
+  await frameHas(ui, 'Live diagnostics · Esc Timeline');
+  await key('\u001b');
+  await frameHas(ui, 'Live diagnostics', false);
+  await key(':');
+  await key('diff');
+  await key('\r');
+  await frameHas(ui, 'Unknown command · :help');
 });

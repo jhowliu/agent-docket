@@ -857,12 +857,12 @@ test('New Session is a centered modal over the workspace, sized by its branches,
     };
   };
   resize(80, 24);
-  await frame('1 Live');
+  await frame('Timeline');
   ui.stdin.write('n');
   await frame('New Session');
   // The workspace stays behind the modal; the title sits right under its frame.
   const opened = modal();
-  assert.ok(plain().includes('1 Live'), plain());
+  assert.ok(plain().includes('Timeline'), plain());
   assert.ok(opened.rows[opened.top + 1]?.includes('New Session'), plain());
   ui.stdin.write('\r');
   await frame('Enter create');

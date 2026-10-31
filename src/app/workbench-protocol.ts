@@ -33,7 +33,7 @@ export const directoryRequestSchema = z
 export const changesRequestSchema = z
   .object({
     runId,
-    /** `only`: files and hunks without the TypeScript pass (the Diff tab). */
+    /** `only`: files and hunks without the TypeScript pass. */
     files: z.literal('only').optional(),
   })
   .strict();

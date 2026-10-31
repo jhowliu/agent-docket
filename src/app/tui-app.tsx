@@ -24,7 +24,7 @@ import {
   stateForRun,
   projectForRun,
 } from './workbench-work.js';
-import { useWorktreeDiff } from './tui-diff.js';
+import { commandMatches } from './tui-commands.js';
 import { NewSession } from './tui-session.js';
 import {
   noticeText,
@@ -42,7 +42,6 @@ type Mode =
   | { kind: 'reply'; runId: RunId }
   | { kind: 'command' }
   | { kind: 'new-session' };
-const views: readonly View[] = ['live', 'diff', 'timeline'];
 const message = (error: unknown) =>
   terminalText(
     error instanceof Error
@@ -82,7 +81,7 @@ function stateHint(
     return `Agent Review in ${runName(flow.reviewer)} · a prompt here stops it · :accept skips it`;
   // A reviewer Run: its result goes to the Run it reviews.
   if (run.review && run.state.kind === 'running')
-    return `${AGENT_NAMES[run.provider]} is reviewing ${runName(run.review.runId)} (Candidate ${run.review.candidate.slice(0, 7)}) · x stops the review · 1 Live`;
+    return `${AGENT_NAMES[run.provider]} is reviewing ${runName(run.review.runId)} (Candidate ${run.review.candidate.slice(0, 7)}) · x stops the review · :live`;
   const checks = verificationHint(
     state.verifications?.find((item) => item.runId === run.id),
   );
@@ -90,8 +89,8 @@ function stateHint(
   switch (run.state.kind) {
     case 'running':
       return flow?.step === 'fixing'
-        ? `${AGENT_NAMES[run.provider]} is fixing ${flow.cause === 'review' ? 'review findings' : 'failed checks'} (${flow.attempts} of 2) · x stop · 1 Live`
-        : `${AGENT_NAMES[run.provider]} is working · x stop · 1 Live`;
+        ? `${AGENT_NAMES[run.provider]} is fixing ${flow.cause === 'review' ? 'review findings' : 'failed checks'} (${flow.attempts} of 2) · x stop · :live`
+        : `${AGENT_NAMES[run.provider]} is working · x stop · :live`;
     case 'starting':
       return 'Starting the agent…';
     case 'cancelling':
@@ -135,7 +134,7 @@ function verificationHint(item: RunVerification | undefined): string {
     case 'passed':
       return `Checks passed on ${sha} · v re-run · ${item.command}`;
     case 'failed':
-      return `Checks failed on ${sha} (${item.reason}) · 1 Live output · v re-run`;
+      return `Checks failed on ${sha} (${item.reason}) · :live output · v re-run`;
     case 'stale':
       return `Checks stale: ${item.reason} · v re-run`;
     case 'unconfirmed':
@@ -205,6 +204,11 @@ export function WorkbenchApp({
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
   const [commandText, setCommandText] = useState('');
+  const completion = useRef<{
+    prefix: string;
+    last: string;
+    index: number;
+  } | null>(null);
   const [options, setOptions] = useState(false);
   const [help, setHelp] = useState(false);
   const [details, setDetails] = useState(false);
@@ -278,12 +282,6 @@ export function WorkbenchApp({
     (item) => item.status === 'pending' && item.runId === selected?.id,
   );
   const request = pending.find((item) => item.id === focusedId) ?? pending[0];
-  const worktreeDiff = useWorktreeDiff(
-    client,
-    state,
-    selected?.id ?? null,
-    view === 'diff',
-  );
   // New Session starts in the selected Run's own project, else the launch
   // folder; fixture Runs belong to a template folder, not a project to reuse.
   const ownProject =
@@ -571,6 +569,7 @@ export function WorkbenchApp({
     void execute({ kind: 'complete-request', id: request.id });
   }
   function setTab(tab: View) {
+    setHelp(false);
     setView(tab);
     setOffset(0);
     setCursor(null);
@@ -603,8 +602,8 @@ export function WorkbenchApp({
     if (turn === null || !replies.get(turn)?.reply) {
       setNote(
         row
-          ? 'No reply in this turn · 1 Live shows the whole conversation'
-          : 'No reply yet · 1 Live shows the whole conversation',
+          ? 'No reply in this turn · :live shows the whole conversation'
+          : 'No reply yet · :live shows the whole conversation',
       );
       return;
     }
@@ -712,10 +711,7 @@ export function WorkbenchApp({
       changeFilter(name);
       return;
     }
-    if (
-      (name === 'live' || name === 'diff' || name === 'timeline') &&
-      !argument
-    ) {
+    if ((name === 'live' || name === 'timeline') && !argument) {
       setTab(name);
       return;
     }
@@ -793,17 +789,20 @@ export function WorkbenchApp({
         });
       return;
     }
-    if (name === 'help' && !argument) {
+    if ((name === 'help' || name === 'h') && !argument) {
       setOptions(false);
       setDetails(false);
       setHelp(true);
+      setPeek(null);
+      setOffset(1_000_000);
+      setCursor(null);
       return;
     }
     if (name === 'quit' && !argument) {
       exit();
       return;
     }
-    setNote('Unknown command · :new / :use 2 / :inbox / :prompt fix / :cancel');
+    setNote('Unknown command · :help lists commands · Tab completes a command');
   }
   function newSession() {
     if (state.features?.newSession && state.sessionOptions) {
@@ -850,6 +849,24 @@ export function WorkbenchApp({
       setPeek(null);
       if (key.escape || input === ' ' || input === 'q') return;
     }
+    if (help) {
+      if (key.upArrow || key.downArrow || page) {
+        const delta = page ? page * half : key.downArrow ? 2 : -2;
+        setOffset((value) => Math.max(0, value - delta));
+        return;
+      }
+      if (input === 'g' || key.home || input === 'G' || key.end) {
+        setOffset(input === 'g' || key.home ? 1_000_000 : 0);
+        return;
+      }
+      setHelp(false);
+      setOffset(0);
+      if (key.escape || input === '?' || input === 'q') return;
+    }
+    if (key.escape && view === 'live') {
+      setTab('timeline');
+      return;
+    }
     if (page && (key.ctrl || key.pageUp || key.pageDown)) {
       // In Timeline a page moves the row selection, which keeps itself in view.
       if (view === 'timeline')
@@ -887,7 +904,7 @@ export function WorkbenchApp({
       );
     } else if (key.upArrow || key.downArrow) {
       // Arrows (and the wheel, which terminals send as arrows) move within
-      // the pane: Timeline rows, or Live/Diff lines; j/k move between Runs.
+      // the pane: Timeline rows, or diagnostic lines; j/k move between Runs.
       const direction = key.downArrow ? 1 : -1;
       if (view === 'timeline') moveCursor(direction);
       else setOffset((value) => Math.max(0, value - direction * 2));
@@ -959,6 +976,7 @@ export function WorkbenchApp({
       else setNote('Run is busy; a/r answers approval, x cancels');
     } else if (input === ':') {
       setMode({ kind: 'command' });
+      completion.current = null;
       setReceipt(null);
     } else if (input === 'o') {
       if (!state.work || state.work.kind === 'unavailable')
@@ -1004,21 +1022,12 @@ export function WorkbenchApp({
     } else if (input === 's' || input === '?' || input === 'd') {
       setOptions(input === 's' ? !options : false);
       setHelp(input === '?' ? !help : false);
+      if (input === '?') {
+        setOffset(1_000_000);
+        setCursor(null);
+      }
       setDetails(input === 'd' ? !details : false);
       setOutline(false);
-    } else if (/^[1-3]$/.test(input))
-      setTab(views[Number(input) - 1] ?? 'timeline');
-    else if (
-      input === 'h' ||
-      key.leftArrow ||
-      input === 'l' ||
-      key.rightArrow
-    ) {
-      setTab(
-        views[
-          (views.indexOf(view) + (input === 'h' || key.leftArrow ? 2 : 1)) % 3
-        ] ?? 'timeline',
-      );
     } else if (input === 'g' || key.home) {
       if (view === 'timeline') {
         const first = timelineEntries(ownEvents(), state.attention)[0];
@@ -1035,6 +1044,24 @@ export function WorkbenchApp({
     }
   });
 
+  function completeCommand(reverse: boolean): string | undefined {
+    const previous = completion.current;
+    const prefix =
+      previous?.last === commandText ? previous.prefix : commandText;
+    const matches = commandMatches(prefix);
+    if (!matches.length) return undefined;
+    const index =
+      previous?.last === commandText
+        ? (previous.index + (reverse ? matches.length - 1 : 1)) % matches.length
+        : reverse
+          ? matches.length - 1
+          : 0;
+    const next = matches[index]?.[0];
+    if (!next) return undefined;
+    const result = next + (matches.length === 1 ? ' ' : '');
+    completion.current = { prefix, last: result, index };
+    return result;
+  }
   const value =
     mode.kind === 'command'
       ? commandText
@@ -1047,6 +1074,7 @@ export function WorkbenchApp({
       active={(mode.kind === 'command' || mode.kind === 'reply') && !tooSmall}
       value={value}
       width={Math.max(1, workbenchMainWidth(columns) - 3)}
+      onComplete={mode.kind === 'command' ? completeCommand : undefined}
       onChange={(next) => {
         if (mode.kind === 'command') setCommandText(next);
         else if (mode.kind === 'reply')
@@ -1091,7 +1119,6 @@ export function WorkbenchApp({
       <WorkbenchScreen
         state={state}
         selectedId={selected?.id ?? null}
-        worktreeDiff={worktreeDiff}
         unread={unread}
         notice={notice}
         filter={filter}
@@ -1141,6 +1168,7 @@ export function WorkbenchApp({
         }
         columns={columns}
         rows={rows}
+        commandText={commandText}
         input={
           mode.kind === 'normal' || mode.kind === 'new-session' || tooSmall
             ? undefined

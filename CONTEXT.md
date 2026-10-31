@@ -148,3 +148,11 @@ _Avoid_: 從 agent 對話推測需要使用者做事，或把 Agent request 當�
 **Change map**：
 某個 Run 的工作目錄相對其 base 的變更導覽：從使用者操作經公開 Interface 到被修改函式的 flow、Interface 變更與逐函式 diff；flow 由靜態分析推得，可能不完整。
 _Avoid_: 把 Change map 視為 review 結論、驗證通過或 Evidence
+
+**Timeline**:
+The TUI main workspace for explicit progress, requests, approval receipts, turn replies and Check results. Routine tool activity is omitted; implementation inspection uses Change map.
+_Avoid_: treating Timeline as the full raw event stream, verification or acceptance
+
+**Live diagnostics**:
+The TUI view opened on demand with `:live` for raw conversation, tool activity and Check output; Esc returns to Timeline.
+_Avoid_: a permanent work tab, native CLI attachment or a persistent transcript

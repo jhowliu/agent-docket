@@ -25,7 +25,8 @@ npm run tui
 ### 3. 跟 agent 工作
 
 - `Enter`（或 `i`）打開輸入欄，打需求後按 `Enter` 送出；`Esc` 收起，草稿會保留。
-- `1` Live、`2` Diff、`3` Timeline；`Space` 讀該回合的完整回覆；`j/k` 切換 Run。
+- Timeline is the main workspace; `Space` reads a turn reply and `j/k` selects Runs. Use `:live` for diagnostics, then `Esc` to return.
+- `:h` / `:help` / `?` opens scrollable command help. Type `:` for suggestions; `Tab` completes/cycles names, `Shift+Tab` cycles backwards, and `Enter` executes.
 - agent 要權限時，`w` 跳到等你處理的 Run，`a` 允許一次，`r` 拒絕一次，`d` 看細節。agent 請你在工作台外做事時，做完按 `y`；要回話就直接下 prompt。
 - 左欄每個 Run 都會顯示狀態，黃色（`approve`、`respond`、`commit`、`review`、`checks`）代表輪到你。
 
@@ -49,7 +50,7 @@ npm run tui
 
 ### 5. 看改動與收尾
 
-- `m` 在瀏覽器開啟 Change map，顯示從按鍵到被修改函式的 flow 和 diff；`2` Diff 可以直接看 git diff。
+- `m` opens Change map in the browser to inspect flows, changed functions and diffs. The TUI Diff tab has been removed.
 - `x` 停止並移除 Run：worktree 裡的改動會自動 commit 到這個 Run 的分支（不會 push），提示會顯示分支名稱。想自己寫 commit 訊息，就先到 worktree 路徑（顯示在底部狀態列）自己 `git commit`，再按 `x`。Run 自己結束（中斷、失敗）且還有改動時，也可以按 `c` 輸入訊息。
 - 要接續工作：按 `n`，選同一個專案，分支選那個 `workbench/run-…`。
 - 要合併：回到原本的 repo 自己執行 `git merge workbench/run-…`。工作台不會 merge，也不會 push。

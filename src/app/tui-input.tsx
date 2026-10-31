@@ -19,6 +19,7 @@ export function PromptInput(props: {
   value: string;
   width: number;
   maxLength?: number;
+  onComplete?: ((reverse: boolean) => string | undefined) | undefined;
   onHorizontalArrow?: (direction: 'left' | 'right') => void;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -55,6 +56,14 @@ export function PromptInput(props: {
       }
       if (key.return) {
         if (key.eventType !== 'repeat') onSubmit();
+        return;
+      }
+      if (key.tab && props.onComplete) {
+        const completed = props.onComplete(key.shift);
+        if (completed !== undefined) {
+          onChange(completed);
+          move(graphemes(completed).length);
+        }
         return;
       }
       if (key.ctrl) {

@@ -7,9 +7,9 @@
 | 模式／按鍵                     | 操作                                                                                                   |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | 工作區：`j/k`                  | 依畫面上的專案分組順序選下一個／上一個可見 Run                                                         |
-| ↑ / ↓、滑鼠滾輪                | 在右側面板內移動：Timeline 選上一列／下一列（淡色底），Live／Diff 每次捲 2 行；不切換 Run              |
+| Up / Down, mouse wheel         | Select Timeline rows or scroll diagnostic/help lines; never selects another Run                        |
 | `Space`                        | 在右側面板讀選取列那一輪的完整回覆（沒有選取時是最新一則）；↑ / ↓、`Ctrl+U/D`、`g/G` 捲動，`Esc` 關閉  |
-| 工作區：`h/l`、← / →、`1–3`    | 切換 Live／Diff／Timeline                                                                              |
+| `:live` / `:timeline`          | Open diagnostics on demand / return to Timeline; Esc in diagnostics also returns                       |
 | `n` / `Enter` 或 `i`           | 開啟 New Session 選專案、分支／進入所選 idle Run，下方直接開啟輸入欄（標題轉青色）                     |
 | `s` / `?`                      | 操作／說明                                                                                             |
 | `o`                            | 左側 Workflow 欄切換 Roadmap；窄視窗開關小視窗                                                         |
@@ -36,9 +36,9 @@
 
 路徑、操作、說明與核准細節一次只展開一組，新要求的資訊會取代上一組。每個 Run 有自己的草稿，送出後沒有繼續改字才會清空／收起；草稿不跨 TUI 退出保存。輸入中的 jkar 都是文字；左右、Home／End、Backspace／Delete、Ctrl+A／E／U 可編輯，刪除以完整 grapheme 為單位。超過 1000 字元的輸入不接受，換行貼上轉成空格。
 
-Bracketed paste 使用獨立通道，導覽模式貼上 a／:cancel 不觸發動作。Ctrl／Alt／Command 組合不觸發導覽；kitty terminal 的 repeat／release 不執行 mutation。一般 terminal 沒有 key-up，因此相同 mutation key 連按會鎖住，需先換選或做另一個明確操作。每次回答後，即使下一筆核准補上，也要 Tab／換選 Run 明確選定再答。a/r 沒有對應一次性選項時不會推定其他選項；d 可看原本選項，再用 `:answer N` 明確指定。Tab 只用來選核准，不用來切換面板。
+Bracketed paste 使用獨立通道，導覽模式貼上 a／:cancel 不觸發動作。Ctrl／Alt／Command 組合不觸發導覽；kitty terminal 的 repeat／release 不執行 mutation。一般 terminal 沒有 key-up，因此相同 mutation key 連按會鎖住，需先換選或做另一個明確操作。每次回答後，即使下一筆核准補上，也要 Tab／換選 Run 明確選定再答。a/r 沒有對應一次性選項時不會推定其他選項；d 可看原本選項，再用 `:answer N` 明確指定。In normal mode Tab selects a request; in command input it completes a command name. It never switches panes.
 
-命令：`new`、`use 2`（目前可見清單的編號）、`active`、`inbox`、`live`、`diff`、`timeline`、`prompt fix`、`answer 1`、`cancel`、`commit <message>`、`help`、`quit`。`g/G` 只捲動目前保留的事件視窗。這些都是工作台操作，不執行 shell。Fixture 情境包含 `fix`、`question`、`reply:名稱`、`wait`、`two-permissions`、`crash`。啟動與限制見 [TUI 操作](tui-operation.md)、[Run 生命週期](run-lifecycle.md)。
+命令：`new`、`use 2`（目前可見清單的編號）、`active`、`inbox`、`live`、`timeline`、`prompt fix`、`answer 1`、`cancel`、`commit <message>`、`help`、`quit`。`g/G` 只捲動目前保留的事件視窗。這些都是工作台操作，不執行 shell。Fixture 情境包含 `fix`、`question`、`reply:名稱`、`wait`、`two-permissions`、`crash`。啟動與限制見 [TUI 操作](tui-operation.md)、[Run 生命週期](run-lifecycle.md)。
 
 本機 Codex 需要登入時，`s` 顯示 agent 廣告的登入方法；在命令欄輸入 `auth <method-id>`。取消會停止本機管理的程序群組並清理暫存 home；Git worktree 依[保存與回收規則](worktrees.md)處理，本機模式沒有 OS 安全隔離。
 
@@ -47,6 +47,8 @@ Roadmap 命令：`:roadmap <title>`、`:phase <title>`、`:task <phase> <title>`
 New Session 內：`Shift+Tab` 聚焦 Agent，以方向鍵選 preset，`Tab` 回路徑／分支欄。路徑欄 `Tab` 補全／列資料夾，候選依寬度排成多欄、每欄由上往下排序；方向鍵跨格移動，`Tab` 選下一項，超出畫面自動切頁，`Enter` 填入完整路徑。長名稱以 `…` 縮短顯示。先 `Esc` 收候選，再 `Esc` 關表單。藍色 `/` 是資料夾，紫色 `@/` 是資料夾連結，青色反白 `>` 是目前選取。收起清單後，左右鍵恢復文字游標操作。沒有候選清單時，路徑欄 `Enter` 讀分支；分支欄輸入文字篩選、`↑/↓` 選取、`Enter` 建立；`Ctrl+B` 回路徑，`Esc` 取消。此時不啟用工作區導覽或核准快捷鍵。
 
 選到沒有 Git／尚無 commit 的資料夾時，會在表單內確認是否初始化並建立第一個本機 commit。預設 No；方向鍵／Tab 換選，Enter 確認，或直接按 `y`。`n`／Esc 回路徑欄，不寫入。貼上或 repeat key 不會確認。Yes 成功後回正常分支選擇；第一個 snapshot 含未被忽略的現有檔案，遵守既有 `.gitignore`。
+
+Command discovery: `:h`, `:help` and `?` open the same scrollable reference, even without a Run. Use arrows, Ctrl+U/D, PgUp/PgDn and g/G; Esc closes it. In command input, Tab completes/cycles matching names and Shift+Tab cycles backwards. A unique match adds a space; arguments remain editable and are never completed as shell commands. Enter alone executes. On a short terminal with an open Roadmap, suggestions yield their rows; completion stays available. There are no numbered tabs or h/l view switching in the TUI.
 
 ## 瀏覽器 Demo
 

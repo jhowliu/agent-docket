@@ -75,7 +75,7 @@ test('Live joins streaming fragments into readable text', () => {
   );
 });
 
-test('Timeline keeps only the last paragraph of streamed prose and groups tool updates into concise activity entries', () => {
+test('Timeline keeps only the last paragraph of streamed prose and hides routine tool updates', () => {
   const at = '2026-10-19T07:51:47Z';
   const payloads = [
     { type: 'run.state', state: { kind: 'running' } },
@@ -105,13 +105,13 @@ test('Timeline keeps only the last paragraph of streamed prose and groups tool u
     'Turn started',
     'Approval · pending',
     'Approval · delivered',
-    'File changed · app.js',
     'Tool failed · npm test',
     'Adapter connection lost',
     'Turn ended',
   ])
     assert.ok(output.includes(detail), output);
-  assert.equal(output.split('Read README').length - 1, 1, output);
+  assert.ok(!output.includes('Read README'), output);
+  assert.ok(!output.includes('File changed'), output);
   // The agent declared nothing, so its reply's last paragraph follows the turn.
   assert.match(output, /Turn ended[^\n]*\n[│ ]*summarize/, output);
   assert.ok(!output.includes('Reading the code first'), output);

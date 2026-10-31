@@ -5,9 +5,7 @@ import { Backdrop, Box, Text } from './tui-text.js';
 import stringWidth from 'string-width';
 import wrapAnsi from 'wrap-ansi';
 import type { AttentionItem } from '../attention/index.js';
-import type { ChangeMap } from '../delivery/index.js';
-import { NO_WORKTREE } from './tui-diff.js';
-import type { WorktreeDiff } from './tui-diff.js';
+import { commandHelp, commandHints } from './tui-commands.js';
 import type {
   RunEvent,
   RunId,
@@ -35,7 +33,7 @@ import type { TurnOutcome } from './tui-outcome.js';
 import { markdownLines, plainText } from './tui-markdown.js';
 import type { Span } from './tui-markdown.js';
 
-export type View = 'live' | 'diff' | 'timeline';
+export type View = 'live' | 'timeline';
 export type Filter = 'active' | 'inbox';
 export type Line = {
   text: string;
@@ -47,7 +45,6 @@ export type Line = {
   /** Styled runs of a rendered Markdown reply, in place of `text`. */
   spans?: readonly Span[];
 };
-const views: readonly View[] = ['live', 'diff', 'timeline'];
 const NO_UNREAD: ReadonlySet<RunId> = new Set();
 const tone = (color: string | undefined) => (color ? { color } : {});
 const workflowLabels = {
@@ -453,7 +450,7 @@ function eventSummary(event: RunEvent): string {
       return `Checks started · ${event.command} · ${event.candidate.slice(0, 7)}`;
     case 'check.end': {
       const ended = checkEnded(event);
-      return `${ended.label} · ${ended.detail.replace(' · 1 Live', '')}`;
+      return `${ended.label} · ${ended.detail.replace(' · :live', '')}`;
     }
   }
 }
@@ -466,65 +463,12 @@ function eventColor(event: RunEvent): string | undefined {
       ? 'red'
       : undefined;
 }
-const DIFF_LINES = 4000;
-/** The real worktree diff: every changed file, whether or not the agent reported it. */
-function worktreeLines(
-  map: ChangeMap,
-  append: (text: string, color?: string) => void,
-) {
-  append(
-    `Worktree vs ${map.base.slice(0, 7)} · ${map.totals.files} file${map.totals.files === 1 ? '' : 's'} · +${map.totals.plus} −${map.totals.minus} · m Change map`,
-    'gray',
-  );
-  if (map.truncated.length)
-    append(
-      `Some changes left out (${map.truncated.join(', ')}) · m Change map lists every file`,
-      'gray',
-    );
-  if (!map.files.length) append('No changes in the worktree yet');
-  let shown = 0;
-  for (const file of map.files) {
-    if (shown >= DIFF_LINES) {
-      append(`… more files · m Change map shows the rest`, 'gray');
-      return;
-    }
-    const name = file.previousPath
-      ? `${file.previousPath} → ${file.path}`
-      : file.path;
-    append('');
-    append(
-      `${file.status === 'modified' ? '' : file.status + ' '}${name} · +${file.plus} −${file.minus}`,
-      'white',
-    );
-    if (file.binary) append('Binary file', 'gray');
-    else if (file.diff === null)
-      append(
-        'Diff left out: larger than the size limit · m Change map',
-        'gray',
-      );
-    else
-      for (const row of file.diff.replace(/\n$/, '').split('\n')) {
-        if (++shown > DIFF_LINES) break;
-        append(
-          row,
-          row.startsWith('@@')
-            ? 'cyan'
-            : row.startsWith('+')
-              ? 'green'
-              : row.startsWith('-')
-                ? 'red'
-                : undefined,
-        );
-      }
-  }
-}
 function detailLines(
   events: readonly RunEvent[],
   runId: RunId | null,
   view: View,
   width: number,
   entries: readonly TimelineEntry[],
-  worktree: WorktreeDiff = NO_WORKTREE,
 ): Line[] {
   const ownEvents = events.filter((event) => event.runId === runId);
   const selected = view === 'live' ? readableEvents(ownEvents) : ownEvents;
@@ -536,23 +480,7 @@ function detailLines(
     }).split('\n'))
       lines.push({ text: part, ...(color ? { color } : {}) });
   };
-  if (view === 'diff' && worktree.kind === 'ready') {
-    worktreeLines(worktree.map, append);
-  } else if (view === 'diff' && worktree.kind === 'loading') {
-    append('Reading worktree changes…', 'gray');
-  } else if (view === 'diff') {
-    // Without a readable worktree, only edits the agent reported are known.
-    if (worktree.kind === 'unavailable')
-      append(`Worktree diff unavailable · ${worktree.reason}`, 'gray');
-    for (const event of selected) {
-      if (event.type !== 'diff') continue;
-      append('--- ' + event.path);
-      for (const line of event.oldText.split('\n')) append('- ' + line, 'red');
-      append('+++ ' + event.path);
-      for (const line of event.newText.split('\n'))
-        append('+ ' + line, 'green');
-    }
-  } else if (view === 'live') {
+  if (view === 'live') {
     for (const event of selected) {
       if (event.type === 'agent.message')
         for (const spans of markdownLines(event.text, width))
@@ -650,8 +578,8 @@ export type ScreenProps = {
   columns: number;
   rows: number;
   input?: ReactNode;
-  /** The selected Run's worktree diff for the Diff tab; reported edits when absent. */
-  worktreeDiff?: WorktreeDiff;
+  /** Text being edited in the command composer, for discovery hints. */
+  commandText?: string;
   /** Runs with a finished turn this TUI has not shown yet. */
   unread?: ReadonlySet<RunId>;
   /** A background Run's latest change, shown beside the roster title. */
@@ -1302,7 +1230,6 @@ export function WorkbenchScreen(props: ScreenProps) {
   const sidebar = mainWidth < columns;
   const sidebarWidth = columns - mainWidth - 1;
   const width = Math.max(1, mainWidth - 4);
-  const worktreeDiff = props.worktreeDiff ?? NO_WORKTREE;
   const ownEvents = useMemo(
     () => state.events.filter((event) => event.runId === selectedId),
     [state.events, selectedId],
@@ -1311,10 +1238,25 @@ export function WorkbenchScreen(props: ScreenProps) {
     () => timelineEntries(ownEvents, state.attention),
     [ownEvents, state.attention],
   );
-  const lines = useMemo(
+  const lines = useMemo<Line[]>(
     () =>
-      detailLines(state.events, selectedId, view, width, entries, worktreeDiff),
-    [state.events, entries, selectedId, view, width, worktreeDiff],
+      props.help && !props.details && !props.options
+        ? commandHelp.flatMap((text) =>
+            wrapAnsi(text, width, { hard: true })
+              .split('\n')
+              .map((text) => ({ text })),
+          )
+        : detailLines(state.events, selectedId, view, width, entries),
+    [
+      state.events,
+      entries,
+      selectedId,
+      view,
+      width,
+      props.help,
+      props.details,
+      props.options,
+    ],
   );
   const replies = useMemo(() => turnReplies(ownEvents), [ownEvents]);
   const peekTurn = props.peek && replies.get(props.peek.turn);
@@ -1427,17 +1369,29 @@ export function WorkbenchScreen(props: ScreenProps) {
     props.mode === 'reply'
       ? 'Reply · Enter send · Esc keep draft'
       : props.mode === 'command'
-        ? 'Command · Enter run · Esc close'
+        ? 'Command · Enter run · Tab complete · Esc close'
         : '';
   // Below 24 rows the input drops its lower rule and keeps two rows, like the decision.
-  const inputRows = !inputLabel ? 0 : compactDecision ? 2 : 3;
+  const suggestions =
+    props.mode === 'command' ? commandHints(props.commandText ?? '') : [];
+  const suggestionLimit =
+    props.outline && !sidebar && rows < 24
+      ? 0
+      : rows >= 28
+        ? 4
+        : rows >= 24
+          ? 2
+          : 1;
+  const suggestionRows = Math.min(suggestions.length, suggestionLimit);
+  const inputRows =
+    (!inputLabel ? 0 : compactDecision ? 2 : 3) + suggestionRows;
   // Keys move through the roster unless an input line has them.
   const navigating = props.mode === 'normal';
   const compactWorkflowRows =
     props.outline && plan && !sidebar
       ? Math.min(
           rows >= 24 ? 9 : 6,
-          rows - rosterRows - decisionRows - inputRows - 10,
+          Math.max(0, rows - rosterRows - decisionRows - inputRows - 10),
         )
       : 0;
   const extraCapacity = Math.max(
@@ -1503,23 +1457,6 @@ export function WorkbenchScreen(props: ScreenProps) {
               : '',
           ]),
     );
-  else if (props.help)
-    disclosures.push(
-      'j/k agent · w waiting/unread · Tab request · a/r allow/deny',
-      'h/l or 1–3 views · ↑↓ lines, Timeline rows · Space reply',
-      'Ctrl+U/D or PgUp/PgDn page · g/G top/end',
-      'n new · Enter/i reply · Esc keep draft · s actions',
-      ': command · q / Ctrl+C detach; Runs keep running',
-      ':active all agents · :inbox pending approvals',
-      'o Roadmap · :roadmap title · :track P.T · :direct',
-      ':spec requirements · :confirm · :stage development',
-      'Stopped worktree: c / :commit message saves all changes',
-      'm / :map open the Run’s Change map in the browser',
-      'v verify: freeze the Run’s code, run the project check on a clean copy',
-      ':check <command> sets the check · :check shows it',
-      'Human Review: :accept on passing checks · :changes <what to fix>',
-      ':reviewer codex|claude|same picks who runs Agent Review',
-    );
   // Bound every optional region to leave a readable timeline at the minimum size.
   const extras = disclosures.filter(Boolean).slice(0, extraCapacity);
   const logRows = Math.max(
@@ -1532,7 +1469,7 @@ export function WorkbenchScreen(props: ScreenProps) {
       inputRows,
   );
   const selectedRow =
-    view === 'timeline' ? cursorRow(entries, props.cursor) : -1;
+    view === 'timeline' && !props.help ? cursorRow(entries, props.cursor) : -1;
   const start = scrollStart(lines, logRows, props.offset, selectedRow);
   const log = lines.slice(start, start + logRows);
   const offset = Math.max(0, lines.length - logRows - start);
@@ -1558,7 +1495,7 @@ export function WorkbenchScreen(props: ScreenProps) {
         peekLines.length > peekRows ? '↑↓ scroll' : '',
         'Esc close',
       ]
-    : view === 'timeline'
+    : view === 'timeline' && !props.help
       ? [
           selectedRow >= 0
             ? `row ${selectedRow + 1} of ${entries.length}`
@@ -1577,14 +1514,12 @@ export function WorkbenchScreen(props: ScreenProps) {
   const modalWidth = Math.min(columns - 6, 96);
   const modalHeight = Math.min(rows - 4, 16);
   const empty = selected
-    ? view === 'diff'
-      ? 'No file changes yet'
-      : view === 'timeline'
-        ? 'No milestones yet · 1 Live for full output'
-        : fixture
-          ? 'Enter to prompt · s for fixture scenarios'
-          : 'Enter to prompt when idle · s actions'
-    : 'n new Run';
+    ? view === 'timeline'
+      ? 'No milestones yet · Enter to prompt · :help commands'
+      : fixture
+        ? 'Enter to prompt · s for fixture scenarios'
+        : 'Enter to prompt when idle · s actions'
+    : 'n new Run · :help commands';
   const counts = ` · ${filter} · ${runs.length} run${runs.length === 1 ? '' : 's'}${
     rosterLines.length > rosterRows
       ? ` · ${selectedIndex + 1}/${runs.length}`
@@ -1638,26 +1573,17 @@ export function WorkbenchScreen(props: ScreenProps) {
     );
   // Typing to the selected Run: its title takes the focus color from the roster.
   const replying = props.mode === 'reply';
-  const tabNames = views.map(
-    (name, index) =>
-      ` ${index + 1} ${name === 'live' ? 'Live' : name === 'diff' ? 'Diff' : 'Timeline'} `,
-  );
-  const paused =
-    offset > 0 ? (mainWidth >= 70 ? ' · follow paused' : ' · paused') : '';
-  const tabsText = tabNames.join('') + paused;
+  const paused = offset > 0 ? ' · scroll paused' : '';
+  const title = props.help
+    ? 'Commands · Esc close'
+    : view === 'live'
+      ? 'Live diagnostics · Esc Timeline'
+      : 'Timeline';
+  const tabsText = ` ${title}${paused} `;
   const tabs = (
-    <>
-      {views.map((name, index) => (
-        <Text
-          key={name}
-          {...tone(view === name ? 'cyan' : undefined)}
-          bold={view === name}
-        >
-          {tabNames[index]}
-        </Text>
-      ))}
-      <Text dimColor>{paused}</Text>
-    </>
+    <Text color="cyan" bold>
+      {tabsText}
+    </Text>
   );
   const roster = (
     <>
@@ -1892,7 +1818,7 @@ export function WorkbenchScreen(props: ScreenProps) {
                           ? ' · ' +
                             terminalText(peekTurn.request).replace(/\s+/g, ' ')
                           : ''
-                        : ' · no longer retained · 1 Live'}
+                        : ' · no longer retained · :live'}
                     </Text>
                   </Text>
                   {peekLines
@@ -1982,13 +1908,26 @@ export function WorkbenchScreen(props: ScreenProps) {
                     )}
                   </Text>
                 </Text>
+                {suggestions
+                  .slice(0, suggestionRows)
+                  .map(([name, args, description]) => (
+                    <Text key={name} wrap="truncate-end">
+                      <Text color="cyan">
+                        :{name}
+                        {args ? ` ${args}` : ''}
+                      </Text>
+                      <Text dimColor> · {description}</Text>
+                    </Text>
+                  ))}
                 <Box height={1}>
                   <Text color="cyan" bold>
                     {props.mode === 'command' ? ': ' : '> '}
                   </Text>
                   {props.input}
                 </Box>
-                {inputRows > 2 && <Text dimColor>{'─'.repeat(mainWidth)}</Text>}
+                {!compactDecision && (
+                  <Text dimColor>{'─'.repeat(mainWidth)}</Text>
+                )}
               </Box>
             )}
             <Box flexGrow={1} />
@@ -2005,8 +1944,8 @@ export function WorkbenchScreen(props: ScreenProps) {
                 connected &&
                 !props.actionFailed
                 ? selected?.worktree?.status.kind === 'commit-required'
-                  ? 'Commit required · c commit with a message · x commit and remove · 1 Live for details'
-                  : 'Worktree retained · x removes the Run, the folder stays · 1 Live for details'
+                  ? 'Commit required · c commit with a message · x commit and remove · :live for details'
+                  : 'Worktree retained · x removes the Run, the folder stays · :live for details'
                 : note,
             )}
           </Text>
