@@ -24,11 +24,11 @@ The first command creates an Implementation Phase and its first Task, attached t
 
 ## Compact workspace
 
-- Direct Runs keep agents and Live / Diff / Timeline without workflow tracking. The independent Project tree shows their real folder structure; the bottom status bar identifies the working directory.
-- A tracked browser Run adds one compact stage row. In the TUI, terminals at least 80 columns wide put a small **Workflow** panel below **Project** in a separate right column, beside the agents and content viewport. It shows the Task's Phase and four vertically arranged stages; only the current step is highlighted. Live / Diff / Timeline remain together in the main column, and their numbers never label workflow stages. `p` focuses project folders, where `j/k` selects entries and `h/l` navigates folders; `Ctrl+w h/l` switches workspace/Project focus. The working path is in the bottom status bar; browsing changes no execution or planning state.
+- Direct Runs keep agents and Live / Diff / Timeline without workflow tracking; the bottom status bar identifies the working directory.
+- A tracked browser Run adds one compact stage row. In the TUI, terminals at least 80 columns wide put a small **Workflow** panel at the bottom of the left column, below agents. It shows the Task's Phase and four vertically arranged stages when agents keep all their lines, otherwise `Workflow · Phase N/M` and the current stage; only the current step is highlighted. Live / Diff / Timeline remain together in the main column, and their numbers never label workflow stages. The working path is in the bottom status bar.
 - TUI widths of 60–79 columns preserve the full content width and show an **o Workflow** disclosure next to the content tabs. Opening it reveals the current step and a bounded Roadmap window. Direct Runs have no workflow panel unless the user explicitly opens the saved plan.
 - Browser stage buttons inspect a short summary. **Work on this stage** explicitly updates the working stage; inspection alone changes no state. Requirements must be confirmed before tracking another stage.
-- **Roadmap** opens a small Phase/Task window. `o` toggles the outline in either interface; the TUI uses the same right column without moving the content tabs or reducing the log height. The narrow layout opens a bounded inline window. The current Task starts in view. TUI `[` / `]` inspect Phases; `{` / `}` scroll Tasks. Inspection never changes the active Phase.
+- **Roadmap** opens a small Phase/Task window. `o` toggles the outline in either interface; the TUI uses the same side column without moving the content tabs or reducing the log height. The narrow layout opens a bounded inline window. The current Task starts in view. TUI `[` / `]` inspect Phases; `{` / `}` scroll Tasks. Inspection never changes the active Phase.
 - A Task with a current Run opens that Run in the browser. A Task without a current Run opens the attachment form; it never opens a past Run. **Work on this phase** / `:focus N` explicitly selects the current Phase without accepting the previous one.
 - **Direct mode** / `:direct` removes the association only. It preserves the project plan and keeps the Run alive.
 
@@ -83,6 +83,6 @@ Validation on 2026-10-20: build/typecheck and diff checks passed; 75 non-listene
 
 ## Remaining workflow work
 
-This slice tracks the working stage. It does not execute an independent Agent Review, record Candidate-bound evidence, accept a Task, complete a Phase or automatically hand off to the next Run. Later-stage labels remain unverified; moving a label is not a passed review. These production gates need the independent Review/check execution slice before Human Review acceptance is enabled.
+Since 2026-10-25 a finished report on a confirmed Task starts its checks, a pass moves it to Human Review and `:accept` / `:changes` close the loop; see [Task flow](task-flow.md). This slice tracks the working stage. It does not execute an independent Agent Review, record Candidate-bound evidence, accept a Task, complete a Phase or automatically hand off to the next Run. Later-stage labels remain unverified; moving a label is not a passed review. These production gates need the independent Review/check execution slice before Human Review acceptance is enabled.
 
 The proposed agent tool that recommends a Roadmap is also not implemented. Manual opt-in works now; a future proposal must remain a draft until the user adopts it. Real provider/account acceptance and container isolation remain separate open work.

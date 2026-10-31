@@ -17,6 +17,19 @@ async function until<T>(read: () => T | undefined): Promise<T> {
   }
   throw new Error('Fixture condition timed out');
 }
+/** A cancelled Run leaves the list; its journal keeps the final state. */
+function removed(runtime: ReturnType<typeof createExecution>, id: RunId) {
+  assert.ok(!runtime.list().some((run) => run.id === id));
+  assert.throws(() => runtime.snapshot(id), /Unknown Run/);
+  const states = runtime
+    .events()
+    .flatMap((event) =>
+      event.runId === id && event.type === 'run.state'
+        ? [event.state.kind]
+        : [],
+    );
+  return states.at(-1);
+}
 const waiting = (attention: Attention, id: RunId) =>
   until<AttentionItem>(() =>
     attention.list(id).find((item) => item.status === 'pending'),
@@ -160,7 +173,7 @@ test('accepted decision followed immediately by cancellation cannot edit the fix
   assert.equal((await prompt).stopReason, 'cancelled');
   await cancelled;
   assert.equal(attention.list(run.id)[0]?.status, 'stale');
-  assert.equal(runtime.snapshot(run.id).state.kind, 'cancelled');
+  assert.equal(removed(runtime, run.id), 'cancelled');
   assert.ok(
     !runtime
       .events()
@@ -179,6 +192,37 @@ test('busy prompts reject steering; cancellation unblocks a long-running turn', 
   await assert.rejects(runtime.prompt(run.id, 'extra'), /idle/);
   await runtime.cancel(run.id);
   assert.equal((await prompt).stopReason, 'cancelled');
+});
+
+test('a turn is interrupted only after the agent goes quiet, never while it works or waits on the person', async (t) => {
+  const attention = createAttention(),
+    runtime = createExecution({ attention, idleTurnMs: 300 });
+  t.after(() => runtime.close());
+  const run = await runtime.start({ provider: 'fixture' });
+  // Active for three times the idle limit.
+  assert.deepEqual(await runtime.prompt(run.id, 'busy:900'), {
+    stopReason: 'end_turn',
+  });
+  // A permission decision the person takes longer than the limit to make.
+  const asked = runtime.prompt(run.id, 'command-permission');
+  const decision = await waiting(attention, run.id);
+  await new Promise((done) => setTimeout(done, 700));
+  attention.answer(decision.id, 'choice-0');
+  assert.deepEqual(await asked, { stopReason: 'end_turn' });
+  assert.equal(runtime.snapshot(run.id).state.kind, 'idle');
+  // Quiet past the limit.
+  await assert.rejects(
+    runtime.prompt(run.id, 'wait'),
+    /No agent activity for 0.3 seconds/,
+  );
+  assert.deepEqual(runtime.snapshot(run.id).state, {
+    kind: 'interrupted',
+    reason: 'No agent activity for 0.3 seconds',
+  });
+  assert.throws(
+    () => createExecution({ attention, idleTurnMs: 50 }),
+    /idleTurnMs must be between 100 and 86400000/,
+  );
 });
 
 test('plain-text questions accept a new prompt; client filesystem callbacks remain unsupported', async (t) => {
@@ -244,7 +288,7 @@ test('concurrent duplicate cancellations share one operation', async (t) => {
   );
   await Promise.all([runtime.cancel(run.id), runtime.cancel(run.id)]);
   await prompt;
-  assert.equal(runtime.snapshot(run.id).state.kind, 'cancelled');
+  assert.equal(removed(runtime, run.id), 'cancelled');
   assert.equal(
     runtime
       .events()

@@ -12,6 +12,39 @@ import { join } from 'node:path';
 // Trusted deterministic protocol peer, not a model or OS sandbox.
 const sessions = new Map();
 let counter = 0;
+const option = (name) =>
+  process.argv
+    .find((arg) => arg.startsWith(`--${name}=`))
+    ?.slice(name.length + 3);
+
+/** Connects to the Run's private workbench tools. */
+async function workbenchTools(session) {
+  const [{ Client }, { StdioClientTransport }] = await Promise.all([
+    import('@modelcontextprotocol/sdk/client/index.js'),
+    import('@modelcontextprotocol/sdk/client/stdio.js'),
+  ]);
+  const configured = session.mcpServers.find(
+    (server) => server.name === 'workbench_progress',
+  );
+  if (!configured || !('command' in configured))
+    throw new Error('Fixture progress tool missing');
+  const transport = new StdioClientTransport({
+    command: configured.command,
+    args: configured.args,
+    env: {
+      ...Object.fromEntries(
+        Object.entries(process.env).filter(([, value]) => value !== undefined),
+      ),
+      ...Object.fromEntries(
+        configured.env.map(({ name, value }) => [name, value]),
+      ),
+    },
+    stderr: 'pipe',
+  });
+  const tools = new Client({ name: 'workbench-fixture', version: '1.0.0' });
+  await tools.connect(transport);
+  return tools;
+}
 const app = agent({ name: 'workbench-fixture' })
   .onRequest(methods.agent.initialize, () => ({
     protocolVersion: PROTOCOL_VERSION,
@@ -48,7 +81,80 @@ const app = agent({ name: 'workbench-fixture' })
       });
     // Codex dispatches slash commands from the first prompt block.
     const first = params.prompt[0];
-    const text = first?.type === 'text' ? first.text : '';
+    const typed = first?.type === 'text' ? first.text : '';
+    // A reviewer: --review=approve (default), changes, changes-once (until
+    // review-fix.txt exists), none (no verdict) or wait (until cancelled).
+    if (typed.startsWith('Workbench Agent Review of ')) {
+      const mode = option('review') ?? 'approve';
+      const tools = await workbenchTools(session);
+      try {
+        const names = (await tools.listTools()).tools.map((tool) => tool.name);
+        // Codex reads its mode from the environment, Claude from its settings.
+        const claude = process.env.CLAUDE_CONFIG_DIR
+          ? JSON.parse(
+              await readFile(
+                join(process.env.CLAUDE_CONFIG_DIR, 'settings.json'),
+                'utf8',
+              ),
+            ).permissions
+          : undefined;
+        const agentMode = process.env.INITIAL_AGENT_MODE ?? claude?.defaultMode;
+        const denied = claude?.deny
+          ? ` (denied: ${claude.deny.join(', ')})`
+          : '';
+        await message(
+          `Reviewing in ${agentMode} mode${denied} with ${names.join(', ')}.`,
+        );
+        if (mode === 'wait' && !abort.signal.aborted)
+          await new Promise((resolve) =>
+            abort.signal.addEventListener('abort', resolve, { once: true }),
+          );
+        if (abort.signal.aborted) return { stopReason: 'cancelled' };
+        let fixed = false;
+        try {
+          await readFile(join(session.cwd, 'review-fix.txt'));
+          fixed = true;
+        } catch {}
+        const changes =
+          mode === 'changes' || (mode === 'changes-once' && !fixed);
+        if (mode !== 'none')
+          await tools.callTool({
+            name: 'submit_review',
+            arguments: changes
+              ? {
+                  verdict: 'changes',
+                  summary: 'Expired tokens at the exact boundary are accepted.',
+                  findings: [
+                    {
+                      path: 'token.mjs',
+                      line: 1,
+                      text: 'Use <= so a token expiring now is rejected.',
+                    },
+                  ],
+                }
+              : {
+                  verdict: 'approve',
+                  summary: 'Meets the requirements.',
+                  findings: [],
+                },
+          });
+      } finally {
+        await tools.close();
+      }
+      return { stopReason: 'end_turn' };
+    }
+    // --finish-feedback: what the workbench sends back is answered as fixed;
+    // review findings leave review-fix.txt behind.
+    if (
+      process.argv.includes('--finish-feedback') &&
+      typed.startsWith('Workbench Agent Review requested changes')
+    )
+      await writeFile(join(session.cwd, 'review-fix.txt'), 'fixed\n');
+    const text =
+      process.argv.includes('--finish-feedback') &&
+      typed.startsWith('Workbench ')
+        ? 'done:Fixed what the workbench reported.'
+        : typed;
     if (text === 'task-context') {
       await message(
         params.prompt
@@ -62,41 +168,31 @@ const app = agent({ name: 'workbench-fixture' })
       text === '/mcp' ||
       text === 'progress' ||
       text.startsWith('progress:') ||
-      text === 'progress-wait'
+      text === 'progress-wait' ||
+      text.startsWith('done:') ||
+      text.startsWith('needs:')
     ) {
-      const [{ Client }, { StdioClientTransport }] = await Promise.all([
-        import('@modelcontextprotocol/sdk/client/index.js'),
-        import('@modelcontextprotocol/sdk/client/stdio.js'),
-      ]);
-      const configured = session.mcpServers.find(
-        (server) => server.name === 'workbench_progress',
-      );
-      if (!configured || !('command' in configured))
-        throw new Error('Fixture progress tool missing');
-      const transport = new StdioClientTransport({
-        command: configured.command,
-        args: configured.args,
-        env: {
-          ...Object.fromEntries(
-            Object.entries(process.env).filter(
-              ([, value]) => value !== undefined,
-            ),
-          ),
-          ...Object.fromEntries(
-            configured.env.map(({ name, value }) => [name, value]),
-          ),
-        },
-        stderr: 'pipe',
-      });
-      const progress = new Client({
-        name: 'workbench-fixture',
-        version: '1.0.0',
-      });
+      const progress = await workbenchTools(session);
       try {
-        await progress.connect(transport);
         const tools = await progress.listTools();
         if (!tools.tools.some((tool) => tool.name === 'report_progress'))
           throw new Error('Fixture could not discover progress reporting');
+        if (text.startsWith('needs:')) {
+          // needs:<JSON request or array of requests>, sent as given.
+          const input = JSON.parse(text.slice(6));
+          const outcomes = [];
+          for (const request of Array.isArray(input) ? input : [input]) {
+            const result = await progress.callTool({
+              name: 'request_user',
+              arguments: request,
+            });
+            outcomes.push(result.isError ? 'rejected' : 'recorded');
+          }
+          await message(
+            `Request ${outcomes.join(', ')}. Restart the panel with --write, then reply here.`,
+          );
+          return { stopReason: 'end_turn' };
+        }
         if (text === '/mcp') {
           await message(
             'workbench_progress: ' +
@@ -104,12 +200,16 @@ const app = agent({ name: 'workbench-fixture' })
           );
           return { stopReason: 'end_turn' };
         }
+        // done:<summary> reports the work finished.
+        const finished = text.startsWith('done:');
         const summary = text.startsWith('progress:')
           ? text.slice(9)
-          : 'Located the theme configuration and its entry point. I am checking how the setting reaches the rendered page; no changes have been made yet.';
+          : finished
+            ? text.slice(5)
+            : 'Located the theme configuration and its entry point. I am checking how the setting reaches the rendered page; no changes have been made yet.';
         const result = await progress.callTool({
           name: 'report_progress',
-          arguments: { summary },
+          arguments: finished ? { summary, finished: true } : { summary },
         });
         await message(
           result.isError
@@ -135,6 +235,15 @@ const app = agent({ name: 'workbench-fixture' })
         if (abort.signal.aborted) break;
         await message(chunk);
         await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return { stopReason: abort.signal.aborted ? 'cancelled' : 'end_turn' };
+    }
+    // busy:<ms> keeps streaming for that long, a turn that is long but active.
+    if (/^busy:\d+$/.test(text)) {
+      const end = Date.now() + Math.min(60_000, Number(text.slice(5)));
+      while (Date.now() < end && !abort.signal.aborted) {
+        await message('.');
+        await new Promise((resolve) => setTimeout(resolve, 40));
       }
       return { stopReason: abort.signal.aborted ? 'cancelled' : 'end_turn' };
     }
@@ -164,8 +273,57 @@ const app = agent({ name: 'workbench-fixture' })
       }
       return { stopReason: 'end_turn' };
     }
+    if (text === 'command-permission') {
+      // Shaped like the pinned Codex adapter: a JSON-encoded `bash -lc` command.
+      const allow = `opaque-allow-${randomUUID()}`;
+      const result = await client.request(
+        methods.client.session.requestPermission,
+        {
+          sessionId: params.sessionId,
+          toolCall: {
+            toolCallId: `tool-${++counter}-command`,
+            title: 'Run command',
+            kind: 'execute',
+            status: 'pending',
+            rawInput: {
+              command: JSON.stringify([
+                'bash',
+                '-lc',
+                'npm test -- --watch=false',
+              ]),
+              cwd: session.cwd,
+            },
+          },
+          options: [
+            { optionId: allow, name: 'Yes, proceed', kind: 'allow_once' },
+            {
+              optionId: `opaque-reject-${randomUUID()}`,
+              name: 'No, and tell Codex what to do differently',
+              kind: 'reject_once',
+            },
+          ],
+        },
+      );
+      await message(
+        result.outcome.outcome === 'selected' &&
+          result.outcome.optionId === allow
+          ? 'Command allowed.'
+          : 'Command not run.',
+      );
+      return { stopReason: 'end_turn' };
+    }
     if (text.startsWith('reply:')) {
       await message('Answer received: ' + text.slice(6));
+      return { stopReason: 'end_turn' };
+    }
+    // lines:<n> answers with n numbered lines, for reading a long reply.
+    if (/^lines:\d+$/.test(text)) {
+      const count = Math.min(200, Number(text.slice(6)));
+      await message(
+        Array.from({ length: count }, (_, index) => `Line ${index + 1}`).join(
+          '\n',
+        ),
+      );
       return { stopReason: 'end_turn' };
     }
     const permission = async (suffix) => {

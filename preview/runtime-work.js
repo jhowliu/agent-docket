@@ -65,7 +65,7 @@ export function parseWorkSnapshot(value) {
           taskIds.has(task.id) ||
           !plain(task.title, 120) ||
           !stages.includes(task.stage) ||
-          !['planned', 'active'].includes(task.status) ||
+          !['planned', 'active', 'accepted'].includes(task.status) ||
           !task.spec ||
           !Number.isSafeInteger(task.spec.revision) ||
           task.spec.revision < 1 ||
@@ -139,7 +139,9 @@ export function createRoadmapView({
   const currentRun = () =>
     read().runs.find((run) => run.id === read().selected);
   function currentTask(runId = read().selected) {
-    const work = read().work;
+    const work =
+      read().projects?.find((project) => project.runIds.includes(runId))
+        ?.work ?? read().work;
     if (work?.kind !== 'ready' || !work.plan) return null;
     const id = work.bindings.find((binding) => binding.runId === runId)?.taskId;
     for (const phase of work.plan.phases) {

@@ -1,6 +1,6 @@
 # Useful Timeline activity
 
-2026-10-19. This slice adds context to the three-view TUI without generating summaries with another model. It does not implement the PM/Dev/Review/Verify/PR workflow.
+2026-10-19. This slice adds context to the TUI without generating summaries with another model. It does not implement the PM/Dev/Review/Verify/PR workflow.
 
 ## How oat-agents ingests information
 
@@ -18,20 +18,21 @@ The useful semantic messages therefore depend on producers supplying them. The T
 
 ## Current workbench ingestion
 
-| Input | Owner and recorded observation | TUI presentation |
-| --- | --- | --- |
-| Accepted prompt | `execution.prompt` emits `turn.start` after validation and entering Running; busy/rejected input emits no start | Request preview instead of a bare Running row |
-| Agent progress tool | `execution` accepts Run/turn-bound free-form summaries, at most 50 words | Full wrapped Progress entries; no semantic classification |
-| ACP text deltas | `execution` records bounded `agent.message` deltas | Full conversation in Live; no first-line proxy for progress |
-| ACP tool calls/patches | `execution` merges title/status by tool ID; omitted patch fields preserve the preceding values | One activity row per tool in each turn, updated with its reported status and observed duration |
-| Approval transitions | `attention` owns pending/accepted/delivered/stale; `execution` records the receipt | Request title and selected option when available, with acceptance and delivery kept distinct |
-| ACP diffs | `execution` records the provider-reported change | One file notice per path per turn; full changes in Diff |
-| Turn ending | Provider stop reason plus recorded start/tool/diff observations | Elapsed time, tool count, distinct changed-file count and unusual stop reasons |
-| Run failure/interruption | `execution` records the failure reason | Failure with its reason; transport/environment diagnostics remain in Live and the header |
+| Input                    | Owner and recorded observation                                                                                              | TUI presentation                                                                                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Accepted prompt          | `execution.prompt` emits `turn.start` after validation and entering Running; busy/rejected input emits no start             | Request preview instead of a bare Running row                                                                                                                            |
+| Agent progress tool      | `execution` accepts Run/turn-bound free-form summaries, at most 50 words                                                    | Full wrapped Progress entries; no semantic classification                                                                                                                |
+| ACP text deltas          | `execution` records bounded `agent.message` deltas                                                                          | Full conversation in Live; no first-line proxy for progress                                                                                                              |
+| ACP tool calls/patches   | `execution` merges title/status by tool ID; omitted patch fields preserve the preceding values                              | Routine calls stay in Live; failures show one row with title, observed duration and `:live`                                                                              |
+| Approval transitions     | `attention` owns pending/accepted/delivered/stale; `execution` records the receipt                                          | Request title and selected option when available, with acceptance and delivery kept distinct                                                                             |
+| ACP diffs                | `execution` records the provider-reported change                                                                            | Only a changed-file count at turn end; Change map reads the worktree files and diffs                                                                                     |
+| Agent request tool       | `execution` accepts Run/turn-bound `request_user` calls; `attention` keeps them until done or the Run ends                  | `Needs you` / `Question for you`, `Marked done`, `Request expired` with the title                                                                                        |
+| Turn ending              | Provider stop reason, recorded start/tool/diff observations and what the agent declared ([turn outcomes](turn-outcomes.md)) | `Blocked` / `Question` / `Finished` / `Turn ended` with elapsed time, tool and file counts, unusual stop reasons; `Space reply · N lines` and the reply's last paragraph |
+| Run failure/interruption | `execution` records the failure reason                                                                                      | Failure with its reason; transport/environment diagnostics remain in Live and the header                                                                                 |
 
 `execution/index.ts` owns the new public `turn.start` event. Its text records locally accepted input, not provider delivery or task success, and passes through the existing redaction/8,000-character journal boundary. The private tool cache is bounded by the configured event limit and reset for each accepted prompt.
 
-`app/tui-timeline.ts` is a pure reading projection. It groups observations without changing the raw journal, cursors, Run state or verification rules. Its tool fallback also reads older daemons that emitted `Tool update`/`unknown` for omitted fields. Tool IDs and changed-file counts are scoped to their own turn. Timing is omitted when retained history does not contain a usable start.
+`app/tui-timeline.ts` is a pure reading projection. It groups observations without changing the raw journal, cursors, Run state or verification rules. Its failed-tool fallback also reads older daemons that emitted `Tool update`/`unknown` for omitted fields. Tool IDs and changed-file counts are scoped to their own turn. Timing is omitted when retained history does not contain a usable start.
 
 Progress wording comes directly from the working agent, not an additional model's interpretation or a classifier over ordinary conversation. See [Agent progress](agent-progress.md) for the tool contract and current transport limits. A completed tool status and a finished turn do not establish a verified check, passed stage or completed Task.
 
@@ -39,18 +40,18 @@ Progress wording comes directly from the working agent, not an additional model'
 
 The TUI uses named terminal colors rather than hard-coding RGB values. Actual shades follow the user's terminal theme. It borrows Oat's colored labels, dim timestamps and ordinary details, with a user-requested change: green means successful completion/delivery; blue means activity. Oat itself uses green for agent entry and blue for exit. [Oat color mapping](https://github.com/Noopher-AI/oat-agents/blob/c830f3e59726086fcb3d86dd6e0415687bd40d9b/src/tui/text.rs#L248-L283), [Timeline rendering](https://github.com/Noopher-AI/oat-agents/blob/c830f3e59726086fcb3d86dd6e0415687bd40d9b/src/tui/tabbed.rs#L299-L313)
 
-| Meaning | Workbench color | Current workbench mapping |
-| --- | --- | --- |
-| Successful reported operation | Green | Tool completed; approval reply delivered |
-| Activity | Blue | Agent/turn/tool starting or running |
-| Messages | Cyan | Request and agent-authored Progress labels |
-| Needs human / review result | Yellow | Pending approval, accepted reply awaiting delivery, sign-in required |
-| Blocker / skipped environment | Red | Failed tools, failed/interrupted Runs |
-| Decision / delegation / retry / note | Magenta | Reserved until explicit reporting is implemented |
-| Run open/close | White | Stopping/cancelled/ended Run; file-change label |
-| Ended or neutral observation | Gray | Turn finished, idle, expired approvals, neutral/pending activity; timestamps are dim |
+| Meaning                              | Workbench color | Current workbench mapping                                                            |
+| ------------------------------------ | --------------- | ------------------------------------------------------------------------------------ |
+| Successful reported operation        | Green           | Reported finished; Checks passed; approval reply delivered                           |
+| Activity                             | Blue            | Agent/turn starting or running                                                       |
+| Messages                             | Cyan            | Request and agent-authored Progress labels                                           |
+| Needs human / review result          | Yellow          | Pending approval, accepted reply awaiting delivery, sign-in required                 |
+| Blocker / skipped environment        | Red             | Failed tools, failed/interrupted Runs                                                |
+| Decision / delegation / retry / note | Magenta         | Reserved until explicit reporting is implemented                                     |
+| Run open/close                       | White           | Stopping/cancelled/ended Run                                                         |
+| Ended or neutral observation         | Gray            | Turn finished, idle, expired approvals, neutral/pending activity; timestamps are dim |
 
-Green tool completion is scoped to the provider-reported tool outcome; it does not establish a passed verification or completed Task. Turn endings stay neutral. Labels remain explicit when color is unavailable. Only event labels are colored and bold; tool commands and file paths are bold, while message text and reasons remain ordinary text.
+Routine tool completion is hidden; a provider-reported tool outcome does not establish a passed verification or completed Task. Turn endings stay neutral. Labels remain explicit when color is unavailable. Only event labels are colored and bold; tool commands and file paths are bold, while message text and reasons remain ordinary text.
 
 Oat separately colors meta agents magenta, planners cyan, workers green and reviewers yellow. Our Run model has no role identity yet, so these role colors are not applied to provider names or invented roles. Adding the role protocol and semantic reporting remains future work.
 
@@ -64,4 +65,4 @@ The free-form progress ingress now lets an agent explain decisions, findings or 
 
 ## Validation
 
-`test/execution.test.ts` covers accepted input ordering, busy rejection, input redaction and partial ACP tool updates. `test/timeline.test.tsx` replays the screenshot's lifecycle-only pattern and checks meaningful previews, single tool rows, approval titles, turn boundaries, reused tool IDs, file deduplication, failures and missing timing. Existing streaming and client tests exercise public polling/reconnection and terminal sizing. Rendered fixtures are not live model or physical-terminal acceptance.
+`test/execution.test.ts` covers accepted input ordering, busy rejection, input redaction and partial ACP tool updates. `test/timeline.test.tsx` replays the screenshot's lifecycle-only pattern and checks meaningful previews, hidden routine activity, retained failed-tool rows, approval titles, turn boundaries, reused tool IDs, file deduplication, failures and missing timing. Existing streaming and client tests exercise public polling/reconnection and terminal sizing. Rendered fixtures are not live model or physical-terminal acceptance.

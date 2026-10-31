@@ -1,13 +1,29 @@
 import { z } from 'zod';
 import {
+  changesRequestSchema,
   commandSchema,
   replySchema,
   stateSchema,
   workbenchOrigin,
   directoryRequestSchema,
+  projectRequestSchema,
+  initializeProjectRequestSchema,
 } from './workbench-protocol.js';
-import { directoryListingSchema } from '../execution/index.js';
+import {
+  directoryListingSchema,
+  localProjectSchema,
+  projectFoldersSchema,
+  projectInitializationSchema,
+  ProjectInitializationRequired,
+} from '../execution/index.js';
+import type {
+  LocalProject,
+  ProjectFolders,
+  ProjectInitialization,
+} from '../execution/index.js';
 import type { RunId, DirectoryListing } from '../execution/index.js';
+import { changeMapSchema } from '../delivery/index.js';
+import type { ChangeMap } from '../delivery/index.js';
 import type {
   WorkbenchCommand,
   WorkbenchReply,
@@ -18,6 +34,8 @@ export class WorkbenchError extends Error {
   constructor(
     readonly kind: 'unavailable' | 'protocol' | 'rejected',
     message: string,
+    /** A server-proposed command line, e.g. a check for an unset project. */
+    readonly suggestion?: string,
   ) {
     super(message);
   }
@@ -45,12 +63,13 @@ export function createWorkbenchClient(
   async function send(
     path: string,
     options: RequestInit = {},
+    timeout = 5000,
   ): Promise<Response> {
     try {
       return await request(
         new Request(origin + path, {
           ...options,
-          signal: AbortSignal.timeout(5000),
+          signal: AbortSignal.timeout(timeout),
           redirect: 'error',
         }),
       );
@@ -97,6 +116,126 @@ export function createWorkbenchClient(
   }
   return {
     connect,
+    async folders(path: string): Promise<ProjectFolders> {
+      const query = projectRequestSchema.parse({ path });
+      if (!token)
+        throw new WorkbenchError(
+          'unavailable',
+          'Reconnect before browsing folders',
+        );
+      const response = await send('/api/project/folders', {
+        method: 'POST',
+        headers: {
+          'x-workbench-token': token,
+          origin,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(query),
+      });
+      if (!response.ok) {
+        const error = z
+          .object({ error: z.string() })
+          .safeParse(await response.json());
+        throw new WorkbenchError(
+          'rejected',
+          error.success
+            ? error.data.error
+            : 'Folders are unavailable; retry the path',
+        );
+      }
+      const listing = projectFoldersSchema.safeParse(await response.json());
+      if (!listing.success || listing.data.input !== path)
+        throw new WorkbenchError('protocol', 'Invalid folder response');
+      return listing.data;
+    },
+    async project(path: string): Promise<LocalProject> {
+      const query = projectRequestSchema.parse({ path });
+      if (!token)
+        throw new WorkbenchError(
+          'unavailable',
+          'Reconnect before choosing a project',
+        );
+      const response = await send('/api/project', {
+        method: 'POST',
+        headers: {
+          'x-workbench-token': token,
+          origin,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(query),
+      });
+      if (!response.ok) {
+        const body: unknown = await response.json();
+        const initialization = z
+          .object({ initialization: projectInitializationSchema })
+          .safeParse(body);
+        if (
+          response.status === 409 &&
+          initialization.success &&
+          state?.features?.projectInitialization
+        )
+          throw new ProjectInitializationRequired(
+            initialization.data.initialization,
+          );
+        const error = z.object({ error: z.string() }).safeParse(body);
+        throw new WorkbenchError(
+          'rejected',
+          error.success
+            ? error.data.error
+            : 'Project is unavailable; choose a Git root',
+        );
+      }
+      return localProjectSchema.parse(await response.json());
+    },
+    async initializeProject(
+      project: ProjectInitialization,
+    ): Promise<LocalProject> {
+      const input = initializeProjectRequestSchema.parse({
+        project,
+        confirm: true,
+      });
+      if (!token || !state?.features?.projectInitialization)
+        throw new WorkbenchError(
+          'rejected',
+          'Git initialization needs an updated connection/server',
+        );
+      // A mutation is sent once. On an uncertain result, inspect again before any retry.
+      const response = await send(
+        '/api/project/initialize',
+        {
+          method: 'POST',
+          headers: {
+            'x-workbench-token': token,
+            origin,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(input),
+        },
+        120_000,
+      ).catch(() => {
+        throw new WorkbenchError(
+          'unavailable',
+          'Initialization result is uncertain; reload the folder before retrying',
+        );
+      });
+      const body: unknown = await response.json();
+      if (!response.ok) {
+        const error = z.object({ error: z.string() }).safeParse(body);
+        throw new WorkbenchError(
+          'rejected',
+          error.success
+            ? error.data.error
+            : 'Git initialization failed; reload the folder before retrying',
+        );
+      }
+      const result = localProjectSchema.safeParse(body);
+      if (!result.success || result.data.path !== project.path)
+        throw new WorkbenchError(
+          'protocol',
+          'Invalid initialization response; reload the folder',
+        );
+      return result.data;
+    },
     async directory(runId: RunId, path = ''): Promise<DirectoryListing> {
       const query = directoryRequestSchema.parse({ runId, path });
       if (!token)
@@ -123,6 +262,47 @@ export function createWorkbenchClient(
       )
         throw new WorkbenchError('protocol', 'Invalid directory response');
       return listing.data;
+    },
+    /** The Run's worktree against its base; `filesOnly` skips the slower flow analysis. */
+    async changes(runId: RunId, filesOnly = false): Promise<ChangeMap> {
+      const query = changesRequestSchema.parse({
+        runId,
+        ...(filesOnly ? { files: 'only' } : {}),
+      });
+      if (!token)
+        throw new WorkbenchError(
+          'unavailable',
+          'Reconnect before reading changes',
+        );
+      const response = await send(
+        '/api/changes?' +
+          new URLSearchParams({
+            runId: query.runId,
+            ...(query.files ? { files: query.files } : {}),
+          }),
+        {
+          headers: { 'x-workbench-token': token, origin },
+        },
+      );
+      if (!response.ok) {
+        const error = z
+          .object({ error: z.string() })
+          .safeParse(await response.json().catch(() => null));
+        throw new WorkbenchError(
+          'rejected',
+          error.success
+            ? error.data.error
+            : 'Changes are unavailable for this Run',
+        );
+      }
+      const map = changeMapSchema.safeParse(await response.json());
+      if (!map.success)
+        throw new WorkbenchError('protocol', 'Invalid changes response');
+      return map.data;
+    },
+    /** Browser page for one Run's Change map; the page fetches its own data. */
+    changeMapUrl(runId: RunId): string {
+      return `${origin}/changes?${new URLSearchParams({ run: changesRequestSchema.parse({ runId }).runId })}`;
     },
     poll(): Promise<WorkbenchState> {
       polling ??= (async () => {
@@ -163,12 +343,18 @@ export function createWorkbenchClient(
         // Never replay a mutation after reconnect: its first delivery may already have succeeded.
         if (response.status === 403) token = null;
         const body: unknown = await response.json().catch(() => null);
-        const error = z.object({ error: z.string() }).safeParse(body);
+        const error = z
+          .object({
+            error: z.string(),
+            suggestion: z.string().max(1000).optional(),
+          })
+          .safeParse(body);
         throw new WorkbenchError(
           'rejected',
           error.success
             ? error.data.error
             : 'Action not accepted; check the current state',
+          error.data?.suggestion,
         );
       }
       try {

@@ -153,6 +153,7 @@ const help = `Commands:
   answer <item-number> <choice-number>
   auth <method-id>              use an advertised authentication method
   cancel [run-number]            cancel Run and clean up its environment
+  commit <message>              commit a stopped worktree to its local branch and remove it
   save [path.jsonl]              export retained timeline
   help / quit
 Fixture prompts: fix, question, reply:<answer>, wait, crash, unsupported-files.
@@ -185,6 +186,8 @@ async function shell(initial?: Launch): Promise<void> {
       );
     else if (event.type === 'diff')
       console.log(`[${number}] diff ${JSON.stringify(event.path)}`);
+    else if (event.type === 'diagnostic')
+      console.log(`[${number}] ${JSON.stringify(event.message)}`);
   });
   attention.subscribe((item) => {
     if (!itemNumbers.has(item.id))
@@ -192,11 +195,15 @@ async function shell(initial?: Launch): Promise<void> {
     console.log(
       `[Run ${runNumber(item.runId)} / Item ${itemNumbers.get(item.id)}] ${item.status}: ${JSON.stringify(item.title)}`,
     );
-    if (item.status === 'pending')
+    if (item.status === 'pending' && item.kind === 'permission')
       item.choices.forEach((choice, index) =>
         console.log(
           `  ${index + 1}. ${JSON.stringify(choice.label)} (${choice.kind})`,
         ),
+      );
+    else if (item.status === 'pending')
+      item.steps.forEach((step, index) =>
+        console.log(`  step ${index + 1}. ${JSON.stringify(step)}`),
       );
   });
   const selected = () => {
@@ -288,6 +295,10 @@ async function shell(initial?: Launch): Promise<void> {
           tasks(runtime.cancel(rest ? byNumber(rest) : selected()));
           continue;
         }
+        if (command === 'commit') {
+          tasks(runtime.commitWorkspace(selected(), rest));
+          continue;
+        }
         if (command === 'inbox') {
           attention
             .list()
@@ -310,6 +321,10 @@ async function shell(initial?: Launch): Promise<void> {
             .find((item) => itemNumbers.get(item.id) === number);
           if (!item || !choice || !Number.isInteger(choice))
             throw new Error('Unknown item or choice');
+          if (item.kind !== 'permission')
+            throw new Error(
+              'Agent requests are marked done in the TUI or browser',
+            );
           const option = item.choices[choice - 1];
           if (!option) throw new Error('Unknown choice');
           console.log(attention.answer(item.id, option.id));

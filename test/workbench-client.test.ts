@@ -36,7 +36,10 @@ test('new clients reattach to the same pending request and cannot answer it twic
     state.attention.some((item) => item.status === 'pending'),
   );
   const item = pending.attention[0];
-  const choice = item?.choices.find((choice) => choice.kind === 'allow-once');
+  const choice =
+    item?.kind === 'permission'
+      ? item.choices.find((choice) => choice.kind === 'allow-once')
+      : undefined;
   assert.ok(item && choice);
   // Replacing a TUI client has no Run lifecycle side effects.
   const other = createWorkbenchClient(origin, (request) => app.fetch(request));
@@ -100,7 +103,7 @@ test('server restart replaces the journal and credentials without restoring old 
     state.attention.some((item) => item.status === 'pending'),
   );
   const old = waiting.attention[0];
-  assert.ok(old?.choices[0]);
+  assert.ok(old?.kind === 'permission' && old.choices[0]);
   await app.close();
   app = createWebWorkbench(origin);
   const fresh = await client.poll();

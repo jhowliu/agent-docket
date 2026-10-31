@@ -1,5 +1,21 @@
 # M0 能力與驗證紀錄
 
+2026-10-21 current result: real local Codex ACP 2.2.2 with one existing copied file login passed the scoped checks below. The test used actual Ink input and in-memory app transport, without a listener or physical terminal. Restricted execution reproduced the routing failure; the same read probe succeeded with approved network access. Full evidence and opt-in reproduction: [Codex live acceptance](codex-live-acceptance.md).
+
+| Current Codex local check                                                           | Result                                                                                           |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Initialization, model inference, project reading, bounded progress                  | Passed for the existing file login                                                               |
+| Task requirements context, sample edit, Diff, independent before/equal/after checks | Passed; 3 Node tests passed                                                                      |
+| Genuine Allow once and Reject once                                                  | Passed; accepted/delivered events and actual marker presence/absence checked                     |
+| Cancellation while a command PID is alive and Run is Running                        | Passed; Cancelled and process stopped                                                            |
+| Source preservation and Git discovery within the Run                                | Passed; sample originals unchanged and parent-repository regression fixed                        |
+| Local project worktree, dirty close reminder, explicit branch commit and collection | Passed with real Codex and Ink input; source HEAD unchanged, local branch kept, worktree removed |
+| Other authentication flows, native races, physical terminal, Claude, containers     | Unverified                                                                                       |
+
+Build and all **91** deterministic source tests passed. Worktree-specific checks cover clean collection, staged/binary/untracked changes, failed commit/retry, locks/branch changes and source preservation. These checks do not complete all M0/M1 acceptance or implement Candidate-bound evidence and review gates.
+
+## Earlier results (historical)
+
 2026-10-19 update: explicit [local Codex mode](local-execution.md) is implemented using pinned codex-acp 2.2.2. Native orchestration, separate code/home copies, cancellation and TUI authentication routing are exercised with deterministic peers. The real adapter completed an unauthenticated ACP v1 initialization/new-session handshake and advertised API-key sign-in; no prompt or existing login was used. Model/account acceptance and container isolation remain unverified. Earlier worker-only scope below is historical.
 
 日期：2026-10-18。Node 22.16.0，ACP SDK 1.9.0，TypeScript 5.9.3。本機只確認版本：Codex CLI 0.163.0、Claude Code 2.1.302；未使用這兩個本機程序執行開發任務。Worker image 規劃釘選 codex-acp 2.2.2、claude-agent-acp 0.93.0，尚未 build。

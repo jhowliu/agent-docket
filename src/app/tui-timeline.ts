@@ -1,6 +1,8 @@
 import type { AttentionItem } from '../attention/index.js';
 import type { RunEvent } from '../execution/index.js';
 import { terminalText } from './tui-input.js';
+import { lastParagraph, outcomeOf, startsTurn } from './tui-outcome.js';
+import { inlineText } from './tui-markdown.js';
 
 export type TimelineEntry = Readonly<{
   sequence: number;
@@ -10,10 +12,15 @@ export type TimelineEntry = Readonly<{
   detail: string;
   color: string;
   detailBold: boolean;
+  /** Keeps the agent's own line breaks (progress); every row wraps on screen. */
   wrap: boolean;
+  /** Dim lines beneath: a request's steps, or the end of the turn's reply. */
+  notes: readonly string[];
+  /** The turn this row belongs to, keyed like `turnReplies`; null before any turn. */
+  turn: number | null;
 }>;
 type ToolActivity = {
-  row: number;
+  row: number | undefined;
   first: RunEvent;
   title: string;
   status: string;
@@ -36,6 +43,84 @@ const preview = (text: string) =>
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 240);
+
+/**
+ * What a finished check did, from its exit alone. Whether it still applies to
+ * the Run's code is the evidence assessment, shown separately.
+ */
+export function checkEnded(
+  event: Extract<RunEvent, { type: 'check.end' }>,
+): Readonly<{ label: string; detail: string; color: string }> {
+  const seconds = Math.round(event.durationMs / 1000);
+  const time =
+    seconds < 60
+      ? `${seconds}s`
+      : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const sha = event.candidate.slice(0, 7);
+  switch (event.outcome) {
+    case 'exited':
+      return event.exitCode === 0
+        ? { label: 'Checks passed', detail: `${sha} · ${time}`, color: 'green' }
+        : {
+            label: 'Checks failed',
+            detail: `${event.exitCode === null ? 'signal' : `exit ${event.exitCode}`} · ${sha} · ${time} · :live`,
+            color: 'red',
+          };
+    case 'timed-out':
+      return {
+        label: 'Checks timed out',
+        detail: `${sha} · :live`,
+        color: 'red',
+      };
+    case 'cancelled':
+      return { label: 'Checks cancelled', detail: sha, color: 'gray' };
+    case 'failed-to-start':
+      return {
+        label: 'Checks could not start',
+        detail: event.output.split('\n')[0] ?? '',
+        color: 'yellow',
+      };
+  }
+}
+
+/**
+ * Names each event's turn by the event that started it. A `turn.start` right
+ * after the Run started running belongs to that same turn.
+ */
+function turnKeys(): (event: RunEvent) => number | null {
+  let key: number | null = null;
+  let open = false;
+  return (event) => {
+    if (startsTurn(event)) {
+      if (!(open && event.type === 'turn.start')) key = event.sequence;
+      open = true;
+    } else if (event.type === 'turn.end') open = false;
+    return key;
+  };
+}
+
+/** Each turn's request and reply, verbatim; the reply is the agent's words, never interpreted. */
+export function turnReplies(
+  events: readonly RunEvent[],
+): ReadonlyMap<number, Readonly<{ request: string; reply: string }>> {
+  const turnOf = turnKeys();
+  const turns = new Map<number, { request: string; parts: string[] }>();
+  for (const event of readableEvents(events)) {
+    const key = turnOf(event);
+    if (key === null) continue;
+    const turn = turns.get(key) ?? { request: '', parts: [] };
+    turns.set(key, turn);
+    if (event.type === 'turn.start') turn.request = event.text;
+    else if (event.type === 'agent.message' && event.text.trim())
+      turn.parts.push(event.text);
+  }
+  return new Map(
+    [...turns].map(([key, turn]) => [
+      key,
+      { request: turn.request, reply: turn.parts.join('\n\n') },
+    ]),
+  );
+}
 
 /** Concatenate adjacent deltas for reading without changing raw events or cursors. */
 export function readableEvents(events: readonly RunEvent[]): RunEvent[] {
@@ -74,6 +159,14 @@ export function timelineEntries(
   let turnAt: string | undefined;
   let requestRow: number | undefined;
   let ended = false;
+  // The turn's own events decide its outcome; its reply opens with Space,
+  // and its last paragraph sits under the turn's result row.
+  let turn: RunEvent[] = [];
+  const turnOf = turnKeys();
+  let turnKey: number | null = null;
+  let reply: string[] = [];
+  // Marked-done requests the agent has not heard about until the next turn.
+  let unreplied: { index: number; event: RunEvent; title: string }[] = [];
   const row = (
     event: RunEvent,
     label: string,
@@ -95,16 +188,31 @@ export function timelineEntries(
       color,
       detailBold,
       wrap,
+      notes: [],
+      turn: turnKey,
     };
   };
   for (const event of readableEvents(events)) {
+    if (startsTurn(event)) {
+      turn = [];
+      reply = [];
+      for (const { index, event: done, title } of unreplied)
+        rows[index] = row(done, 'Marked done', title);
+      unreplied = [];
+    } else turn.push(event);
+    turnKey = turnOf(event);
     switch (event.type) {
       case 'agent.progress': {
-        rows.push(row(event, 'Progress', event.summary, 'cyan', false, true));
+        rows.push(
+          event.finished
+            ? row(event, 'Finished', event.summary, 'green', false, true)
+            : row(event, 'Progress', event.summary, 'cyan', false, true),
+        );
         break;
       }
       case 'agent.message':
         // Free-form conversation is available in Live; progress has its own explicit ingress.
+        if (event.text.trim()) reply.push(event.text);
         break;
       case 'run.state': {
         const state = event.state;
@@ -159,7 +267,7 @@ export function timelineEntries(
       }
       case 'tool': {
         const activity = tools.get(event.id) ?? {
-          row: rows.length,
+          row: undefined,
           first: event,
           title: event.title,
           status: event.status,
@@ -169,30 +277,53 @@ export function timelineEntries(
           activity.title = event.title;
         if (event.status !== 'unknown') activity.status = event.status;
         tools.set(event.id, activity);
-        const duration = ['completed', 'failed'].includes(activity.status)
-          ? elapsed(activity.first.at, event.at)
-          : undefined;
-        rows[activity.row] = row(
-          activity.first,
-          activity.status === 'in_progress'
-            ? 'Tool running'
-            : activity.status === 'unknown'
-              ? 'Tool update'
-              : 'Tool ' + activity.status,
-          `${preview(activity.title)}${duration ? ` · ${duration}` : ''}`,
-          activity.status === 'failed'
-            ? 'red'
-            : activity.status === 'completed'
-              ? 'green'
-              : activity.status === 'in_progress'
-                ? 'blue'
-                : 'gray',
-          true,
-        );
+        // Routine tool activity belongs in Live. Keep failures visible without
+        // mistaking an agent-run command for a Workbench Check.
+        if (activity.status === 'failed' || activity.row !== undefined) {
+          const duration = elapsed(activity.first.at, event.at);
+          activity.row ??= rows.length;
+          rows[activity.row] = row(
+            activity.first,
+            'Tool ' + activity.status,
+            `${preview(activity.title)}${duration ? ` · ${duration}` : ''} · :live`,
+            activity.status === 'failed' ? 'red' : 'gray',
+            true,
+          );
+        }
         break;
       }
       case 'attention': {
         const decision = decisions.get(event.id);
+        if (decision?.kind === 'agent-request') {
+          const labels: Readonly<Record<string, string>> = {
+            pending:
+              decision.request === 'question'
+                ? 'Question for you'
+                : 'Needs you',
+            done: 'Marked done',
+            stale: 'Request expired',
+          };
+          const title = preview(decision.title);
+          if (event.status === 'done')
+            unreplied.push({ index: rows.length, event, title });
+          rows.push({
+            ...row(
+              event,
+              labels[event.status] ?? event.status,
+              // Done tells the agent nothing; it waits for the next prompt.
+              event.status === 'done' ? `reply to continue · ${title}` : title,
+              event.status === 'stale' ? 'gray' : 'yellow',
+              event.status === 'pending',
+            ),
+            notes:
+              event.status === 'pending'
+                ? decision.steps.map(
+                    (step, index) => `${index + 1}. ${terminalText(step)}`,
+                  )
+                : [],
+          });
+          break;
+        }
         if (!decision) {
           rows.push(
             row(
@@ -239,8 +370,6 @@ export function timelineEntries(
         break;
       }
       case 'diff':
-        if (!files.has(event.path))
-          rows.push(row(event, 'File changed', event.path, 'white', true));
         files.add(event.path);
         break;
       case 'turn.end': {
@@ -252,11 +381,48 @@ export function timelineEntries(
             `${files.size} file${files.size === 1 ? '' : 's'} changed`,
           );
         if (event.reason !== 'end_turn') details.push('stop: ' + event.reason);
-        rows.push(
-          row(event, 'Turn finished', details.filter(Boolean).join(' · ')),
-        );
+        // The turn's result, as its agent declared it.
+        const outcome = outcomeOf(turn, attention);
+        // Whatever the agent declared, its reply may hold the answer.
+        const text = reply.join('\n\n');
+        // Its words without Markdown markers, which a dim line cannot show.
+        const ending = reply.length ? inlineText(lastParagraph(text)) : '';
+        if (ending) {
+          const count = text.split('\n').length;
+          details.push(`Space reply · ${count} line${count === 1 ? '' : 's'}`);
+        }
+        const stats = details.filter(Boolean).join(' · ');
+        rows.push({
+          ...(outcome.kind === 'blocked' || outcome.kind === 'question'
+            ? row(
+                event,
+                outcome.kind === 'blocked' ? 'Blocked' : 'Question',
+                [preview(outcome.title), stats].filter(Boolean).join(' · '),
+                'yellow',
+              )
+            : outcome.kind === 'finished'
+              ? row(event, 'Finished', stats, 'green')
+              : row(event, 'Turn ended', stats)),
+          notes: ending ? [ending] : [],
+        });
+        reply = [];
         ended = true;
         requestRow = undefined;
+        break;
+      }
+      case 'check.start':
+        rows.push(
+          row(
+            event,
+            'Checks started',
+            `${event.command} · ${event.candidate.slice(0, 7)}`,
+            'cyan',
+          ),
+        );
+        break;
+      case 'check.end': {
+        const ended = checkEnded(event);
+        rows.push(row(event, ended.label, ended.detail, ended.color));
         break;
       }
       case 'diagnostic':

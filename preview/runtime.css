@@ -524,3 +524,42 @@
     margin-left: 0;
   }
 }
+/* The creation form shares the workbench's compact, flat controls. */
+#agent-workbench-preview .aw-session {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--aw-line);
+}
+#agent-workbench-preview .aw-session-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+#agent-workbench-preview .aw-session-fields label {
+  display: flex;
+  flex: 1 1 180px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+#agent-workbench-preview .aw-session-fields [data-session-project] {
+  flex: 3 1 280px;
+}
+#agent-workbench-preview .aw-session-fields .aw-input {
+  min-width: 0;
+  width: 100%;
+}
+#agent-workbench-preview .aw-session-error {
+  color: var(--aw-amber);
+  overflow-wrap: anywhere;
+}
+#agent-workbench-preview .aw-session-error:empty {
+  display: none;
+}
+#agent-workbench-preview.aw-runtime .aw-request-steps {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+#agent-workbench-preview.aw-runtime .aw-request-steps li {
+  overflow-wrap: anywhere;
+}

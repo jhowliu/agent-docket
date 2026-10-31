@@ -37,7 +37,8 @@ const taskSchema = z
       })
       .strict(),
     stage: stageSchema,
-    status: z.enum(['planned', 'active']),
+    /** `accepted` only through Human Review on passing evidence; any later change reopens it. */
+    status: z.enum(['planned', 'active', 'accepted']),
   })
   .strict()
   .refine(
@@ -174,3 +175,99 @@ export const workSnapshotSchema = z.discriminatedUnion('kind', [
     })
     .strict(),
 ]);
+
+export const projectWorkSchema = z
+  .object({
+    id: z.string().regex(/^[a-f0-9]{64}$/),
+    source: z.string().min(1).max(4096),
+    runIds: z.array(runIdSchema).max(64),
+    work: workSnapshotSchema,
+  })
+  .strict();
+
+/**
+ * Most urgent first. Through `worktree` each kind asks something of the person:
+ * `checks` when automatic checks stopped for them, `accept` for Human Review.
+ */
+export const nextActionSchema = z.enum([
+  'approve',
+  'respond',
+  'sign-in',
+  'checks',
+  'accept',
+  'commit',
+  'worktree',
+  'prompt',
+  'working',
+  'ended',
+]);
+const runNextSchema = z
+  .object({ runId: runIdSchema, next: nextActionSchema })
+  .strict();
+export const projectOverviewSchema = z
+  .object({
+    projectId: projectWorkSchema.shape.id,
+    /** The project's most urgent Run; null without Runs. */
+    next: runNextSchema.nullable(),
+    runs: z.array(runNextSchema).max(64),
+  })
+  .strict();
+
+export const runVerificationSchema = z
+  .object({
+    runId: runIdSchema,
+    command: z.string().min(1).max(1000),
+    candidate: z.string().regex(/^[a-f0-9]{40,64}$/),
+    status: z.enum(['running', 'passed', 'failed', 'stale', 'unconfirmed']),
+    reason: z.string().max(400),
+  })
+  .strict();
+/** The latest Agent Review of a Run, judged against its current code and spec. */
+export const runReviewSchema = z
+  .object({
+    runId: runIdSchema,
+    reviewer: runIdSchema,
+    candidate: z.string().regex(/^[a-f0-9]{40,64}$/),
+    status: z.enum([
+      'reviewing',
+      'approved',
+      'changes',
+      'stale',
+      'unconfirmed',
+    ]),
+    reason: z.string().max(400),
+  })
+  .strict();
+/**
+ * A tracked Task's automatic step after its agent reported finished:
+ * `verifying` its Candidate, `reviewing` it with a reviewer Run, `fixing`
+ * after failed checks or review findings were sent back, or `stopped` for the
+ * person. Process memory only, like verifications.
+ */
+export const taskFlowSchema = z
+  .object({
+    runId: runIdSchema,
+    taskId: id('task'),
+    step: z.enum(['verifying', 'reviewing', 'fixing', 'stopped']),
+    /** Failed checks and review findings sent back to the agent so far. */
+    attempts: z.number().int().min(0).max(2),
+    reason: z.string().max(400),
+    /** While reviewing: the reviewer Run. */
+    reviewer: runIdSchema.optional(),
+    /** While fixing: what was sent back. */
+    cause: z.enum(['checks', 'review']).optional(),
+  })
+  .strict();
+export const projectCheckSchema = z
+  .object({
+    projectId: projectWorkSchema.shape.id,
+    command: z.string().min(1).max(1000),
+  })
+  .strict();
+/** A project whose Candidates another agent reviews than the Run's own. */
+export const projectReviewerSchema = z
+  .object({
+    projectId: projectWorkSchema.shape.id,
+    provider: z.enum(['codex', 'claude']),
+  })
+  .strict();

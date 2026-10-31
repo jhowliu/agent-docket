@@ -16,16 +16,20 @@
     "daemon": "tsx src/app/web.ts",
     "daemon:stop": "tsx src/app/tui.tsx --stop",
     "qa:tui": "FORCE_COLOR=1 tsx scripts/capture-tui.tsx",
+    "qa:codex": "tsx scripts/accept-codex.tsx",
+    "qa:loop": "tsx scripts/accept-loop.tsx",
     "demo": "tsx src/app/cli.ts demo",
     "doctor": "tsx src/app/cli.ts doctor"
   },
   "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.97.0",
     "@agentclientprotocol/codex-acp": "2.2.2",
     "@agentclientprotocol/sdk": "1.9.0",
     "@modelcontextprotocol/sdk": "1.32.1",
     "ink": "8.0.0",
     "react": "19.3.1",
     "string-width": "8.3.0",
+    "typescript": "5.9.3",
     "wrap-ansi": "10.0.2",
     "zod": "4.6.7"
   },
@@ -34,7 +38,6 @@
     "@types/react": "19.3.0",
     "ink-testing-library": "4.0.0",
     "prettier": "3.6.2",
-    "tsx": "4.23.15",
-    "typescript": "5.9.3"
+    "tsx": "4.23.15"
   }
 }

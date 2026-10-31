@@ -10,7 +10,9 @@ import {
 } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import type { RunId } from '../../execution/index.js';
+import type { SpecRef } from '../../evidence/index.js';
 import type {
+  Stage,
   Work,
   WorkCommand,
   WorkOptions,
@@ -27,6 +29,30 @@ const message = (error: unknown) =>
 
 /** Project planning and process-local Run association. No Run output is stored here. */
 export function createWork(options: WorkOptions): Work {
+  return createTrackedWork(options);
+}
+
+type Task = WorkPlan['phases'][number]['tasks'][number];
+type Change = Readonly<{
+  draft: WorkPlan;
+  attach?: { runId: RunId; taskId: string } | undefined;
+  detach?: RunId | undefined;
+}>;
+
+/**
+ * The same Work plus what project workspaces need to run a Task's flow: the
+ * Task a Run tracks and its spec, read from the plan loaded by the last
+ * snapshot or write (call snapshot() first for a fresh answer), and stage or
+ * acceptance changes the workbench makes itself, outside the user's commands.
+ */
+export function createTrackedWork(options: WorkOptions): Work & {
+  specOf(runId: RunId): SpecRef;
+  taskOf(runId: RunId): Task | null;
+  transition(
+    taskId: string,
+    update: Readonly<{ stage?: Stage; status?: 'active' | 'accepted' }>,
+  ): Promise<void>;
+} {
   if (
     !options.projectKey ||
     (options.directory && !isAbsolute(options.directory))
@@ -112,7 +138,10 @@ export function createWork(options: WorkOptions): Work {
       status: 'planned' as const,
     };
   }
-  async function mutate(command: WorkCommand): Promise<void> {
+  /** One locked read-change-write of the plan file. */
+  async function write(
+    change: (current: WorkPlan | null) => Change,
+  ): Promise<void> {
     let lock: Awaited<ReturnType<typeof open>> | undefined;
     if (file && options.directory) {
       await mkdir(options.directory, { recursive: true, mode: 0o700 });
@@ -127,101 +156,7 @@ export function createWork(options: WorkOptions): Work {
       }
     }
     try {
-      const current = await load();
-      if ((current?.revision ?? 0) !== command.expectedRevision)
-        throw new Error('Roadmap changed; refresh before applying this action');
-      if ('runId' in command && command.runId) currentRun(command.runId);
-      let draft: WorkPlan;
-      let attach: { runId: RunId; taskId: string } | undefined;
-      let detach: RunId | undefined;
-      if (command.kind === 'work.create') {
-        if (current)
-          throw new Error(
-            'This project already has a Roadmap; attach to an existing Task',
-          );
-        const phaseId = `phase-${randomUUID()}`;
-        const task = makeTask(command.taskTitle, command.spec);
-        draft = {
-          version: 1,
-          projectId,
-          title: command.title,
-          revision: 1,
-          activePhaseId: phaseId,
-          phases: [
-            { id: phaseId, title: command.phaseTitle, goal: '', tasks: [task] },
-          ],
-        };
-        if (command.runId) {
-          taskIn(draft, task.id).status = 'active';
-          attach = { runId: command.runId, taskId: task.id };
-        }
-      } else {
-        if (!current)
-          throw new Error('Create a Roadmap before tracking this work');
-        draft = structuredClone(current);
-        draft.revision++;
-        switch (command.kind) {
-          case 'work.add-phase':
-            draft.phases.push({
-              id: `phase-${randomUUID()}`,
-              title: command.title,
-              goal: command.goal,
-              tasks: [],
-            });
-            break;
-          case 'work.add-task': {
-            const task = makeTask(command.title, command.spec);
-            phaseIn(draft, command.phaseId).tasks.push(task);
-            if (command.runId) {
-              taskIn(draft, task.id).status = 'active';
-              attach = { runId: command.runId, taskId: task.id };
-            }
-            break;
-          }
-          case 'work.attach':
-            taskIn(draft, command.taskId).status = 'active';
-            attach = { runId: command.runId, taskId: command.taskId };
-            break;
-          case 'work.detach':
-            detach = command.runId;
-            break;
-          case 'work.spec': {
-            const task = taskIn(draft, command.taskId);
-            task.spec = {
-              revision: task.spec.revision + 1,
-              text: command.text,
-              confirmed: false,
-            };
-            task.stage = 'clarification';
-            break;
-          }
-          case 'work.confirm': {
-            const task = taskIn(draft, command.taskId);
-            if (!task.spec.text)
-              throw new Error(
-                'Write the requirements and acceptance conditions before confirming',
-              );
-            task.spec.confirmed = true;
-            task.stage = 'development';
-            task.status = 'active';
-            break;
-          }
-          case 'work.stage': {
-            const task = taskIn(draft, command.taskId);
-            if (command.stage !== 'clarification' && !task.spec.confirmed)
-              throw new Error(
-                'Confirm the current requirements before tracking another stage',
-              );
-            task.stage = command.stage;
-            task.status = 'active';
-            break;
-          }
-          case 'work.focus':
-            phaseIn(draft, command.phaseId);
-            draft.activePhaseId = command.phaseId;
-            break;
-        }
-      }
+      const { draft, attach, detach } = change(await load());
       if (attach && !bindings.has(attach.runId) && bindings.size >= 64)
         throw new Error('64 tracked Runs reached in this process');
       planSchema.parse(draft);
@@ -236,7 +171,139 @@ export function createWork(options: WorkOptions): Work {
       }
     }
   }
+  function edit(current: WorkPlan | null, command: WorkCommand): Change {
+    if ((current?.revision ?? 0) !== command.expectedRevision)
+      throw new Error('Roadmap changed; refresh before applying this action');
+    if ('runId' in command && command.runId) currentRun(command.runId);
+    let draft: WorkPlan;
+    let attach: { runId: RunId; taskId: string } | undefined;
+    let detach: RunId | undefined;
+    if (command.kind === 'work.create') {
+      if (current)
+        throw new Error(
+          'This project already has a Roadmap; attach to an existing Task',
+        );
+      const phaseId = `phase-${randomUUID()}`;
+      const task = makeTask(command.taskTitle, command.spec);
+      draft = {
+        version: 1,
+        projectId,
+        title: command.title,
+        revision: 1,
+        activePhaseId: phaseId,
+        phases: [
+          { id: phaseId, title: command.phaseTitle, goal: '', tasks: [task] },
+        ],
+      };
+      if (command.runId) {
+        taskIn(draft, task.id).status = 'active';
+        attach = { runId: command.runId, taskId: task.id };
+      }
+    } else {
+      if (!current)
+        throw new Error('Create a Roadmap before tracking this work');
+      draft = structuredClone(current);
+      draft.revision++;
+      switch (command.kind) {
+        case 'work.add-phase':
+          draft.phases.push({
+            id: `phase-${randomUUID()}`,
+            title: command.title,
+            goal: command.goal,
+            tasks: [],
+          });
+          break;
+        case 'work.add-task': {
+          const task = makeTask(command.title, command.spec);
+          phaseIn(draft, command.phaseId).tasks.push(task);
+          if (command.runId) {
+            taskIn(draft, task.id).status = 'active';
+            attach = { runId: command.runId, taskId: task.id };
+          }
+          break;
+        }
+        case 'work.attach':
+          taskIn(draft, command.taskId).status = 'active';
+          attach = { runId: command.runId, taskId: command.taskId };
+          break;
+        case 'work.detach':
+          detach = command.runId;
+          break;
+        case 'work.spec': {
+          const task = taskIn(draft, command.taskId);
+          task.spec = {
+            revision: task.spec.revision + 1,
+            text: command.text,
+            confirmed: false,
+          };
+          task.stage = 'clarification';
+          // Acceptance was for the old requirements.
+          if (task.status === 'accepted') task.status = 'active';
+          break;
+        }
+        case 'work.confirm': {
+          const task = taskIn(draft, command.taskId);
+          if (!task.spec.text)
+            throw new Error(
+              'Write the requirements and acceptance conditions before confirming',
+            );
+          task.spec.confirmed = true;
+          task.stage = 'development';
+          task.status = 'active';
+          break;
+        }
+        case 'work.stage': {
+          const task = taskIn(draft, command.taskId);
+          if (command.stage !== 'clarification' && !task.spec.confirmed)
+            throw new Error(
+              'Confirm the current requirements before tracking another stage',
+            );
+          task.stage = command.stage;
+          task.status = 'active';
+          break;
+        }
+        case 'work.focus':
+          phaseIn(draft, command.phaseId);
+          draft.activePhaseId = command.phaseId;
+          break;
+      }
+    }
+    return { draft, attach, detach };
+  }
+  function queued(task: () => Promise<void>): Promise<void> {
+    if (closed) return Promise.reject(new Error('Roadmap is closed'));
+    const result = queue.then(task);
+    queue = result.catch(() => {});
+    return result;
+  }
   return {
+    taskOf(runId) {
+      const taskId = bindings.get(runId);
+      const task = plan?.phases
+        .flatMap((phase) => phase.tasks)
+        .find((task) => task.id === taskId);
+      return task ? structuredClone(task) : null;
+    },
+    transition(taskId, update) {
+      return queued(() =>
+        write((current) => {
+          if (!current) throw new Error('Roadmap is unavailable');
+          const draft = structuredClone(current);
+          draft.revision++;
+          const task = taskIn(draft, taskId);
+          if (update.stage) task.stage = update.stage;
+          if (update.status) task.status = update.status;
+          return { draft };
+        }),
+      );
+    },
+    specOf(runId) {
+      const taskId = bindings.get(runId);
+      const task = plan?.phases
+        .flatMap((phase) => phase.tasks)
+        .find((task) => task.id === taskId);
+      return taskId && task ? { taskId, revision: task.spec.revision } : null;
+    },
     async snapshot(): Promise<WorkSnapshot> {
       await queue;
       try {
@@ -266,13 +333,10 @@ export function createWork(options: WorkOptions): Work {
       }
     },
     apply(input) {
-      if (closed) return Promise.reject(new Error('Roadmap is closed'));
       const parsed = workCommandSchema.safeParse(input);
       if (!parsed.success)
         return Promise.reject(new Error('Invalid Roadmap action'));
-      const result = queue.then(() => mutate(parsed.data));
-      queue = result.catch(() => {});
-      return result;
+      return queued(() => write((current) => edit(current, parsed.data)));
     },
     submit(runId, text) {
       if (closed) return Promise.reject(new Error('Roadmap is closed'));

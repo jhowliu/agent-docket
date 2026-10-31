@@ -24,7 +24,7 @@ The tool takes no Run ID, status, percentage, verdict or approval choice. A sent
 
 For each supported Run, execution provides a private MCP stdio configuration through ACP `session/new.mcpServers`. Each prompt preserves the original user text as its first block, followed by a reporting-instructions text block. The first block must remain user input because the pinned Codex adapter dispatches slash commands such as `/mcp` from that block. The existing `turn.start` event still records the original accepted user input only. The source project and the user's CLI configuration are not edited.
 
-The standard MCP server uses the pinned TypeScript SDK 1.32.1. It exposes only `report_progress`; it follows MCP's [tool discovery/call contract](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) and [stdio transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio). No additional network listener is created.
+The standard MCP server uses the pinned TypeScript SDK 1.32.1. It exposes `report_progress` and `request_user` (below); it follows MCP's [tool discovery/call contract](https://modelcontextprotocol.io/specification/2025-06-18/server/tools) and [stdio transport](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#stdio). No additional network listener is created.
 
 A private temporary JSONL file carries reports back from the adapter-owned MCP process. Reports are bound to the channel's current turn, read every 100 ms, and drained before `turn.end`. The tool's acknowledgment means the report was written locally, not that a user viewed it. At most 1 MiB of progress records is accepted per Run. The event journal keeps its existing 2,000-event default limit. Stopped or different-turn records are not projected as current progress.
 
@@ -39,6 +39,29 @@ Timeline shows these explicit reports with a cyan `Progress` label and the full 
 Reopening the TUI applies the new presentation, but reports need a new Session on the upgraded daemon so the tool is registered. Existing sessions have no such tool and old conversation is not retroactively converted into reports. No existing user-owned daemon or Run is restarted by this change. The current three tabs remain; there is no `z` mode or tab removal.
 
 The temporary reporting channel and bounded daemon journal are not durable. Reports remain available while the same daemon is running; a new daemon starts empty. See [Run lifecycle](run-lifecycle.md). Reports do not implement workflow-stage transitions, Candidate-bound verification or an independent review pipeline. A real model may omit reports despite the instructions; its autonomous use and report quality require live provider acceptance.
+
+## Agent requests: `request_user`
+
+2026-10-22. When work cannot continue or take effect until the person does something outside the session (run a command, restart a program, sign in, provide information) or answers a question, the agent calls `request_user`. Without it those instructions lived only in the final answer in Live, so Timeline and the inbox never showed them. The workbench still does not infer this from chat text.
+
+```json
+{
+  "kind": "action",
+  "title": "Restart ro-panel with --write",
+  "steps": [
+    "Quit the panel with q",
+    "cargo run --manifest-path ro-panel/Cargo.toml -- --write"
+  ]
+}
+```
+
+`kind` is `action` or `question`; the title is 1–120 characters and at most 8 steps of 1–300 characters each, plain text only. At most 5 requests are accepted per turn and 20 stay open per Run; extra calls return a tool error. The call returns immediately: nothing waits for the person, so the instructions also ask the agent to explain the request in its answer and end the turn. The same per-turn journal and identity binding as progress reports apply.
+
+`attention` owns the item (`kind: 'agent-request'`, statuses `pending` → `done`, or `stale` when its Run is cancelled, interrupted or closed). Unlike a permission request it survives the end of its turn, takes no provider choice and is never delivered to the agent: marking it done tells the agent nothing, and a reply is an ordinary next prompt. Items from older daemons without a `kind` still parse as permission requests.
+
+The TUI shows `Needs you` (or `Question for you`) above the footer with the first steps (three at 24+ rows, one below), `d` for every step, `y` to mark the selected request done and `i` to reply; `a`/`r` stay with approvals. Since 2026-10-24 the roster says `Blocked` or `Question` and stays blocked after Done until the next prompt; Timeline rows read `Needs you` (with its steps), `Marked done · reply to continue` or `Request expired`, and the turn ends in a `Blocked` / `Question` result row ([turn outcomes](turn-outcomes.md)). The browser shows the same request with a Mark done button. `POST /api/commands { kind: 'complete-request', id }` is authenticated like other commands; repeats and expired requests are refused.
+
+`report_progress` also takes `finished: true` (2026-10-24): the agent says the requested work is done, shown as a green `Finished` row and roster state; it is never verification. The instructions ask the agent to use `request_user` when it cannot continue and say the session has no Git/GitHub credentials. Without any agent cooperation, a turn that declared nothing shows the reply's last paragraph under `Turn ended`, so a final answer with instructions is never silent in Timeline (this replaced `replied · 1 Live`). Whether a real model calls these tools at the right moments needs live provider acceptance.
 
 ## Validation
 

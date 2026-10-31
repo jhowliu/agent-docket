@@ -1,5 +1,31 @@
 import { z } from 'zod';
-import type { RunEvent, RunId, RunSnapshot, RunState } from '../index.js';
+import type {
+  RunEvent,
+  RunId,
+  RunSnapshot,
+  RunState,
+  WorktreeSnapshot,
+} from '../index.js';
+
+const sha = z.string().regex(/^[a-f0-9]{40,64}$/);
+const worktree: z.ZodType<WorktreeSnapshot> = z.object({
+  path: z.string(),
+  branch: z.string(),
+  baseRevision: z.string().regex(/^[a-f0-9]{40,64}$/),
+  tree: z
+    .string()
+    .regex(/^[a-f0-9]{40,64}$/)
+    .optional(),
+  status: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('active') }),
+    z.object({ kind: z.literal('removed') }),
+    z.object({
+      kind: z.literal('commit-required'),
+      changes: z.number().int().positive(),
+    }),
+    z.object({ kind: z.literal('retained'), reason: z.string() }),
+  ]),
+});
 
 export const runIdSchema = z.custom<RunId>(
   (value) => typeof value === 'string' && /^run-[a-zA-Z0-9-]+$/.test(value),
@@ -41,6 +67,8 @@ export const runSnapshotSchema: z.ZodType<RunSnapshot> = z.object({
     location: z.string(),
   }),
   capabilities: capabilities.nullable(),
+  worktree: worktree.optional(),
+  review: z.object({ runId: runIdSchema, candidate: sha }).optional(),
 });
 const base = z.object({
   sequence: z.number().int().positive(),
@@ -56,6 +84,7 @@ export const runEventSchema: z.ZodType<RunEvent> = z.discriminatedUnion(
     base.extend({
       type: z.literal('agent.progress'),
       summary: z.string().min(1).max(2000),
+      finished: z.literal(true).optional(),
     }),
     base.extend({ type: z.literal('turn.start'), text: z.string() }),
     base.extend({
@@ -74,6 +103,21 @@ export const runEventSchema: z.ZodType<RunEvent> = z.discriminatedUnion(
       type: z.literal('attention'),
       id: z.string(),
       status: z.string(),
+    }),
+    base.extend({
+      type: z.literal('check.start'),
+      command: z.string(),
+      candidate: sha,
+    }),
+    base.extend({
+      type: z.literal('check.end'),
+      command: z.string(),
+      candidate: sha,
+      outcome: z.enum(['exited', 'timed-out', 'cancelled', 'failed-to-start']),
+      exitCode: z.number().int().nullable(),
+      output: z.string(),
+      truncated: z.boolean(),
+      durationMs: z.number().int().nonnegative(),
     }),
     base.extend({ type: z.literal('turn.end'), reason: z.string() }),
     base.extend({ type: z.literal('diagnostic'), message: z.string() }),

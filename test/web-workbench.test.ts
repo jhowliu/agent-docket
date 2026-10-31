@@ -75,7 +75,7 @@ async function setup() {
 test('browser transport allows only its own fixture controls and allowlisted assets', async (t) => {
   const ui = await setup();
   t.after(() => ui.app.close());
-  assert.match(ui.html, /Fixture Demo/);
+  assert.match(ui.html, /<title>Agent Workbench<\/title>/);
   assert.doesNotMatch(ui.html, /content="WORKBENCH_TOKEN"/);
   assert.doesNotMatch(ui.html, /data-filter="history"|data-history-count/);
   for (const path of ['/api/runs', '/api/runs/run-old/history']) {
@@ -239,11 +239,12 @@ test('cancelling through the browser invalidates the old decision and rejects bu
     409,
   );
   const state = await ui.snapshot();
-  assert.equal(state.runs[0]?.state.kind, 'cancelled');
+  // A cancelled Run with nothing to save leaves the list.
+  assert.equal(state.runs.length, 0);
   assert.equal(state.attention[0]?.status, 'stale');
   assert.equal(
     (await ui.command({ kind: 'prompt', runId, text: 'fix' })).status,
-    409,
+    404,
   );
 });
 

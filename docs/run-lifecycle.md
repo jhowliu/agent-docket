@@ -10,7 +10,7 @@
 - `npm run daemon:stop` explicitly stops the daemon and attempts to cancel and clean up its managed Runs. This affects active work. Use the same `WORKBENCH_PORT` as the running service.
 - Starting a new daemon after a stop, crash or computer restart begins with empty Run, event and approval state. Old Sessions and permission callbacks are not restored. The client clears old request focus and never automatically replays an ambiguous mutation.
 
-Crash-time OS processes and local code copies are not automatically reconciled or reaped. Empty workbench state does not prove those resources were cleaned up. Local code copies remain after confirmed cancellation/shutdown; see [local execution](local-execution.md).
+Crash-time OS processes and workspaces are not automatically reconciled or reaped. Empty workbench state does not prove those resources were cleaned up. Cancelling a Run (`x`) commits what its local Git worktree still holds to the Run's branch, collects the worktree and removes the Run from the daemon (2026-10-26); a worktree Git will not remove stays on disk, and a failed commit keeps the Run as **Commit required**. Runs that ended on their own stay listed until `x` or a commit. Branches survive worktree removal. Legacy fixture/HTTPS copies keep their previous retention behavior; see [worktrees](worktrees.md) and [local execution](local-execution.md).
 
 ## Interfaces and limits
 
@@ -18,9 +18,11 @@ Crash-time OS processes and local code copies are not automatically reconciled o
 
 `execution.submit()` confirms acceptance into the current process, not durable storage or provider delivery. There is no `historyFile`, `historyDirectory`, archive flag, Run paging or history API. `:history`, `:older`, `:latest` and `:older-runs` are removed. `PgUp/PgDn` and `g/G` scroll only retained events.
 
-The app allows four active Runs and 64 newly created Runs per daemon process. Terminal snapshots remain in that bounded process-local roster for lifecycle checks, without a past-Run browsing mode. The live event window is at most 2,000 events; approval receipts retain at most 500 in memory. Reaching an expired event cursor requires a fresh snapshot, not a disk replay.
+A prompt turn has no length limit while the agent is active. After 10 minutes with no session update, progress report or agent request, the turn is interrupted (`Run interrupted · No agent activity for 10 minutes`) and its adapter is stopped (2026-10-26; before, every turn ended 10 minutes after its prompt). Time waiting on a permission decision does not count. A tool that runs longer than 10 minutes without reporting anything still counts as quiet. `ExecutionOptions.idleTurnMs` sets the limit; the app keeps the default.
 
-Existing `.workbench/history/` files are left untouched and are no longer used. `WORKBENCH_HISTORY_DIRECTORY` has no effect. Existing running daemons keep their already-loaded code; restarting the TUI alone does not upgrade a daemon. No running user daemon is automatically stopped or replaced.
+The app allows four active Runs and 64 newly created Runs per daemon process. Stopped Runs with a commit-required/retained worktree remain actionable in the current roster until collection succeeds. Terminal snapshots remain in that bounded process-local roster for lifecycle checks, without a past-Run browsing mode. The live event window is at most 2,000 events; approval receipts retain at most 500 in memory. Reaching an expired event cursor requires a fresh snapshot, not a disk replay.
+
+Existing `.workbench/history/` files are left untouched and are no longer used. `WORKBENCH_HISTORY_DIRECTORY` has no effect. Existing running daemons keep their already-loaded code; restarting the TUI alone does not upgrade a daemon. No running user daemon is automatically stopped or replaced. Instead the daemon reports its code build (`build` in state: a hash of the app's source files and `package-lock.json`, taken at startup), and a TUI whose own build differs, or that finds no build (a daemon older than this check), shows `Server out of date · npm run daemon:stop` in the header (with `WORKBENCH_PORT=<port>` on another port). Stopping cancels that daemon's Runs as usual; the next `npm run tui` starts one with the current code.
 
 Daemon startup diagnostic logs and explicitly requested legacy CLI `save` / fixture-demo exports remain separate from automatic Run history. These are not restored into the workbench.
 

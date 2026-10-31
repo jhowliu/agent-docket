@@ -128,7 +128,6 @@ test('Workflow stays separate from content tabs, fits terminal cells and never i
             connected
             busy={false}
             note="Roadmap ready"
-            project={false}
             options={false}
             help={false}
             details={false}
@@ -147,21 +146,30 @@ test('Workflow stays separate from content tabs, fits terminal cells and never i
           lines.every((line) => stringWidth(line) <= columns),
           output,
         );
-        assert.match(output, /1 Live\s+2 Diff\s+3 Timeline/);
-        assert.match(output, /Approval 1\/1/);
+        assert.match(output, /Timeline/);
+        assert.doesNotMatch(output, /1 Live|2 Diff|3 Timeline/);
+        assert.match(output, /APPROVAL 1\/1/);
         assert.match(output, /q quit/);
         if (columns >= 80 || outline) assert.match(output, /Phase 1\/1/);
         else {
           assert.match(output, /o Workflow/);
-          assert.doesNotMatch(output, /Current step|Phase 1\/1/);
+          assert.doesNotMatch(output, /Current step/);
+          // Only the roster's project line names the Phase.
+          assert.ok(
+            lines
+              .filter((line) => line.includes('Phase 1/1'))
+              .every((line) => line.includes('project · next: approve Run 1')),
+            output,
+          );
         }
         if (columns >= 80) {
           const panel = lines.find((line) =>
             line.includes(outline ? 'Roadmap' : 'Workflow'),
           );
+          // Workflow sits in the left column under Project.
           assert.ok(
             panel &&
-              panel.indexOf(outline ? 'Roadmap' : 'Workflow') > columns / 2,
+              panel.indexOf(outline ? 'Roadmap' : 'Workflow') < columns / 2,
             output,
           );
           if (!outline) assert.match(output, /> Requirement clarification/);

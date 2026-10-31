@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import {
   access,
   mkdir,
@@ -31,6 +32,20 @@ async function until<T>(
   }
   throw new Error('Native launch condition timed out');
 }
+/** A cancelled Run leaves the list once its worktree is removed. */
+function removed(execution: ReturnType<typeof createExecution>, id: string) {
+  assert.ok(!execution.list().some((run) => run.id === id));
+  assert.ok(
+    execution
+      .events()
+      .some(
+        (event) =>
+          event.runId === id &&
+          event.type === 'diagnostic' &&
+          event.message.startsWith('Worktree removed. Local branch kept:'),
+      ),
+  );
+}
 const observationSchema = z.object({
   home: z.string(),
   codexHome: z.string(),
@@ -49,6 +64,29 @@ async function setup() {
     join(source, 'token.mjs'),
     await readFile('fixtures/project/token.mjs'),
   );
+  await writeFile(
+    join(source, '.gitignore'),
+    '/launch-observed.json\n/descendants.json\n/node_modules/\n/target/\n.env\n',
+  );
+  execFileSync('git', ['init', '--quiet', source]);
+  execFileSync('git', ['-C', source, 'config', 'user.name', 'Workbench Test']);
+  execFileSync('git', [
+    '-C',
+    source,
+    'config',
+    'user.email',
+    'test@example.invalid',
+  ]);
+  execFileSync('git', ['-C', source, 'add', '.']);
+  execFileSync('git', [
+    '-C',
+    source,
+    '-c',
+    'core.hooksPath=/dev/null',
+    'commit',
+    '-qm',
+    'Initial project',
+  ]);
   const launch: Launch = {
     provider: 'codex',
     worker: {
@@ -64,7 +102,7 @@ async function setup() {
   return { directory, source, launch };
 }
 
-test('explicit local Runs have separate code/config copies and retain edits after cancellation', async (t) => {
+test('local Runs have separate Git worktrees/private homes and cancellation commits uncommitted edits to the Run branch', async (t) => {
   const { directory, source, launch } = await setup();
   const attention = createAttention(),
     execution = createExecution({ attention });
@@ -93,6 +131,9 @@ test('explicit local Runs have separate code/config copies and retain edits afte
     two = await execution.start(configured);
   assert.equal(one.environment.kind, 'local');
   assert.notEqual(one.environment.location, two.environment.location);
+  assert.ok(one.worktree);
+  assert.ok(two.worktree);
+  assert.notEqual(one.worktree.branch, two.worktree.branch);
   const observations = await Promise.all(
     [one, two].map(async (run) =>
       observationSchema.parse(
@@ -131,8 +172,14 @@ test('explicit local Runs have separate code/config copies and retain edits afte
   attention.answer(item.id, 'choice-0');
   await prompt;
   await Promise.all([execution.cancel(one.id), execution.cancel(one.id)]);
+  removed(execution, one.id);
+  assert.ok(one.worktree);
   assert.match(
-    await readFile(join(one.environment.location, 'token.mjs'), 'utf8'),
+    execFileSync(
+      'git',
+      ['-C', source, 'show', `${one.worktree.branch}:token.mjs`],
+      { encoding: 'utf8' },
+    ),
     /expiry <= now/,
   );
   assert.equal(await readFile(join(source, 'token.mjs'), 'utf8'), before);
@@ -143,6 +190,53 @@ test('explicit local Runs have separate code/config copies and retain edits afte
   await assert.rejects(access(first.home));
   await access(second.home);
   assert.equal(execution.snapshot(two.id).state.kind, 'idle');
+});
+
+test('local worktree Git discovery selects its own checkout instead of the enclosing host repository', async (t) => {
+  const { directory, launch } = await setup();
+  if (launch.worker.transport !== 'local' || !launch.worker.adapter)
+    throw new Error('Expected local launch');
+  const host = join(directory, 'host');
+  await mkdir(host);
+  execFileSync('git', [
+    '-c',
+    'core.hooksPath=/dev/null',
+    'init',
+    '--quiet',
+    host,
+  ]);
+  const execution = createExecution({ attention: createAttention() });
+  t.after(async () => {
+    await execution.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const run = await execution.start({
+    ...launch,
+    worker: {
+      ...launch.worker,
+      workspaceRoot: join(host, 'runs'),
+      adapter: {
+        ...launch.worker.adapter,
+        args: [...launch.worker.adapter.args, '--git-root-probe'],
+      },
+    },
+  });
+  const observation = z
+    .object({ gitRootBefore: z.string().nullable(), gitRootAfter: z.string() })
+    .parse(
+      JSON.parse(
+        await readFile(
+          join(run.environment.location, 'launch-observed.json'),
+          'utf8',
+        ),
+      ),
+    );
+  assert.equal(
+    observation.gitRootBefore,
+    run.environment.location,
+    'A worktree must discover its own checkout instead of the host Git repository',
+  );
+  assert.equal(observation.gitRootAfter, run.environment.location);
 });
 
 test('native cancellation stops its process group, including ordinary descendants', async (t) => {
@@ -184,10 +278,11 @@ test('native cancellation stops its process group, including ordinary descendant
   await execution.cancel(run.id);
   for (const pid of descendants)
     assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' });
-  await access(run.environment.location);
+  await assert.rejects(access(run.environment.location));
+  removed(execution, run.id);
 });
 
-test('a Rust project copies source while excluding its oversized root target directory', async (t) => {
+test('a Rust worktree checks out committed source without copying ignored build artifacts', async (t) => {
   const { directory, source, launch } = await setup();
   const execution = createExecution({ attention: createAttention() });
   t.after(async () => {
@@ -203,6 +298,16 @@ test('a Rust project copies source while excluding its oversized root target dir
     join(source, 'src', 'target', 'logic.rs'),
     '// source module\n',
   );
+  execFileSync('git', ['-C', source, 'add', 'src']);
+  execFileSync('git', [
+    '-C',
+    source,
+    '-c',
+    'core.hooksPath=/dev/null',
+    'commit',
+    '-qm',
+    'Rust source',
+  ]);
   const run = await execution.start(launch);
   await assert.rejects(access(join(run.environment.location, 'target')));
   assert.equal(
@@ -213,6 +318,51 @@ test('a Rust project copies source while excluding its oversized root target dir
     '// source module\n',
   );
   await access(artifact);
+});
+
+test('a denied process-group liveness probe is retried, while persistent uncertainty retains the worktree', async (t) => {
+  const { directory, launch } = await setup();
+  const execution = createExecution({ attention: createAttention() });
+  const originalKill = process.kill;
+  let denied = 0;
+  let remaining = 0;
+  process.kill = (pid, signal) => {
+    if (pid < 0 && signal === 0 && remaining > 0) {
+      remaining--;
+      denied++;
+      throw Object.assign(new Error('Injected group liveness denial'), {
+        code: 'EPERM',
+      });
+    }
+    return originalKill(pid, signal);
+  };
+  t.after(async () => {
+    process.kill = originalKill;
+    await execution.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const first = await execution.start(launch);
+  remaining = 1;
+  await execution.cancel(first.id);
+  assert.equal(denied, 1);
+  removed(execution, first.id);
+  await assert.rejects(access(first.environment.location));
+
+  const second = await execution.start(launch);
+  remaining = Infinity;
+  await assert.rejects(
+    execution.cancel(second.id),
+    /cleanup could not be confirmed/,
+  );
+  assert.equal(execution.snapshot(second.id).state.kind, 'interrupted');
+  await access(second.environment.location);
+  assert.notEqual(
+    execution.snapshot(second.id).worktree?.status.kind,
+    'removed',
+  );
+  remaining = 0;
+  await execution.cancel(second.id);
+  removed(execution, second.id);
 });
 
 test('configured workbench starts local Runs without accepting executable settings from clients', async (t) => {
@@ -247,7 +397,12 @@ test('configured workbench starts local Runs without accepting executable settin
   );
   await client.command({ kind: 'cancel', runId: accepted.runId });
   const closed = await client.poll();
-  assert.equal(closed.runs[0]?.state.kind, 'cancelled');
+  assert.equal(closed.runs.length, 0);
+  assert.ok(
+    closed.events.some(
+      (event) => event.type === 'run.state' && event.state.kind === 'cancelled',
+    ),
+  );
   assert.match(JSON.stringify(closed.events), /no OS isolation/);
   assert.doesNotMatch(JSON.stringify(closed), /"adapter"|"authFile"/);
 });
@@ -266,12 +421,18 @@ test('local mode requires explicit valid configuration and does not weaken conta
       source: { kind: 'fixture' },
     }),
   );
-  assert.throws(() =>
-    parseLaunch({
-      provider: 'claude',
-      worker: { transport: 'local', workspaceRoot: '/tmp/runs' },
-      source: { kind: 'fixture' },
-    }),
+  assert.throws(
+    () =>
+      parseLaunch({
+        provider: 'claude',
+        worker: {
+          transport: 'local',
+          workspaceRoot: '/tmp/runs',
+          claudeTokenFile: 'claude-token',
+        },
+        source: { kind: 'fixture' },
+      }),
+    /absolute claudeTokenFile/,
   );
   assert.throws(() =>
     parseLaunch({
@@ -282,7 +443,7 @@ test('local mode requires explicit valid configuration and does not weaken conta
   );
 });
 
-test('cancelling accepted local startup retains its code path and leaves no active decision', async (t) => {
+test('cancelling accepted local startup collects a clean worktree and leaves no active decision', async (t) => {
   const { directory, launch } = await setup();
   const attention = createAttention(),
     execution = createExecution({ attention });
@@ -296,11 +457,10 @@ test('cancelling accepted local startup retains its code path and leaves no acti
     execution.cancel(accepted.id),
     execution.cancel(accepted.id),
   ]);
-  const stopped = execution.snapshot(accepted.id);
-  assert.equal(stopped.state.kind, 'cancelled');
-  assert.equal(stopped.environment.kind, 'local');
-  assert.notEqual(stopped.environment.location, 'pending');
-  await access(join(stopped.environment.location, 'token.mjs'));
+  removed(execution, accepted.id);
+  if (launch.worker.transport !== 'local')
+    throw new Error('Expected local launch');
+  assert.deepEqual(await readdir(launch.worker.workspaceRoot), []);
   assert.equal(
     attention.list(accepted.id).filter((item) => item.status === 'pending')
       .length,
@@ -308,7 +468,7 @@ test('cancelling accepted local startup retains its code path and leaves no acti
   );
 });
 
-test('missing local adapter becomes an observed startup failure and preserves the copied source', async (t) => {
+test('missing local adapter becomes an observed startup failure and collects its clean worktree', async (t) => {
   const { directory, launch } = await setup();
   if (launch.worker.transport !== 'local')
     throw new Error('Expected local launch');
@@ -327,8 +487,104 @@ test('missing local adapter becomes an observed startup failure and preserves th
     return state.kind === 'failed' ? state : undefined;
   });
   assert.match(failure.reason, /ENOENT/);
-  const copies = await readdir(worker.workspaceRoot);
-  assert.equal(copies.length, 1);
-  assert.ok(copies[0]);
-  await access(join(worker.workspaceRoot, copies[0], 'repo', 'token.mjs'));
+  await until(async () =>
+    (await readdir(worker.workspaceRoot)).length === 0 ? true : undefined,
+  );
+  assert.equal(
+    execFileSync(
+      'git',
+      [
+        '-C',
+        launch.source.kind === 'directory' ? launch.source.path : directory,
+        'worktree',
+        'list',
+        '--porcelain',
+      ],
+      { encoding: 'utf8' },
+    ).match(/^worktree /gm)?.length,
+    1,
+  );
+});
+
+test('a Claude local Run gets a private Claude config and its token, never the Codex login; without the token nothing starts', async (t) => {
+  const { directory, source, launch } = await setup();
+  if (launch.worker.transport !== 'local')
+    throw new Error('Expected local launch');
+  const execution = createExecution({ attention: createAttention() });
+  t.after(async () => {
+    await execution.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  const openai = process.env['OPENAI_API_KEY'];
+  process.env['OPENAI_API_KEY'] = 'codex only';
+  t.after(() => {
+    if (openai === undefined) delete process.env['OPENAI_API_KEY'];
+    else process.env['OPENAI_API_KEY'] = openai;
+  });
+  const authFile = join(directory, 'auth.json');
+  await writeFile(authFile, JSON.stringify({ test: 'codex login' }));
+  const claudeTokenFile = join(directory, 'claude-token');
+  const claude: Launch = {
+    ...launch,
+    provider: 'claude',
+    worker: { ...launch.worker, authFile, claudeTokenFile },
+  };
+  const worktrees = () =>
+    execFileSync('git', ['-C', source, 'worktree', 'list', '--porcelain'], {
+      encoding: 'utf8',
+    }).match(/^worktree /gm)?.length;
+
+  // Without the token the Run fails before any checkout.
+  const missing = execution.launch(claude);
+  const failure = await until(() => {
+    const state = execution.snapshot(missing.id).state;
+    return state.kind === 'failed' ? state : undefined;
+  });
+  assert.match(failure.reason, /No Claude token at .*claude setup-token/);
+  assert.equal(worktrees(), 1);
+
+  await writeFile(claudeTokenFile, 'sk-ant-oat01-test-token-0123456789\n');
+  const run = await execution.start(claude);
+  const raw: unknown = JSON.parse(
+    await readFile(
+      join(run.environment.location, 'launch-observed.json'),
+      'utf8',
+    ),
+  );
+  const observed = z
+    .object({
+      home: z.string(),
+      claudeConfig: z.string(),
+      claudeToken: z.string(),
+      openaiKey: z.null(),
+      claudeSettings: z.unknown(),
+    })
+    .parse(raw);
+  // No Codex home, login or mode.
+  assert.ok(raw && typeof raw === 'object');
+  assert.ok(!('codexHome' in raw) && !('mode' in raw) && !('auth' in raw));
+  assert.equal(observed.claudeConfig, join(observed.home, '.claude'));
+  assert.notEqual(observed.home, homedir());
+  assert.equal(observed.claudeToken, 'sk-ant-oat01-test-token-0123456789');
+  assert.deepEqual(observed.claudeSettings, {
+    permissions: {
+      defaultMode: 'acceptEdits',
+      allow: ['mcp__workbench_progress'],
+    },
+  });
+  assert.equal(run.provider, 'claude');
+  assert.ok(run.worktree);
+  // The token is read, never copied into the Run.
+  await assert.rejects(
+    access(join(observed.claudeConfig, '.credentials.json')),
+  );
+
+  await writeFile(claudeTokenFile, 'two words');
+  const invalid = execution.launch(claude);
+  const refused = await until(() => {
+    const state = execution.snapshot(invalid.id).state;
+    return state.kind === 'failed' ? state : undefined;
+  });
+  assert.match(refused.reason, /must hold only the token/);
+  assert.doesNotMatch(refused.reason, /two words/);
 });

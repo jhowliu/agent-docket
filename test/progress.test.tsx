@@ -14,7 +14,7 @@ test('progress instructions preserve provider slash-command dispatch', async (t)
   const execution = createExecution({ attention });
   t.after(() => execution.close());
   attention.subscribe((item) => {
-    if (item.status !== 'pending') return;
+    if (item.status !== 'pending' || item.kind !== 'permission') return;
     const reject = item.choices.find((choice) => choice.kind === 'reject-once');
     if (reject) attention.answer(item.id, reject.id);
   });
@@ -24,7 +24,7 @@ test('progress instructions preserve provider slash-command dispatch', async (t)
     .events()
     .flatMap((event) => (event.type === 'agent.message' ? [event.text] : []))
     .join('');
-  assert.equal(reply, 'workbench_progress: report_progress');
+  assert.equal(reply, 'workbench_progress: report_progress, request_user');
   assert.equal(attention.list().length, 0);
   assert.ok(
     !execution.events().some((event) => event.type === 'agent.progress'),
@@ -131,7 +131,7 @@ test('cancelling a reporting Run closes its tool process and prevents late progr
   }
   await execution.cancel(run.id);
   await prompt;
-  assert.equal(execution.snapshot(run.id).state.kind, 'cancelled');
+  assert.ok(!execution.list().some((item) => item.id === run.id));
   const journal = execution.events();
   const cancelling = journal.find(
     (event) => event.type === 'run.state' && event.state.kind === 'cancelling',
@@ -236,7 +236,6 @@ test('Timeline wraps the full brief report at 60/80/120 columns while ordinary c
         connected
         busy={false}
         note="Replay"
-        project={false}
         options={false}
         help={false}
         details={false}
@@ -246,15 +245,22 @@ test('Timeline wraps the full brief report at 60/80/120 columns while ordinary c
       />,
       { columns },
     );
-    // Read down the main column; Project entries occupy the adjacent column.
+    // Read down the main column; Project entries occupy the left column.
     const main = output
       .split('\n')
-      .map((line) => line.slice(0, workbenchMainWidth(columns)))
+      .map((line) => line.slice(columns - workbenchMainWidth(columns)))
       .join('\n');
     const reading = main.replace(/[│\s]/gu, '');
     assert.ok(reading.includes(summary.replace(/\s/gu, '')), output);
     assert.ok(output.includes('Progress'), output);
     assert.ok(!output.includes('Ordinary conversation'), output);
-    assert.ok(!main.includes('…'), output);
+    // The Run's title row may be cut; the framed report never is.
+    assert.ok(
+      main
+        .split('\n')
+        .filter((line) => line.startsWith('│'))
+        .every((line) => !line.includes('…')),
+      output,
+    );
   }
 });

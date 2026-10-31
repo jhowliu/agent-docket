@@ -2,12 +2,30 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { commandSchema, directoryRequestSchema } from './workbench-protocol.js';
+import {
+  changesRequestSchema,
+  commandSchema,
+  directoryRequestSchema,
+  projectRequestSchema,
+  initializeProjectRequestSchema,
+  sessionOptionsSchema,
+} from './workbench-protocol.js';
 import { createAttention } from '../attention/index.js';
-import { createExecution, parseLaunch } from '../execution/index.js';
-import type { Execution, Launch } from '../execution/index.js';
+import {
+  createExecution,
+  parseLaunch,
+  inspectLocalProject,
+  initializeLocalProject,
+  ProjectInitializationRequired,
+  listProjectFolders,
+} from '../execution/index.js';
+import type { Execution, Launch, LocalWorker } from '../execution/index.js';
+import { describeChange } from '../delivery/index.js';
+import type { ChangeMap } from '../delivery/index.js';
 import { launchFingerprint } from './launch-config.js';
-import { createWork } from '../work/index.js';
+import { CheckRequired, createProjectWorkspaces } from '../work/index.js';
+import { createEvidence } from '../evidence/index.js';
+import { resolve } from 'node:path';
 
 const assets: Readonly<Record<string, { file: string; type: string }>> = {
   '/': { file: 'runtime.html', type: 'text/html; charset=utf-8' },
@@ -19,6 +37,19 @@ const assets: Readonly<Record<string, { file: string; type: string }>> = {
   '/runtime-work.js': {
     file: 'runtime-work.js',
     type: 'text/javascript; charset=utf-8',
+  },
+  '/runtime-session.js': {
+    file: 'runtime-session.js',
+    type: 'text/javascript; charset=utf-8',
+  },
+  '/changes': { file: 'change-map.html', type: 'text/html; charset=utf-8' },
+  '/change-map.js': {
+    file: 'change-map.js',
+    type: 'text/javascript; charset=utf-8',
+  },
+  '/change-map.css': {
+    file: 'change-map.css',
+    type: 'text/css; charset=utf-8',
   },
   '/app.js': { file: 'app.js', type: 'text/javascript; charset=utf-8' },
   '/services.js': {
@@ -47,6 +78,11 @@ export function createWebWorkbench(
     launch?: Launch;
     maxEvents?: number;
     planDirectory?: string;
+    /** Trusted settings only. Clients choose a project, never an executable/login/storage path. */
+    localWorker?: LocalWorker;
+    defaultProjectPath?: string;
+    /** The code this server runs (`codeBuild`); clients compare it with their own. */
+    build?: string;
   } = {},
 ) {
   const address = new URL(origin);
@@ -57,6 +93,7 @@ export function createWebWorkbench(
   const directory = previewDirectory();
   const launch = parseLaunch(options.launch ?? { provider: 'fixture' });
   const configurationId = launchFingerprint(launch);
+  const changeTasks = new Map<string, Promise<ChangeMap>>();
   if ((options.maxEvents ?? 2000) > 2000)
     throw new Error('Workbench polling supports at most 2000 events');
   const attention = createAttention();
@@ -76,15 +113,64 @@ export function createWebWorkbench(
       : launch.source.kind === 'directory'
         ? launch.source.path
         : `${launch.source.url}@${launch.source.revision}`;
-  const work = createWork({
+  const work = createProjectWorkspaces({
     execution,
-    projectKey:
-      launch.provider === 'fixture' || launch.source.kind === 'fixture'
-        ? `fixture:${source}`
-        : launch.source.kind === 'directory'
-          ? `directory:${launch.source.path}`
-          : `git:${launch.source.url}`,
+    attention,
+    evidence: createEvidence({ execution }),
     ...(options.planDirectory ? { directory: options.planDirectory } : {}),
+  });
+  const defaultProjectId = work.register(
+    launch.provider === 'fixture' || launch.source.kind === 'fixture'
+      ? `fixture:${source}`
+      : launch.source.kind === 'directory'
+        ? `directory:${launch.source.path}`
+        : `git:${launch.source.url}`,
+    source,
+  );
+  const localWorker =
+    launch.provider === 'codex' && launch.worker.transport === 'local'
+      ? launch.worker
+      : options.localWorker;
+  const presets = [
+    ...(localWorker
+      ? [
+          { id: 'codex-local', label: 'Codex · local', kind: 'local' as const },
+          {
+            id: 'claude-local',
+            label: 'Claude · local',
+            kind: 'local' as const,
+          },
+        ]
+      : []),
+    ...(launch.provider !== 'fixture' &&
+    !(
+      launch.provider === 'codex' &&
+      launch.worker.transport === 'local' &&
+      launch.source.kind === 'directory'
+    )
+      ? [
+          {
+            id: 'configured',
+            label: `${launch.provider} · configured`,
+            kind: 'fixed' as const,
+          },
+        ]
+      : []),
+    { id: 'fixture', label: 'Fixture · no model', kind: 'fixture' as const },
+  ];
+  const sessionOptions = sessionOptionsSchema.parse({
+    defaultPath: resolve(
+      options.defaultProjectPath ??
+        (launch.provider !== 'fixture' && launch.source.kind === 'directory'
+          ? launch.source.path
+          : process.cwd()),
+    ),
+    defaultPreset: localWorker
+      ? 'codex-local'
+      : launch.provider !== 'fixture'
+        ? 'configured'
+        : 'fixture',
+    presets,
   });
   let closing = false;
   let closingTask: Promise<void> | null = null;
@@ -117,6 +203,7 @@ export function createWebWorkbench(
         events = execution.events();
         reset = true;
       }
+      const projects = await work.snapshot();
       return json({
         instanceId,
         runs: execution.list(),
@@ -126,8 +213,28 @@ export function createWebWorkbench(
         reset,
         source,
         configurationId,
-        work: await work.snapshot(),
-        features: { directoryTree: true },
+        ...(options.build ? { build: options.build } : {}),
+        work: projects.find((project) => project.id === defaultProjectId)?.work,
+        projects,
+        overview: work.overview(),
+        checks: work.checks(),
+        reviewers: work.reviewers(),
+        verifications: work.verifications(),
+        flows: work.flows(),
+        reviews: work.reviews(),
+        defaultProjectId,
+        sessionOptions,
+        features: {
+          directoryTree: true,
+          newSession: true,
+          folderCompletion: true,
+          projectInitialization: true,
+          changeMap: true,
+          verify: true,
+          flow: true,
+          review: true,
+          reviewer: true,
+        },
         launch: {
           provider: launch.provider,
           kind:
@@ -136,6 +243,58 @@ export function createWebWorkbench(
               : launch.worker.transport,
         },
       });
+    }
+
+    if (
+      request.method === 'POST' &&
+      (url.pathname === '/api/project' ||
+        url.pathname === '/api/project/folders' ||
+        url.pathname === '/api/project/initialize')
+    ) {
+      if (
+        request.headers.get('x-workbench-token') !== token ||
+        (request.headers.has('origin') &&
+          request.headers.get('origin') !== address.origin)
+      )
+        return json({ error: 'Reconnect before choosing a project' }, 403);
+      if (!request.headers.get('content-type')?.startsWith('application/json'))
+        return json({ error: 'Expected application/json' }, 415);
+      const body = await request.text();
+      if (Buffer.byteLength(body) > 16384)
+        return json({ error: 'Project path is too large' }, 413);
+      try {
+        const input: unknown = JSON.parse(body);
+        if (url.pathname === '/api/project/initialize') {
+          const parsed = initializeProjectRequestSchema.safeParse(input);
+          if (!parsed.success)
+            return json(
+              {
+                error: 'Confirm the inspected project before initializing Git',
+              },
+              400,
+            );
+          return json(await initializeLocalProject(parsed.data.project));
+        }
+        const parsed = projectRequestSchema.safeParse(input);
+        if (!parsed.success)
+          return json({ error: 'Choose an absolute project folder' }, 400);
+        return json(
+          url.pathname === '/api/project/folders'
+            ? await listProjectFolders(parsed.data.path)
+            : await inspectLocalProject(parsed.data.path),
+        );
+      } catch (error) {
+        return json(
+          {
+            error:
+              error instanceof Error ? error.message : 'Project is unavailable',
+            ...(error instanceof ProjectInitializationRequired
+              ? { initialization: error.project }
+              : {}),
+          },
+          409,
+        );
+      }
     }
 
     if (request.method === 'GET' && url.pathname === '/api/directory') {
@@ -159,6 +318,60 @@ export function createWebWorkbench(
         return result;
       } catch {
         return json({ error: 'Run workspace is unavailable' }, 404);
+      }
+    }
+
+    if (request.method === 'GET' && url.pathname === '/api/changes') {
+      if (
+        request.headers.get('x-workbench-token') !== token ||
+        (request.headers.has('origin') &&
+          request.headers.get('origin') !== address.origin)
+      )
+        return json({ error: 'Reconnect before opening the Change map' }, 403);
+      const parsed = changesRequestSchema.safeParse({
+        runId: url.searchParams.get('runId'),
+        ...(url.searchParams.has('files')
+          ? { files: url.searchParams.get('files') }
+          : {}),
+      });
+      if (!parsed.success) return json({ error: 'Invalid Run' }, 400);
+      const id = execution
+        .list()
+        .find((run) => run.id === parsed.data.runId)?.id;
+      if (!id) return json({ error: 'Unknown Run' }, 404);
+      // The checkout comes from execution's own Run record, never from the request.
+      const worktree = execution.snapshot(id).worktree;
+      if (!worktree)
+        return json(
+          { error: 'Change maps need a Run with a local Git worktree' },
+          409,
+        );
+      if (worktree.status.kind === 'removed')
+        return json(
+          {
+            error: `The worktree was removed; its commits stay on ${worktree.branch}`,
+          },
+          409,
+        );
+      // One analysis per Run and mode at a time; repeated opens share it.
+      const filesOnly = parsed.data.files === 'only';
+      const key = `${id}:${filesOnly ? 'files' : 'map'}`;
+      let task = changeTasks.get(key);
+      if (!task) {
+        task = describeChange({
+          directory: worktree.path,
+          base: worktree.baseRevision,
+          ...(filesOnly ? { analysis: false } : {}),
+        }).finally(() => changeTasks.delete(key));
+        changeTasks.set(key, task);
+      }
+      try {
+        return json(await task);
+      } catch {
+        return json(
+          { error: 'Change map is unavailable; retry after the Run settles' },
+          409,
+        );
       }
     }
 
@@ -189,7 +402,11 @@ export function createWebWorkbench(
       const command = parsed.data;
       try {
         if ('expectedRevision' in command) {
-          await work.apply(command);
+          await work.apply(defaultProjectId, command);
+          return json({ result: 'accepted' }, 202);
+        }
+        if (command.kind === 'project-work') {
+          await work.apply(command.projectId, command.command);
           return json({ result: 'accepted' }, 202);
         }
         if (command.kind === 'shutdown') {
@@ -201,7 +418,7 @@ export function createWebWorkbench(
           setImmediate(options.onShutdown);
           return json({ result: 'accepted' }, 202);
         }
-        if (command.kind === 'start') {
+        if (command.kind === 'start' || command.kind === 'new-session') {
           if (launchPending)
             return json({ error: 'A Run is already starting' }, 409);
           // Keep the current process's in-memory Run roster bounded.
@@ -235,21 +452,107 @@ export function createWebWorkbench(
             );
           launchPending = true;
           try {
-            const run =
-              launch.provider === 'fixture'
-                ? await execution.start({
-                    ...launch,
-                    label: launch.label ?? `fixture / run-${++counter}`,
-                  })
-                : execution.launch({
-                    ...launch,
+            let selected: Launch = launch;
+            let projectId: string | undefined = defaultProjectId;
+            if (command.kind === 'new-session') {
+              const preset = presets.find(
+                (preset) => preset.id === command.presetId,
+              );
+              if (!preset)
+                throw new Error(
+                  'Agent preset is unavailable; reopen New Session',
+                );
+              if (preset.kind === 'local') {
+                if (!localWorker || !command.project)
+                  throw new Error('Choose a Git project and starting branch');
+                selected = {
+                  provider: preset.id === 'claude-local' ? 'claude' : 'codex',
+                  worker: localWorker,
+                  source: { kind: 'directory', ...command.project },
+                };
+                projectId = undefined;
+              } else if (command.project)
+                throw new Error(
+                  'This agent preset uses its configured project',
+                );
+              else if (preset.kind === 'fixture') {
+                const fixture = fileURLToPath(
+                  new URL('../fixtures/project/', directory),
+                );
+                selected = { provider: 'fixture' };
+                projectId = work.register(`fixture:${fixture}`, fixture);
+              }
+            }
+            const { run } = await work.startSession(
+              // A local project is inspected and named after its folder.
+              projectId === undefined
+                ? selected
+                : {
+                    ...selected,
                     label:
-                      launch.label ?? `${launch.provider} / run-${++counter}`,
-                  });
+                      selected.label ??
+                      `${selected.provider} / run-${++counter}`,
+                  },
+              projectId,
+            );
             return json({ runId: run.id }, 201);
           } finally {
             launchPending = false;
           }
+        }
+        if (command.kind === 'accept') {
+          await work.accept(command.runId);
+          return json({ result: 'accepted' }, 202);
+        }
+        if (command.kind === 'request-changes') {
+          await work.requestChanges(command.runId, command.text);
+          return json({ result: 'accepted' }, 202);
+        }
+        if (command.kind === 'set-check') {
+          await work.setCheck(command.projectId, command.command);
+          return json({ result: 'accepted' }, 202);
+        }
+        if (command.kind === 'set-reviewer') {
+          await work.setReviewer(command.projectId, command.provider);
+          return json({ result: 'accepted' }, 202);
+        }
+        if (command.kind === 'verify') {
+          try {
+            await work.verify(command.runId);
+          } catch (error) {
+            if (error instanceof CheckRequired)
+              return json(
+                {
+                  error: error.message,
+                  ...(error.suggestion ? { suggestion: error.suggestion } : {}),
+                },
+                409,
+              );
+            throw error;
+          }
+          return json({ result: 'accepted' }, 202);
+        }
+        if (command.kind === 'complete-request') {
+          const item = attention
+            .list()
+            .find((candidate) => candidate.id === command.id);
+          if (!item) return json({ error: 'Unknown attention item' }, 404);
+          if (item.kind !== 'agent-request')
+            return json(
+              { error: 'Only agent requests can be marked done' },
+              409,
+            );
+          const result = attention.complete(item.id);
+          if (result === 'done') return json({ result }, 202);
+          return json(
+            {
+              error:
+                result === 'already-done'
+                  ? 'Already marked done'
+                  : 'This request expired with its Run',
+            },
+            409,
+          );
         }
         if (command.kind === 'answer') {
           const id = attention
@@ -261,9 +564,36 @@ export function createWebWorkbench(
         }
         const id = execution.list().find((run) => run.id === command.runId)?.id;
         if (!id) return json({ error: 'Unknown Run' }, 404);
+        // Execution removes a cancelled or committed Run once nothing is left to save.
+        const removed = () => !execution.list().some((run) => run.id === id);
         if (command.kind === 'cancel') {
-          await execution.cancel(id);
-          return json({ result: 'cancelled' });
+          const { worktree } = await execution.cancel(id);
+          return json({
+            result: 'cancelled',
+            ...(removed() ? { removed: true } : {}),
+            ...(worktree
+              ? {
+                  branch: worktree.branch,
+                  workspaceRemoved: worktree.status.kind === 'removed',
+                }
+              : {}),
+          });
+        }
+        if (command.kind === 'commit-workspace') {
+          const { worktree } = await execution.commitWorkspace(
+            id,
+            command.message,
+          );
+          return json({
+            result: 'accepted',
+            ...(removed() ? { removed: true } : {}),
+            ...(worktree
+              ? {
+                  branch: worktree.branch,
+                  workspaceRemoved: worktree.status.kind === 'removed',
+                }
+              : {}),
+          });
         }
         if (command.kind === 'authenticate') {
           const state = execution.snapshot(id).state;
@@ -301,7 +631,7 @@ export function createWebWorkbench(
     if (request.method !== 'GET' || !asset)
       return json({ error: 'Not found' }, 404);
     let body = await readFile(new URL(asset.file, directory), 'utf8');
-    if (asset.file === 'runtime.html')
+    if (asset.file === 'runtime.html' || asset.file === 'change-map.html')
       body = body.replace('content="WORKBENCH_TOKEN"', `content="${token}"`);
     return new Response(body, { headers: { 'content-type': asset.type } });
   }

@@ -7,6 +7,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  readFile,
   realpath,
   rm,
   writeFile,
@@ -17,6 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import type { LocalWorker, RunId, Source } from '../index.js';
 import type { ManagedProcess } from './worker.js';
+import { createLocalWorktree } from './worktree.js';
+import type { ManagedWorktree } from './worktree.js';
 
 const execFileAsync = promisify(execFile);
 const excluded = new Set([
@@ -39,14 +42,48 @@ const inherited = [
   'http_proxy',
   'all_proxy',
   'no_proxy',
-  'CODEX_API_KEY',
-  'OPENAI_API_KEY',
 ] as const;
+/** Host login settings an adapter may read; Claude gets only its token file. */
+const providerInherited = {
+  codex: ['CODEX_API_KEY', 'OPENAI_API_KEY'],
+  claude: [],
+} as const;
+/** The adapters this package bundles, started with Node. */
+const bundledAdapters = {
+  codex: '@agentclientprotocol/codex-acp',
+  claude: '@agentclientprotocol/claude-agent-acp/dist/index.js',
+} as const;
 const code = (error: unknown) =>
   error && typeof error === 'object' && 'code' in error
     ? error.code
     : undefined;
 const delay = (ms: number) => new Promise<void>((done) => setTimeout(done, ms));
+
+/** The long-lived token `claude setup-token` printed, from the operator's file. */
+async function claudeToken(worker: LocalWorker): Promise<string> {
+  const file = worker.claudeTokenFile;
+  if (!file)
+    throw new Error(
+      'Claude · local needs a token: run `claude setup-token` and configure claudeTokenFile',
+    );
+  const info = await lstat(file).catch((error: unknown) => {
+    if (code(error) === 'ENOENT')
+      throw new Error(
+        `No Claude token at ${file}: run \`claude setup-token\` and save the token there (chmod 600)`,
+      );
+    throw error;
+  });
+  if (!info.isFile() || info.size > 4096)
+    throw new Error(
+      'claudeTokenFile must be a regular file smaller than 4 KiB',
+    );
+  const token = (await readFile(file, 'utf8')).trim();
+  if (!/^[\x21-\x7e]{20,}$/.test(token))
+    throw new Error(
+      `${file} must hold only the token that \`claude setup-token\` printed`,
+    );
+  return token;
+}
 
 function groupExists(pid: number): boolean {
   try {
@@ -54,17 +91,29 @@ function groupExists(pid: number): boolean {
     return true;
   } catch (error) {
     if (code(error) === 'ESRCH') return false;
-    throw error;
+    // EPERM is not proof that the group is gone. Keep polling within the stop
+    // deadline; transient permission checks can fail while a group exits.
+    if (code(error) === 'EPERM') return true;
+    throw new Error(
+      `Cannot inspect local process group ${pid}: ${error instanceof Error ? error.message : 'signal check failed'}`,
+      { cause: error },
+    );
   }
 }
 function signalGroup(pid: number, signal: NodeJS.Signals): void {
   try {
     process.kill(-pid, signal);
   } catch (error) {
-    if (code(error) !== 'ESRCH') throw error;
+    if (code(error) !== 'ESRCH')
+      throw new Error(
+        `Cannot send ${signal} to local process group ${pid}: ${error instanceof Error ? error.message : 'signal failed'}`,
+        { cause: error },
+      );
   }
 }
-async function stopGroup(child: ChildProcessWithoutNullStreams): Promise<void> {
+export async function stopGroup(
+  child: ChildProcessWithoutNullStreams,
+): Promise<void> {
   const pid = child.pid;
   if (pid === undefined) return;
   // A parent exit does not establish that its background descendants are gone.
@@ -78,15 +127,29 @@ async function stopGroup(child: ChildProcessWithoutNullStreams): Promise<void> {
     throw new Error('Local process group cleanup could not be confirmed');
 }
 
-/** Explicit native mode. A directory copy and process group are not a security sandbox. */
+/** Explicit native mode. A worktree and process group are not a security sandbox. */
+/** A reviewer's working directory, made by the reviewed Run's worktree. */
+export type ReviewCheckout = (
+  path: string,
+) => Promise<{ release(): Promise<void> }>;
+
+/**
+ * With `review`, the Run reviews another Run's Candidate: its directory comes
+ * from `review` instead of `source`, the adapter starts read-only, and stopping
+ * it discards the checkout.
+ */
 export async function launchLocal(
   worker: LocalWorker,
+  provider: 'codex' | 'claude',
   source: Source,
   id: RunId,
   fixture: string,
+  review?: ReviewCheckout,
 ): Promise<ManagedProcess> {
   if (process.platform === 'win32')
     throw new Error('Local mode currently requires macOS or Linux');
+  // Before any checkout, so a missing login leaves nothing behind.
+  const token = provider === 'claude' ? await claudeToken(worker) : undefined;
   await mkdir(worker.workspaceRoot, { recursive: true, mode: 0o700 });
   const root = await realpath(worker.workspaceRoot);
   const base = await mkdtemp(join(root, id + '-'));
@@ -94,22 +157,19 @@ export async function launchLocal(
   const temporary = await mkdtemp(join(tmpdir(), 'workbench-local-'));
   const home = join(temporary, 'home');
   const codexHome = join(home, '.codex');
+  const claudeConfig = join(home, '.claude');
   const scratch = join(temporary, 'tmp');
   let child: ChildProcessWithoutNullStreams | undefined;
+  let worktree: ManagedWorktree | undefined;
+  let checkout: { release(): Promise<void> } | undefined;
   try {
-    await mkdir(codexHome, { recursive: true, mode: 0o700 });
-    await writeFile(
-      join(codexHome, 'config.toml'),
-      'cli_auth_credentials_store = "file"\n',
-      { mode: 0o600 },
-    );
+    await mkdir(home, { recursive: true, mode: 0o700 });
     await mkdir(scratch, { mode: 0o700 });
     const env: NodeJS.ProcessEnv = {};
-    for (const key of inherited)
+    for (const key of [...inherited, ...providerInherited[provider]])
       if (process.env[key] !== undefined) env[key] = process.env[key];
     Object.assign(env, {
       HOME: home,
-      CODEX_HOME: codexHome,
       TMPDIR: scratch,
       TMP: scratch,
       TEMP: scratch,
@@ -117,13 +177,51 @@ export async function launchLocal(
       XDG_CACHE_HOME: join(home, '.cache'),
       XDG_DATA_HOME: join(home, '.local', 'share'),
       NO_BROWSER: '1',
-      INITIAL_AGENT_MODE: 'workspace-write',
-      CODEX_CONFIG: JSON.stringify({ cli_auth_credentials_store: 'file' }),
       GIT_CONFIG_NOSYSTEM: '1',
       GIT_CONFIG_GLOBAL: '/dev/null',
+      // Directory copies have no .git; never discover the workbench's parent repo.
+      GIT_CEILING_DIRECTORIES: base,
       GIT_TERMINAL_PROMPT: '0',
     });
-    if (source.kind === 'git') {
+    if (provider === 'codex') {
+      await mkdir(codexHome, { mode: 0o700 });
+      await writeFile(
+        join(codexHome, 'config.toml'),
+        'cli_auth_credentials_store = "file"\n',
+        { mode: 0o600 },
+      );
+      Object.assign(env, {
+        CODEX_HOME: codexHome,
+        // Codex asks before a reviewer edits anything.
+        INITIAL_AGENT_MODE: review ? 'read-only' : 'workspace-write',
+        CODEX_CONFIG: JSON.stringify({ cli_auth_credentials_store: 'file' }),
+      });
+    } else {
+      // A private config: none of the person's hooks, plugins, MCP servers or
+      // instructions, and the Run's own tools need no approval.
+      await mkdir(claudeConfig, { mode: 0o700 });
+      await writeFile(
+        join(claudeConfig, 'settings.json'),
+        JSON.stringify({
+          permissions: {
+            // A reviewer never edits and asks before commands that change
+            // anything. Not `plan`: there the Run's own submit_review still
+            // asks for approval.
+            defaultMode: review ? 'default' : 'acceptEdits',
+            allow: ['mcp__workbench_progress'],
+            ...(review ? { deny: ['Edit', 'Write', 'NotebookEdit'] } : {}),
+          },
+        }),
+        { mode: 0o600 },
+      );
+      Object.assign(env, {
+        CLAUDE_CONFIG_DIR: claudeConfig,
+        CLAUDE_CODE_OAUTH_TOKEN: token,
+        DISABLE_AUTOUPDATER: '1',
+      });
+    }
+    if (review) checkout = await review(cwd);
+    else if (source.kind === 'git') {
       const gitOptions = { env, timeout: 60_000, maxBuffer: 1024 * 1024 };
       await execFileAsync(
         'git',
@@ -151,10 +249,10 @@ export async function launchLocal(
         ],
         gitOptions,
       );
+    } else if (source.kind === 'directory') {
+      worktree = await createLocalWorktree(source.path, cwd, id, source.base);
     } else {
-      const path = await realpath(
-        source.kind === 'fixture' ? fixture : source.path,
-      );
+      const path = await realpath(fixture);
       if (!(await lstat(path)).isDirectory())
         throw new Error('Local source must be a directory');
       const omitted: string[] = [];
@@ -196,7 +294,7 @@ export async function launchLocal(
         { mode: 0o600 },
       );
     }
-    if (worker.authFile) {
+    if (provider === 'codex' && worker.authFile) {
       const auth = await lstat(worker.authFile);
       if (!auth.isFile() || auth.size > 1024 * 1024)
         throw new Error(
@@ -207,9 +305,7 @@ export async function launchLocal(
     }
     const adapter = worker.adapter ?? {
       file: process.execPath,
-      args: [
-        fileURLToPath(import.meta.resolve('@agentclientprotocol/codex-acp')),
-      ],
+      args: [fileURLToPath(import.meta.resolve(bundledAdapters[provider]))],
     };
     child = spawn(adapter.file, [...adapter.args], {
       cwd,
@@ -227,10 +323,12 @@ export async function launchLocal(
       child,
       cwd,
       environment: { kind: 'local', location: cwd },
+      ...(worktree ? { worktree } : {}),
       stop() {
         cleanup ??= (async () => {
           await stopGroup(managedChild);
           await rm(temporary, { recursive: true, force: true });
+          await checkout?.release();
         })().catch((error: unknown) => {
           cleanup = undefined;
           throw error;
@@ -241,6 +339,8 @@ export async function launchLocal(
   } catch (error) {
     if (child) await stopGroup(child);
     await rm(temporary, { recursive: true, force: true });
+    await worktree?.collect();
+    await checkout?.release().catch(() => {});
     // Preserve code and copy metadata on startup failure as well as cancellation.
     throw error;
   }

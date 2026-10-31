@@ -73,7 +73,7 @@ test('Roadmap commands share the real client path, preserve native prompts and s
     state.events.some(
       (event) =>
         event.type === 'agent.message' &&
-        event.text === 'workbench_progress: report_progress',
+        event.text === 'workbench_progress: report_progress, request_user',
     ),
   );
   assert.equal(state.attention.length, 0);
