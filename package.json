@@ -19,7 +19,8 @@
     "qa:codex": "tsx scripts/accept-codex.tsx",
     "qa:loop": "tsx scripts/accept-loop.tsx",
     "demo": "tsx src/app/cli.ts demo",
-    "doctor": "tsx src/app/cli.ts doctor"
+    "doctor": "tsx src/app/cli.ts doctor",
+    "change-map": "tsx scripts/change-map.ts"
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.97.0",

@@ -21,6 +21,10 @@ One flow is drawn as three tinted bands: blue **Started by** (each trigger chain
 
 Only Runs whose local Git worktree is still on disk have a map. A fixture Run, a container/remote Run or a Run whose worktree was collected returns an explanatory message; a committed Run's changes stay on its `workbench/run-…` branch.
 
+### In a pull request
+
+`npm run -s change-map -- [--base main] [directory]` prints the same map as Markdown for a PR body: the working tree of the checkout you run it from (or the given directory) against its merge base with `--base`, as Interface changes, flows (operation ← triggers, then `module.function` → changed functions below it), other changed functions and a collapsed file table. It needs no daemon or Run and reads any Git checkout; TypeScript checkouts with a root `tsconfig.json` get the analysis, others only the file table. It is the same read-only `describeChange`, so the same bounds and limits apply.
+
 ## Interface and ownership
 
 `delivery.describeChange({ directory, base })` owns the map (`src/delivery/index.ts`). `directory` must be the top of a Git checkout and `base` a commit in it. The working tree, including untracked non-ignored files, is compared with `base`. It never stages, writes, fetches or runs project code: Git runs with hooks off, external diff and text conversion off, and inherited `GIT_*` variables removed; the TypeScript compiler only parses and type-checks source. The result is validated against `changeMapSchema` before it is returned.

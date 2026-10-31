@@ -23,6 +23,7 @@
     "src/**/*.tsx",
     "test/**/*.ts",
     "test/**/*.tsx",
+    "scripts/**/*.ts",
     "scripts/**/*.tsx"
   ],
   "exclude": ["node_modules", "dist"]
